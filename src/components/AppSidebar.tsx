@@ -1,4 +1,4 @@
-import { BarChart3, CreditCard, FileText, Home, Settings } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Settings, Upload } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import {
@@ -16,6 +16,7 @@ import {
 const items = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Transações", url: "/transactions", icon: CreditCard },
+  { title: "Importar Extrato", url: "/import", icon: Upload },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];

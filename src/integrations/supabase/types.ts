@@ -14,7 +14,179 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      categories: {
+        Row: {
+          color: string | null
+          created_at: string
+          icon: string | null
+          id: string
+          name: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      import_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          filename: string
+          id: string
+          processed_records: number | null
+          status: string | null
+          total_records: number | null
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          filename: string
+          id?: string
+          processed_records?: number | null
+          status?: string | null
+          total_records?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          filename?: string
+          id?: string
+          processed_records?: number | null
+          status?: string | null
+          total_records?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      subcategories: {
+        Row: {
+          category_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcategories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          amount: number
+          category_id: string | null
+          created_at: string
+          date: string
+          description: string
+          external_id: string | null
+          id: string
+          import_session_id: string | null
+          is_recurring: boolean | null
+          notes: string | null
+          original_description: string | null
+          payment_method: string | null
+          recurring_frequency: string | null
+          subcategory_id: string | null
+          tags: string[] | null
+          type: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          amount: number
+          category_id?: string | null
+          created_at?: string
+          date: string
+          description: string
+          external_id?: string | null
+          id?: string
+          import_session_id?: string | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          original_description?: string | null
+          payment_method?: string | null
+          recurring_frequency?: string | null
+          subcategory_id?: string | null
+          tags?: string[] | null
+          type: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category_id?: string | null
+          created_at?: string
+          date?: string
+          description?: string
+          external_id?: string | null
+          id?: string
+          import_session_id?: string | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          original_description?: string | null
+          payment_method?: string | null
+          recurring_frequency?: string | null
+          subcategory_id?: string | null
+          tags?: string[] | null
+          type?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_subcategory_id_fkey"
+            columns: ["subcategory_id"]
+            isOneToOne: false
+            referencedRelation: "subcategories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
