@@ -47,7 +47,6 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      encoding: 'latin1',
       complete: (results) => {
         try {
           if (!results.data || results.data.length === 0) {
@@ -59,13 +58,20 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
           }
 
-          const requiredHeaders = ['data', 'valor', 'id_transacao', 'descricao'];
-          const missingHeaders = requiredHeaders.filter(required => 
-            !headers.some(h => h.toLowerCase().includes(required.replace('_', '')))
-          );
+          console.log('Cabeçalhos encontrados:', headers);
 
-          if (missingHeaders.length > 0) {
-            throw new Error(`Cabeçalhos ausentes. Necessário: Data, Valor, Identificador, Descrição.`);
+          const dataKey = headers.find(h => h.trim().toLowerCase() === 'data');
+          const valorKey = headers.find(h => h.trim().toLowerCase() === 'valor');
+          const idKey = headers.find(h => h.trim().toLowerCase() === 'identificador');
+          const descKey = headers.find(h => {
+            const normalized = h.trim().toLowerCase();
+            return normalized.includes('descri') || normalized.includes('descriÃ§Ã£o');
+          });
+
+          console.log('Chaves encontradas:', { dataKey, valorKey, idKey, descKey });
+
+          if (!dataKey || !valorKey || !idKey || !descKey) {
+            throw new Error(`Cabeçalhos ausentes. Encontrados: ${headers.join(', ')}. Necessário: Data, Valor, Identificador, Descrição.`);
           }
 
           setMessage('Convertendo dados...');
@@ -73,24 +79,19 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
 
           const transactions: ParsedTransaction[] = results.data
             .map((row: any) => {
-              const dataField = Object.keys(row).find(k => k.toLowerCase().includes('data'));
-              const valorField = Object.keys(row).find(k => k.toLowerCase().includes('valor'));
-              const idField = Object.keys(row).find(k => k.toLowerCase().includes('id') || k.toLowerCase().includes('identificador'));
-              const descField = Object.keys(row).find(k => k.toLowerCase().includes('descri'));
+              const rowValor = row[valorKey];
+              const amount = parseAmount(rowValor);
 
-              if (!dataField || !valorField || !idField || !descField) {
+              if (!row[dataKey] || !rowValor || !row[idKey] || !row[descKey] || isNaN(amount)) {
                 return null;
               }
 
-              const amount = parseAmount(row[valorField]);
-              if (isNaN(amount)) return null;
-
               return {
-                id: String(row[idField]).trim(),
-                date: parseDate(String(row[dataField]).trim()),
+                id: String(row[idKey]).trim(),
+                date: parseDate(String(row[dataKey]).trim()),
                 amount: Math.abs(amount),
-                description: String(row[descField]).trim(),
-                originalDescription: String(row[descField]).trim(),
+                description: String(row[descKey]).trim(),
+                originalDescription: String(row[descKey]).trim(),
                 type: amount >= 0 ? 'income' : 'expense'
               };
             })
