@@ -98,36 +98,96 @@ export default function TransactionImportTable({
       console.log('🔍 Starting to load categories...');
       
       // Verificar se o usuário está autenticado
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('👤 Current user:', user?.id ? 'Authenticated' : 'Not authenticated');
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      console.log('👤 Auth check result:', { 
+        authData: authData?.user?.id ? 'User authenticated' : 'No user',
+        authError: authError?.message || 'No auth error',
+        userId: authData?.user?.id
+      });
       
-      const { data, error } = await supabase
+      if (authError) {
+        console.error('❌ Authentication error:', authError);
+        return;
+      }
+      
+      if (!authData.user) {
+        console.log('❌ No authenticated user found');
+        return;
+      }
+
+      // Test database connection
+      console.log('🔗 Testing database connection...');
+      const { count, error: countError } = await supabase
+        .from('categories')
+        .select('*', { count: 'exact', head: true });
+      
+      console.log('📊 Database connection test:', { 
+        count, 
+        countError: countError?.message || 'No error' 
+      });
+
+      // Fetch categories with all details
+      console.log('📊 Fetching categories from database...');
+      const { data, error, status, statusText } = await supabase
         .from('categories')
         .select('*')
         .order('name');
       
-      console.log('📊 Categories query result:', { 
-        data: data?.length || 0, 
+      console.log('📋 Categories query complete:', { 
+        dataExists: !!data,
+        dataLength: data?.length || 0, 
         error: error?.message || 'No error',
+        status,
+        statusText,
         rawData: data
       });
       
       if (error) {
         console.error('❌ Error loading categories:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         return;
       }
       
-      if (data) {
-        setCategories(data as Category[]);
-        console.log('✅ Categories loaded successfully:', data.length, 'categories');
-        console.log('📋 First category example:', data[0]);
-      } else {
-        console.warn('⚠️ No categories data returned');
+      if (!data) {
+        console.warn('⚠️ Categories data is null/undefined');
+        return;
       }
+
+      if (data.length === 0) {
+        console.warn('⚠️ No categories found in database');
+        setCategories([]);
+        return;
+      }
+      
+      console.log('📝 Processing categories data...');
+      data.forEach((cat, index) => {
+        console.log(`🏷️ Category ${index + 1}:`, {
+          id: cat.id,
+          name: cat.name,
+          type: cat.type,
+          color: cat.color,
+          icon: cat.icon
+        });
+      });
+
+      setCategories(data as Category[]);
+      console.log('✅ Categories loaded and set successfully:', data.length, 'categories');
+      console.log('✅ State should be updated now');
     } catch (error) {
-      console.error('💥 Failed to load categories:', error);
+      console.error('💥 Exception in loadCategories:', error);
+      console.error('💥 Exception details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack'
+      });
     } finally {
       setLoadingCategories(false);
+      console.log('🏁 loadCategories finished, loadingCategories set to false');
     }
   };
 
