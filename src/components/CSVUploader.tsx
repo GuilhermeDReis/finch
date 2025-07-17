@@ -196,9 +196,9 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
 
           <div className="flex flex-col items-center gap-4">
             {status === 'success' ? (
-              <CheckCircle className="h-12 w-12 text-green-500" /> {/* Use Tailwind class for success */}
+              <CheckCircle className="h-12 w-12 text-green-500" />
             ) : status === 'error' ? (
-              <AlertCircle className="h-12 w-12 text-red-500" />    {/* Use Tailwind class for error */}
+              <AlertCircle className="h-12 w-12 text-red-500" />
             ) : (
               <Upload className="h-12 w-12 text-muted-foreground" />
             )}
