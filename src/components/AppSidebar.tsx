@@ -1,4 +1,4 @@
-import { BarChart3, CreditCard, FileText, Home, Settings, Upload } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import {
@@ -10,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -41,23 +42,28 @@ export function AppSidebar() {
 
   return (
     <Sidebar
-      className={`transition-all duration-300 ease-in-out ${
-        isCollapsed ? "w-16" : "w-70"
-      } border-r bg-background`}
+      className="border-r bg-background"
       collapsible="icon"
     >
-      <SidebarHeader className="border-b p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <FileText className="h-5 w-5 text-primary-foreground" />
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-foreground">
-                FinanceApp
-              </span>
+      <SidebarHeader className="border-b p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              <FileText className="h-5 w-5 text-primary-foreground" />
             </div>
-          )}
+            {!isCollapsed && (
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-foreground">
+                  FinanceApp
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* Botão de expandir/recolher dentro do sidebar */}
+          <SidebarTrigger className="h-8 w-8 p-0 hover:bg-muted rounded-md transition-colors">
+            <Menu className="h-4 w-4" />
+          </SidebarTrigger>
         </div>
       </SidebarHeader>
 
@@ -67,16 +73,19 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild className="h-11">
+                  <SidebarMenuButton 
+                    asChild 
+                    className={`h-11 ${isCollapsed ? 'justify-center px-0' : 'justify-start px-3'} transition-all duration-200`}
+                  >
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
                       className={getNavCls}
                       title={isCollapsed ? item.title : undefined}
                     >
-                      <item.icon className="h-5 w-5 flex-shrink-0" />
+                      <item.icon className={`h-5 w-5 flex-shrink-0 ${isCollapsed ? '' : 'mr-3'}`} />
                       {!isCollapsed && (
-                        <span className="transition-opacity duration-200">
+                        <span className="transition-opacity duration-200 overflow-hidden">
                           {item.title}
                         </span>
                       )}
