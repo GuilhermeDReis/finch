@@ -7,14 +7,11 @@ import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 
-// 1. CORREÇÃO NA INTERFACE CSVRow:
-//    - ID_Transacao mudou para Identificador
-//    - Descricao mudou para Descrição (o PapaParse com latin1 resolve 'DescriÃ§Ã£o' para 'Descrição')
 interface CSVRow {
   Data: string;
   Valor: string;
   Identificador: string;
-  Descrição: string; // O PapaParse vai corrigir a codificação 'DescriÃ§Ã£o' para 'Descrição'
+  'DescriÃ§Ã£o': string;
 }
 
 interface ParsedTransaction {
@@ -38,13 +35,11 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   const [message, setMessage] = useState('');
 
   const parseDate = (dateStr: string): string => {
-    // Convert DD/MM/YYYY to YYYY-MM-DD
     const [day, month, year] = dateStr.split('/');
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   };
 
   const parseAmount = (amountStr: string): number => {
-    // Remove dots (thousand separators) and replace comma with dot for decimal
     const cleaned = amountStr.replace(/\./g, '').replace(',', '.');
     return parseFloat(cleaned);
   };
@@ -55,53 +50,49 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     setProgress(0);
     setMessage('Processando arquivo...');
 
-    // Read with latin-1 encoding
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
-
+      
       Papa.parse<CSVRow>(text, {
         header: true,
         delimiter: ',',
         skipEmptyLines: true,
-        encoding: 'latin1', // Confirma a codificação latin1
+        encoding: 'latin1',
         step: (results, parser) => {
-          // Update progress - simplified approach
           const progressPercent = Math.min((results.meta.cursor / file.size) * 90, 90);
           setProgress(progressPercent);
         },
         complete: (results) => {
           try {
-            // 2. CORREÇÃO EM expectedHeaders:
-            //    - ID_Transacao mudou para Identificador
-            //    - Descricao mudou para Descrição (para corresponder ao que o PapaParse vai interpretar)
-            const expectedHeaders = ['Data', 'Valor', 'Identificador', 'Descrição'];
             const actualHeaders = Object.keys(results.data[0] || {});
-
-            // Normaliza os cabeçalhos reais (remove espaços e mantém a case sensitivity para comparação)
+            console.log('Cabeçalhos encontrados no CSV:', actualHeaders);
+            console.log('Primeiro registro completo:', results.data[0]);
+            
+            const expectedHeaders = ['Data', 'Valor', 'Identificador', 'DescriÃ§Ã£o'];
+            
             const normalizedActualHeaders = actualHeaders.map(h => h.trim());
-
+            console.log('Cabeçalhos normalizados:', normalizedActualHeaders);
+            
             const missingHeaders = expectedHeaders.filter(h => !normalizedActualHeaders.includes(h));
             if (missingHeaders.length > 0) {
+              console.log('Cabeçalhos ausentes:', missingHeaders);
               throw new Error(`Cabeçalhos obrigatórios ausentes: ${missingHeaders.join(', ')}`);
             }
 
             setMessage('Convertendo dados...');
             setProgress(95);
 
-            // Convert to our format
             const transactions: ParsedTransaction[] = results.data
-              // 3. CORREÇÃO NA FILTRAGEM E MAPEAMENTO:
-              //    - Acessando row.Identificador e row.Descrição
-              .filter(row => row.Data && row.Valor && row.Identificador && row.Descrição)
+              .filter(row => row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'])
               .map(row => {
                 const amount = parseAmount(row.Valor);
                 return {
-                  id: row.Identificador, // Acessando o novo nome do cabeçalho
+                  id: row.Identificador,
                   date: parseDate(row.Data),
                   amount: Math.abs(amount),
-                  description: row.Descrição.trim(), // Acessando o novo nome do cabeçalho
-                  originalDescription: row.Descrição.trim(), // Acessando o novo nome do cabeçalho
+                  description: row['DescriÃ§Ã£o'].trim(),
+                  originalDescription: row['DescriÃ§Ã£o'].trim(),
                   type: amount >= 0 ? 'income' : 'expense'
                 };
               });
@@ -146,7 +137,6 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     const file = acceptedFiles[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.name.toLowerCase().endsWith('.csv')) {
       setStatus('error');
       setMessage('Apenas arquivos CSV são aceitos');
@@ -154,7 +144,6 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
       return;
     }
 
-    // Validate file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setStatus('error');
       setMessage('Arquivo muito grande. Limite máximo: 10MB');
@@ -193,7 +182,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
           `}
         >
           <input {...getInputProps()} />
-
+          
           <div className="flex flex-col items-center gap-4">
             {status === 'success' ? (
               <CheckCircle className="h-12 w-12 text-green-500" />
@@ -202,7 +191,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             ) : (
               <Upload className="h-12 w-12 text-muted-foreground" />
             )}
-
+            
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">
                 {status === 'success' ? 'Arquivo processado!' :
@@ -210,7 +199,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
                  isDragActive ? 'Solte o arquivo aqui' :
                  'Arraste um arquivo CSV ou clique para selecionar'}
               </h3>
-
+              
               {status === 'idle' && (
                 <p className="text-sm text-muted-foreground">
                   Formatos aceitos: .csv (máximo 10MB)<br />
@@ -248,7 +237,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
                 <Button onClick={reset} variant="outline" size="sm">
                   Tentar novamente
                 </Button>
-                </div>
+              </div>
             )}
           </div>
         </div>
