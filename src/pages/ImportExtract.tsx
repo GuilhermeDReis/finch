@@ -200,10 +200,9 @@ export default function ImportExtract() {
   const getStats = () => {
     const categorized = processedData.filter(t => t.categoryId).length;
     const uncategorized = processedData.length - categorized;
-    const income = processedData.filter(t => t.type === 'income').length;
-    const expense = processedData.filter(t => t.type === 'expense').length;
+    const totalValue = processedData.reduce((sum, t) => sum + (t.type === 'expense' ? -t.amount : t.amount), 0);
 
-    return { categorized, uncategorized, income, expense };
+    return { categorized, uncategorized, totalValue };
   };
 
   const stats = getStats();
@@ -265,11 +264,11 @@ export default function ImportExtract() {
                 {stats.uncategorized} sem categoria
               </Badge>
             )}
-            <Badge variant="outline" className="text-success">
-              {stats.income} receitas
-            </Badge>
-            <Badge variant="outline" className="text-destructive">
-              {stats.expense} gastos
+            <Badge variant="outline" className="text-purple-600">
+              {new Intl.NumberFormat('pt-BR', { 
+                style: 'currency', 
+                currency: 'BRL' 
+              }).format(stats.totalValue)} total
             </Badge>
           </div>
         )}

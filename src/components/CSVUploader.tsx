@@ -33,9 +33,42 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   };
 
   const parseAmount = (amountStr: string): number => {
-    if (typeof amountStr !== 'string') return NaN;
-    const cleaned = amountStr.replace(/\./g, '').replace(',', '.');
-    return parseFloat(cleaned);
+    console.log('Parsing amount:', amountStr);
+    
+    // Remove espaços
+    let cleanAmount = amountStr.trim();
+    
+    // Remove prefixo de moeda (R$, $, etc.)
+    cleanAmount = cleanAmount.replace(/^[R$€£¥]+\s?/i, '');
+    
+    // Para valores negativos brasileiros como R$-946.20
+    const isNegative = cleanAmount.includes('-');
+    cleanAmount = cleanAmount.replace('-', '');
+    
+    // Se tem ponto e vírgula, ponto é separador de milhares
+    // Se tem apenas vírgula, é decimal
+    // Se tem apenas ponto e menos de 3 dígitos após, é decimal
+    if (cleanAmount.includes(',')) {
+      // Tem vírgula - vírgula é decimal, pontos são milhares
+      cleanAmount = cleanAmount.replace(/\./g, ''); // Remove pontos (milhares)
+      cleanAmount = cleanAmount.replace(',', '.'); // Vírgula vira ponto decimal
+    } else if (cleanAmount.includes('.')) {
+      // Só tem ponto - verificar se é decimal ou milhares
+      const parts = cleanAmount.split('.');
+      if (parts.length === 2 && parts[1].length <= 2) {
+        // É decimal (ex: 946.20)
+        // Não faz nada, já está correto
+      } else {
+        // É separador de milhares (ex: 1.000)
+        cleanAmount = cleanAmount.replace(/\./g, '');
+      }
+    }
+    
+    const result = parseFloat(cleanAmount);
+    const finalResult = isNegative ? -result : result;
+    
+    console.log('Amount parsed:', amountStr, '->', finalResult);
+    return finalResult;
   };
 
   const processCSV = useCallback((file: File) => {
@@ -95,7 +128,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
                 amount: Math.abs(amount),
                 description: String(row[descKey]).trim(),
                 originalDescription: String(row[descKey]).trim(),
-                type: amount >= 0 ? 'income' : 'expense'
+                type: amount < 0 ? 'expense' : 'income'
               };
             })
             .filter((transaction): transaction is ParsedTransaction => transaction !== null);

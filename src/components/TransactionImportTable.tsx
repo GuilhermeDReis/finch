@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
+import { Combobox } from './ui/combobox';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ParsedTransaction {
@@ -224,33 +225,33 @@ export default function TransactionImportTable({
             <div className="flex items-center gap-4 flex-wrap">
               <span>{selectedRows.size} item(s) selecionado(s)</span>
               
-              <Select value={bulkCategory} onValueChange={setBulkCategory}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Combobox
+                  value={bulkCategory}
+                  onValueChange={setBulkCategory}
+                  options={categories.map(cat => ({
+                    value: cat.id,
+                    label: `${cat.icon || ''} ${cat.name}`
+                  }))}
+                  placeholder="Selecionar categoria"
+                  searchPlaceholder="Buscar categoria..."
+                  emptyText="Nenhuma categoria encontrada"
+                  className="w-48"
+                />
 
-              {bulkCategory && (
-                <Select value={bulkSubcategory} onValueChange={setBulkSubcategory}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Subcategoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getFilteredSubcategories(bulkCategory).map(sub => (
-                      <SelectItem key={sub.id} value={sub.id}>
-                        {sub.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+                {bulkCategory && (
+                  <Combobox
+                    value={bulkSubcategory}
+                    onValueChange={setBulkSubcategory}
+                    options={getFilteredSubcategories(bulkCategory).map(sub => ({
+                      value: sub.id,
+                      label: sub.name
+                    }))}
+                    placeholder="Selecionar subcategoria"
+                    searchPlaceholder="Buscar subcategoria..."
+                    emptyText="Nenhuma subcategoria encontrada"
+                    className="w-48"
+                  />
+                )}
 
               <Button onClick={applyBulkCategory} disabled={!bulkCategory}>
                 Aplicar Categoria
@@ -376,54 +377,40 @@ export default function TransactionImportTable({
                       </TableCell>
                       
                       <TableCell>
-                        <Select
+                        <Combobox
                           value={transaction.categoryId || ''}
                           onValueChange={(value) => updateTransaction(transaction.id, {
                             categoryId: value,
                             subcategoryId: undefined // Reset subcategory when category changes
                           })}
-                        >
-                          <SelectTrigger className="w-40">
-                            <SelectValue placeholder="Selecionar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories
-                              .filter(cat => cat.type === transaction.type)
-                              .map(cat => (
-                                <SelectItem key={cat.id} value={cat.id}>
-                                  <div className="flex items-center gap-2">
-                                    <div 
-                                      className="w-3 h-3 rounded-full" 
-                                      style={{ backgroundColor: cat.color }}
-                                    />
-                                    {cat.name}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                          options={categories
+                            .filter(cat => cat.type === transaction.type)
+                            .map(cat => ({
+                              value: cat.id,
+                              label: `${cat.icon || ''} ${cat.name}`
+                            }))}
+                          placeholder="Selecionar categoria"
+                          searchPlaceholder="Buscar categoria..."
+                          emptyText="Nenhuma categoria encontrada"
+                          className="w-40"
+                        />
                       </TableCell>
                       
                       <TableCell>
-                        {transaction.categoryId && (
-                          <Select
-                            value={transaction.subcategoryId || ''}
-                            onValueChange={(value) => updateTransaction(transaction.id, {
-                              subcategoryId: value
-                            })}
-                          >
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Opcional" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getFilteredSubcategories(transaction.categoryId).map(sub => (
-                                <SelectItem key={sub.id} value={sub.id}>
-                                  {sub.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
+                        <Combobox
+                          value={transaction.subcategoryId || ''}
+                          onValueChange={(value) => updateTransaction(transaction.id, {
+                            subcategoryId: value
+                          })}
+                          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+                            value: sub.id,
+                            label: sub.name
+                          }))}
+                          placeholder={transaction.categoryId ? "Selecionar subcategoria" : "Selecione categoria primeiro"}
+                          searchPlaceholder="Buscar subcategoria..."
+                          emptyText="Nenhuma subcategoria encontrada"
+                          className="w-40"
+                        />
                       </TableCell>
                       
                       <TableCell>
