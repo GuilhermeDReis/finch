@@ -54,20 +54,37 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     reader.onload = (e) => {
       const text = e.target?.result as string;
       
-      Papa.parse<CSVRow>(text, {
+      console.log('Texto bruto lido:', text.substring(0, 200));
+      console.log('Primeira linha:', text.split('\n')[0]);
+      
+      Papa.parse(text, {
         header: true,
         delimiter: ',',
         skipEmptyLines: true,
-        encoding: 'latin1',
         step: (results, parser) => {
           const progressPercent = Math.min((results.meta.cursor / file.size) * 90, 90);
           setProgress(progressPercent);
         },
         complete: (results) => {
           try {
-            const actualHeaders = Object.keys(results.data[0] || {});
-            console.log('Cabeçalhos encontrados no CSV:', actualHeaders);
-            console.log('Primeiro registro completo:', results.data[0]);
+            console.log('Results completo:', results);
+            console.log('Results.data:', results.data);
+            console.log('Results.meta:', results.meta);
+            console.log('Results.errors:', results.errors);
+            
+            if (results.data.length === 0) {
+              throw new Error('Nenhum dado encontrado no arquivo');
+            }
+            
+            const firstRow = results.data[0] as any;
+            console.log('Primeiro registro:', firstRow);
+            
+            const actualHeaders = Object.keys(firstRow || {});
+            console.log('Cabeçalhos encontrados:', actualHeaders);
+            
+            if (actualHeaders.length === 0) {
+              throw new Error('Nenhum cabeçalho encontrado no arquivo');
+            }
             
             const expectedHeaders = ['Data', 'Valor', 'Identificador', 'DescriÃ§Ã£o'];
             
@@ -77,6 +94,8 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             const missingHeaders = expectedHeaders.filter(h => !normalizedActualHeaders.includes(h));
             if (missingHeaders.length > 0) {
               console.log('Cabeçalhos ausentes:', missingHeaders);
+              console.log('Esperados:', expectedHeaders);
+              console.log('Encontrados:', normalizedActualHeaders);
               throw new Error(`Cabeçalhos obrigatórios ausentes: ${missingHeaders.join(', ')}`);
             }
 
@@ -84,8 +103,8 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             setProgress(95);
 
             const transactions: ParsedTransaction[] = results.data
-              .filter(row => row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'])
-              .map(row => {
+              .filter((row: any) => row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'])
+              .map((row: any) => {
                 const amount = parseAmount(row.Valor);
                 return {
                   id: row.Identificador,
@@ -115,6 +134,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
           }
         },
         error: (error) => {
+          console.log('Erro do Papa.parse:', error);
           setStatus('error');
           setMessage(`Erro ao ler arquivo: ${error.message}`);
           onError(error.message);
@@ -130,7 +150,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
       setIsProcessing(false);
     };
 
-    reader.readAsText(file, 'latin1');
+    reader.readAsText(file);
   }, [onDataParsed, onError]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
