@@ -56,6 +56,8 @@ export default function TransactionImportTable({
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(true);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkSubcategory, setBulkSubcategory] = useState('');
@@ -67,6 +69,7 @@ export default function TransactionImportTable({
 
   // Load categories and subcategories
   useEffect(() => {
+    console.log('Component mounted, loading categories and subcategories...');
     loadCategories();
     loadSubcategories();
   }, []);
@@ -91,27 +94,46 @@ export default function TransactionImportTable({
 
   const loadCategories = async () => {
     try {
+      setLoadingCategories(true);
+      console.log('🔍 Starting to load categories...');
+      
+      // Verificar se o usuário está autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('👤 Current user:', user?.id ? 'Authenticated' : 'Not authenticated');
+      
       const { data, error } = await supabase
         .from('categories')
         .select('*')
         .order('name');
       
+      console.log('📊 Categories query result:', { 
+        data: data?.length || 0, 
+        error: error?.message || 'No error',
+        rawData: data
+      });
+      
       if (error) {
-        console.error('Error loading categories:', error);
+        console.error('❌ Error loading categories:', error);
         return;
       }
       
       if (data) {
         setCategories(data as Category[]);
-        console.log('Categories loaded successfully:', data.length, 'categories');
+        console.log('✅ Categories loaded successfully:', data.length, 'categories');
+        console.log('📋 First category example:', data[0]);
+      } else {
+        console.warn('⚠️ No categories data returned');
       }
     } catch (error) {
-      console.error('Failed to load categories:', error);
+      console.error('💥 Failed to load categories:', error);
+    } finally {
+      setLoadingCategories(false);
     }
   };
 
   const loadSubcategories = async () => {
     try {
+      setLoadingSubcategories(true);
       const { data, error } = await supabase
         .from('subcategories')
         .select('*')
@@ -128,6 +150,8 @@ export default function TransactionImportTable({
       }
     } catch (error) {
       console.error('Failed to load subcategories:', error);
+    } finally {
+      setLoadingSubcategories(false);
     }
   };
 
@@ -440,22 +464,34 @@ export default function TransactionImportTable({
                         )}
                       </TableCell>
                       
-                      <TableCell>
-                        <Combobox
-                          value={transaction.categoryId || ''}
-                          onValueChange={(value) => updateTransaction(transaction.id, {
-                            categoryId: value,
-                            subcategoryId: undefined // Reset subcategory when category changes
-                          })}
-                           options={categories.map(cat => ({
-                             value: cat.id,
-                             label: cat.icon ? `${cat.icon} ${cat.name}` : cat.name
-                           }))}
-                          placeholder="Selecionar categoria"
-                          searchPlaceholder="Buscar categoria..."
-                          emptyText="Nenhuma categoria encontrada"
-                          className="w-40"
-                        />
+                       <TableCell>
+                         <Combobox
+                           value={transaction.categoryId || ''}
+                           onValueChange={(value) => {
+                             console.log('🔄 Category selection changed:', { 
+                               transactionId: transaction.id, 
+                               newValue: value,
+                               availableCategories: categories.length 
+                             });
+                             updateTransaction(transaction.id, {
+                               categoryId: value,
+                               subcategoryId: undefined // Reset subcategory when category changes
+                             });
+                           }}
+                           options={(() => {
+                             const options = categories.map(cat => ({
+                               value: cat.id,
+                               label: cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+                             }));
+                             console.log('🎯 Available category options:', options.length, options.slice(0, 3));
+                             return options;
+                           })()}
+                           placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}
+                           searchPlaceholder="Buscar categoria..."
+                           emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+                           className="w-40"
+                           disabled={loadingCategories}
+                         />
                       </TableCell>
                       
                       <TableCell>
