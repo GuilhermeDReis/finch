@@ -7,13 +7,6 @@ import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 
-interface CSVRow {
-  Data: string;
-  Valor: string;
-  Identificador: string;
-  'DescriÃ§Ã£o': string;
-}
-
 interface ParsedTransaction {
   id: string;
   date: string;
@@ -40,12 +33,8 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   };
 
   const parseAmount = (amountStr: string): number => {
-    console.log('Valor original:', amountStr);
     const cleaned = amountStr.replace(/\./g, '').replace(',', '.');
-    console.log('Valor limpo:', cleaned);
-    const parsed = parseFloat(cleaned);
-    console.log('Valor parseado:', parsed);
-    return parsed;
+    return parseFloat(cleaned);
   };
 
   const processCSV = useCallback((file: File) => {
@@ -62,65 +51,60 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
         header: true,
         delimiter: ',',
         skipEmptyLines: true,
-        newline: '',
-        step: (results, parser) => {
-          const progressPercent = Math.min((results.meta.cursor / file.size) * 90, 90);
-          setProgress(progressPercent);
-        },
         complete: (results) => {
           try {
-            console.log('Total de linhas encontradas:', results.data.length);
+            console.log('Dados brutos do Papa.parse:', results);
+            console.log('Número total de linhas:', results.data.length);
+            console.log('Primeiras 3 linhas:', results.data.slice(0, 3));
             
             if (results.data.length === 0) {
               throw new Error('Nenhum dado encontrado no arquivo');
-            }
-            
-            const firstRow = results.data[0] as any;
-            const actualHeaders = Object.keys(firstRow || {});
-            
-            if (actualHeaders.length === 0) {
-              throw new Error('Nenhum cabeçalho encontrado no arquivo');
-            }
-            
-            const expectedHeaders = ['Data', 'Valor', 'Identificador', 'DescriÃ§Ã£o'];
-            const normalizedActualHeaders = actualHeaders.map(h => h.trim());
-            
-            const missingHeaders = expectedHeaders.filter(h => !normalizedActualHeaders.includes(h));
-            if (missingHeaders.length > 0) {
-              throw new Error(`Cabeçalhos obrigatórios ausentes: ${missingHeaders.join(', ')}`);
             }
 
             setMessage('Convertendo dados...');
             setProgress(95);
 
-            const validRows = results.data.filter((row: any) => {
-              const hasData = row && row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'];
-              const dataNotEmpty = row.Data.trim() !== '' && row.Valor.trim() !== '' && 
-                                 row.Identificador.trim() !== '' && row['DescriÃ§Ã£o'].trim() !== '';
-              return hasData && dataNotEmpty;
-            });
-            
-            console.log('Linhas válidas após filtro:', validRows.length);
+            const transactions: ParsedTransaction[] = [];
 
-            const transactions: ParsedTransaction[] = validRows.map((row: any) => {
-              const amount = parseAmount(row.Valor);
+            for (let i = 0; i < results.data.length; i++) {
+              const row = results.data[i] as any;
+              console.log(`Processando linha ${i}:`, row);
               
-              if (isNaN(amount)) {
-                console.error('Valor inválido encontrado:', row.Valor);
-                throw new Error(`Valor inválido encontrado: ${row.Valor}`);
+              const headers = Object.keys(row);
+              console.log(`Cabeçalhos da linha ${i}:`, headers);
+              
+              let data, valor, identificador, descricao;
+              
+              for (const header of headers) {
+                const lowerHeader = header.toLowerCase().trim();
+                if (lowerHeader === 'data') data = row[header];
+                if (lowerHeader === 'valor') valor = row[header];
+                if (lowerHeader === 'identificador') identificador = row[header];
+                if (lowerHeader.includes('descri')) descricao = row[header];
               }
               
-              return {
-                id: row.Identificador.trim(),
-                date: parseDate(row.Data.trim()),
-                amount: Math.abs(amount),
-                description: row['DescriÃ§Ã£o'].trim(),
-                originalDescription: row['DescriÃ§Ã£o'].trim(),
-                type: amount >= 0 ? 'income' : 'expense'
-              };
-            });
+              console.log(`Linha ${i} - Data: ${data}, Valor: ${valor}, ID: ${identificador}, Desc: ${descricao}`);
+              
+              if (data && valor && identificador && descricao) {
+                try {
+                  const amount = parseAmount(valor);
+                  if (!isNaN(amount)) {
+                    transactions.push({
+                      id: identificador.toString().trim(),
+                      date: parseDate(data.toString().trim()),
+                      amount: Math.abs(amount),
+                      description: descricao.toString().trim(),
+                      originalDescription: descricao.toString().trim(),
+                      type: amount >= 0 ? 'income' : 'expense'
+                    });
+                  }
+                } catch (err) {
+                  console.log(`Erro ao processar linha ${i}:`, err);
+                }
+              }
+            }
 
-            console.log('Transações processadas:', transactions.length);
+            console.log('Transações finais:', transactions);
 
             if (transactions.length === 0) {
               throw new Error('Nenhuma transação válida encontrada no arquivo');
