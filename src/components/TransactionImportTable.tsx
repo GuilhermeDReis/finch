@@ -188,10 +188,10 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
   
-  // Calcular totalizadores por método de pagamento (busca na descrição)
+  // Calcular totalizadores por método de pagamento (busca na descrição - apenas saídas)
   const calculatePaymentMethodTotal = (keyword: string) => {
     return tableData
-      .filter(t => t.description.toLowerCase().includes(keyword.toLowerCase()))
+      .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
       .reduce((sum, t) => sum + t.amount, 0);
   };
   
