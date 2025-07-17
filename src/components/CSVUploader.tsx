@@ -54,13 +54,14 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     reader.onload = (e) => {
       const text = e.target?.result as string;
       
-      console.log('Texto bruto lido:', text.substring(0, 200));
-      console.log('Primeira linha:', text.split('\n')[0]);
+      console.log('Texto bruto lido (primeiros 500 chars):', text.substring(0, 500));
+      console.log('Linhas detectadas:', text.split(/\r?\n/).slice(0, 5));
       
       Papa.parse(text, {
         header: true,
         delimiter: ',',
         skipEmptyLines: true,
+        newline: '',
         step: (results, parser) => {
           const progressPercent = Math.min((results.meta.cursor / file.size) * 90, 90);
           setProgress(progressPercent);
@@ -68,9 +69,10 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
         complete: (results) => {
           try {
             console.log('Results completo:', results);
-            console.log('Results.data:', results.data);
-            console.log('Results.meta:', results.meta);
-            console.log('Results.errors:', results.errors);
+            console.log('Total de linhas encontradas:', results.data.length);
+            console.log('Primeiras 3 linhas:', results.data.slice(0, 3));
+            console.log('Meta info:', results.meta);
+            console.log('Erros:', results.errors);
             
             if (results.data.length === 0) {
               throw new Error('Nenhum dado encontrado no arquivo');
@@ -102,19 +104,31 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             setMessage('Convertendo dados...');
             setProgress(95);
 
-            const transactions: ParsedTransaction[] = results.data
-              .filter((row: any) => row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'])
-              .map((row: any) => {
-                const amount = parseAmount(row.Valor);
-                return {
-                  id: row.Identificador,
-                  date: parseDate(row.Data),
-                  amount: Math.abs(amount),
-                  description: row['DescriÃ§Ã£o'].trim(),
-                  originalDescription: row['DescriÃ§Ã£o'].trim(),
-                  type: amount >= 0 ? 'income' : 'expense'
-                };
-              });
+            console.log('Filtrando dados...');
+            const validRows = results.data.filter((row: any) => {
+              const isValid = row && row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'];
+              if (!isValid) {
+                console.log('Linha inválida encontrada:', row);
+              }
+              return isValid;
+            });
+            
+            console.log('Linhas válidas após filtro:', validRows.length);
+
+            const transactions: ParsedTransaction[] = validRows.map((row: any) => {
+              console.log('Processando linha:', row);
+              const amount = parseAmount(row.Valor);
+              return {
+                id: row.Identificador,
+                date: parseDate(row.Data),
+                amount: Math.abs(amount),
+                description: row['DescriÃ§Ã£o'].trim(),
+                originalDescription: row['DescriÃ§Ã£o'].trim(),
+                type: amount >= 0 ? 'income' : 'expense'
+              };
+            });
+
+            console.log('Transações processadas:', transactions.length);
 
             if (transactions.length === 0) {
               throw new Error('Nenhuma transação válida encontrada no arquivo');
@@ -126,6 +140,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             onDataParsed(transactions);
 
           } catch (error) {
+            console.error('Erro no processamento:', error);
             setStatus('error');
             setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
             onError(error instanceof Error ? error.message : 'Erro desconhecido');
