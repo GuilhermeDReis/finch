@@ -40,8 +40,12 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   };
 
   const parseAmount = (amountStr: string): number => {
+    console.log('Valor original:', amountStr);
     const cleaned = amountStr.replace(/\./g, '').replace(',', '.');
-    return parseFloat(cleaned);
+    console.log('Valor limpo:', cleaned);
+    const parsed = parseFloat(cleaned);
+    console.log('Valor parseado:', parsed);
+    return parsed;
   };
 
   const processCSV = useCallback((file: File) => {
@@ -54,9 +58,6 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     reader.onload = (e) => {
       const text = e.target?.result as string;
       
-      console.log('Texto bruto lido (primeiros 500 chars):', text.substring(0, 500));
-      console.log('Linhas detectadas:', text.split(/\r?\n/).slice(0, 5));
-      
       Papa.parse(text, {
         header: true,
         delimiter: ',',
@@ -68,59 +69,50 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
         },
         complete: (results) => {
           try {
-            console.log('Results completo:', results);
             console.log('Total de linhas encontradas:', results.data.length);
-            console.log('Primeiras 3 linhas:', results.data.slice(0, 3));
-            console.log('Meta info:', results.meta);
-            console.log('Erros:', results.errors);
             
             if (results.data.length === 0) {
               throw new Error('Nenhum dado encontrado no arquivo');
             }
             
             const firstRow = results.data[0] as any;
-            console.log('Primeiro registro:', firstRow);
-            
             const actualHeaders = Object.keys(firstRow || {});
-            console.log('Cabeçalhos encontrados:', actualHeaders);
             
             if (actualHeaders.length === 0) {
               throw new Error('Nenhum cabeçalho encontrado no arquivo');
             }
             
             const expectedHeaders = ['Data', 'Valor', 'Identificador', 'DescriÃ§Ã£o'];
-            
             const normalizedActualHeaders = actualHeaders.map(h => h.trim());
-            console.log('Cabeçalhos normalizados:', normalizedActualHeaders);
             
             const missingHeaders = expectedHeaders.filter(h => !normalizedActualHeaders.includes(h));
             if (missingHeaders.length > 0) {
-              console.log('Cabeçalhos ausentes:', missingHeaders);
-              console.log('Esperados:', expectedHeaders);
-              console.log('Encontrados:', normalizedActualHeaders);
               throw new Error(`Cabeçalhos obrigatórios ausentes: ${missingHeaders.join(', ')}`);
             }
 
             setMessage('Convertendo dados...');
             setProgress(95);
 
-            console.log('Filtrando dados...');
             const validRows = results.data.filter((row: any) => {
-              const isValid = row && row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'];
-              if (!isValid) {
-                console.log('Linha inválida encontrada:', row);
-              }
-              return isValid;
+              const hasData = row && row.Data && row.Valor && row.Identificador && row['DescriÃ§Ã£o'];
+              const dataNotEmpty = row.Data.trim() !== '' && row.Valor.trim() !== '' && 
+                                 row.Identificador.trim() !== '' && row['DescriÃ§Ã£o'].trim() !== '';
+              return hasData && dataNotEmpty;
             });
             
             console.log('Linhas válidas após filtro:', validRows.length);
 
             const transactions: ParsedTransaction[] = validRows.map((row: any) => {
-              console.log('Processando linha:', row);
               const amount = parseAmount(row.Valor);
+              
+              if (isNaN(amount)) {
+                console.error('Valor inválido encontrado:', row.Valor);
+                throw new Error(`Valor inválido encontrado: ${row.Valor}`);
+              }
+              
               return {
-                id: row.Identificador,
-                date: parseDate(row.Data),
+                id: row.Identificador.trim(),
+                date: parseDate(row.Data.trim()),
                 amount: Math.abs(amount),
                 description: row['DescriÃ§Ã£o'].trim(),
                 originalDescription: row['DescriÃ§Ã£o'].trim(),
