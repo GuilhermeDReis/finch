@@ -176,7 +176,28 @@ export default function TransactionImportTable({
   };
 
   const totalPages = Math.ceil(tableData.length / itemsPerPage);
-  const uncategorizedCount = tableData.filter(t => !t.categoryId).length;
+  
+  // Calcular totalizadores
+  const totalEntrada = tableData
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+    
+  const totalSaida = tableData
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+    
+  const diferenca = totalEntrada - totalSaida;
+  
+  // Calcular totalizadores por método de pagamento (busca na descrição)
+  const calculatePaymentMethodTotal = (keyword: string) => {
+    return tableData
+      .filter(t => t.description.toLowerCase().includes(keyword.toLowerCase()))
+      .reduce((sum, t) => sum + t.amount, 0);
+  };
+  
+  const totalPix = calculatePaymentMethodTotal('pix');
+  const totalCredito = calculatePaymentMethodTotal('crédito') + calculatePaymentMethodTotal('credito');
+  const totalDebito = calculatePaymentMethodTotal('débito') + calculatePaymentMethodTotal('debito');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -191,26 +212,58 @@ export default function TransactionImportTable({
 
   return (
     <div className="space-y-6">
-      {/* Statistics */}
+      {/* Statistics - Principais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold">{tableData.length}</div>
-            <div className="text-sm text-muted-foreground">Total de transações</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-destructive">{uncategorizedCount}</div>
-            <div className="text-sm text-muted-foreground">Sem categoria</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold">
-              {formatCurrency(tableData.reduce((sum, t) => sum + t.amount, 0))}
+            <div className="text-2xl font-bold text-success">
+              {formatCurrency(totalEntrada)}
             </div>
-            <div className="text-sm text-muted-foreground">Valor total</div>
+            <div className="text-sm text-muted-foreground">Valor Entrada</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-destructive">
+              {formatCurrency(totalSaida)}
+            </div>
+            <div className="text-sm text-muted-foreground">Valor Saída</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
+              {formatCurrency(diferenca)}
+            </div>
+            <div className="text-sm text-muted-foreground">Diferença</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Statistics - Métodos de Pagamento */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(totalPix)}
+            </div>
+            <div className="text-sm text-muted-foreground">PIX</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(totalCredito)}
+            </div>
+            <div className="text-sm text-muted-foreground">Crédito</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(totalDebito)}
+            </div>
+            <div className="text-sm text-muted-foreground">Débito</div>
           </CardContent>
         </Card>
       </div>
