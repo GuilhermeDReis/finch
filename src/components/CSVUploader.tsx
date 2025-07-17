@@ -33,6 +33,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   };
 
   const parseAmount = (amountStr: string): number => {
+    if (typeof amountStr !== 'string') return NaN;
     const cleaned = amountStr.replace(/\./g, '').replace(',', '.');
     return parseFloat(cleaned);
   };
@@ -51,63 +52,52 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
         header: true,
         delimiter: ',',
         skipEmptyLines: true,
+        newline: '', 
         complete: (results) => {
           try {
-            console.log('Dados brutos do Papa.parse:', results);
-            console.log('Número total de linhas:', results.data.length);
-            console.log('Primeiras 3 linhas:', results.data.slice(0, 3));
+            if (!results.data || results.data.length === 0) {
+              throw new Error('Nenhum dado encontrado no arquivo. Verifique o formato do CSV.');
+            }
             
-            if (results.data.length === 0) {
-              throw new Error('Nenhum dado encontrado no arquivo');
+            const headers = results.meta.fields;
+            if (!headers) {
+                throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
             }
 
+            const descHeader = headers.find(h => h.trim().toLowerCase().includes('descri'));
+
+            const hasData = headers.some(h => h.trim().toLowerCase() === 'data');
+            const hasValor = headers.some(h => h.trim().toLowerCase() === 'valor');
+            const hasIdentificador = headers.some(h => h.trim().toLowerCase() === 'identificador');
+
+            if (!hasData || !hasValor || !hasIdentificador || !descHeader) {
+                throw new Error(`Cabeçalhos ausentes. Necessário: Data, Valor, Identificador, Descrição.`);
+            }
+            
             setMessage('Convertendo dados...');
             setProgress(95);
 
-            const transactions: ParsedTransaction[] = [];
+            const transactions: ParsedTransaction[] = results.data
+              .map((row: any) => {
+                const amount = parseAmount(row['Valor']);
 
-            for (let i = 0; i < results.data.length; i++) {
-              const row = results.data[i] as any;
-              console.log(`Processando linha ${i}:`, row);
-              
-              const headers = Object.keys(row);
-              console.log(`Cabeçalhos da linha ${i}:`, headers);
-              
-              let data, valor, identificador, descricao;
-              
-              for (const header of headers) {
-                const lowerHeader = header.toLowerCase().trim();
-                if (lowerHeader === 'data') data = row[header];
-                if (lowerHeader === 'valor') valor = row[header];
-                if (lowerHeader === 'identificador') identificador = row[header];
-                if (lowerHeader.includes('descri')) descricao = row[header];
-              }
-              
-              console.log(`Linha ${i} - Data: ${data}, Valor: ${valor}, ID: ${identificador}, Desc: ${descricao}`);
-              
-              if (data && valor && identificador && descricao) {
-                try {
-                  const amount = parseAmount(valor);
-                  if (!isNaN(amount)) {
-                    transactions.push({
-                      id: identificador.toString().trim(),
-                      date: parseDate(data.toString().trim()),
-                      amount: Math.abs(amount),
-                      description: descricao.toString().trim(),
-                      originalDescription: descricao.toString().trim(),
-                      type: amount >= 0 ? 'income' : 'expense'
-                    });
-                  }
-                } catch (err) {
-                  console.log(`Erro ao processar linha ${i}:`, err);
+                if (!row['Data'] || !row['Valor'] || !row['Identificador'] || !row[descHeader] || isNaN(amount)) {
+                    return null;
                 }
-              }
-            }
-
-            console.log('Transações finais:', transactions);
+                
+                return {
+                  id: String(row['Identificador']).trim(),
+                  date: parseDate(String(row['Data']).trim()),
+                  amount: Math.abs(amount),
+                  description: String(row[descHeader]).trim(),
+                  originalDescription: String(row[descHeader]).trim(),
+                  type: amount >= 0 ? 'income' : 'expense'
+                };
+              })
+              .filter((transaction): transaction is ParsedTransaction => transaction !== null);
 
             if (transactions.length === 0) {
-              throw new Error('Nenhuma transação válida encontrada no arquivo');
+              throw new Error('Nenhuma transação válida foi encontrada após o processamento.');
             }
 
             setProgress(100);
@@ -125,9 +115,8 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
           }
         },
         error: (error) => {
-          console.log('Erro do Papa.parse:', error);
           setStatus('error');
-          setMessage(`Erro ao ler arquivo: ${error.message}`);
+          setMessage(`Erro no parser CSV: ${error.message}`);
           onError(error.message);
           setIsProcessing(false);
         }
@@ -136,8 +125,8 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
 
     reader.onerror = () => {
       setStatus('error');
-      setMessage('Erro ao ler o arquivo');
-      onError('Erro ao ler o arquivo');
+      setMessage('Erro crítico ao tentar ler o arquivo.');
+      onError('Erro crítico ao tentar ler o arquivo.');
       setIsProcessing(false);
     };
 
