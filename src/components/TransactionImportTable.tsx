@@ -90,24 +90,30 @@ export default function TransactionImportTable({
   }, [transactions, sortBy, sortOrder]);
 
   const loadCategories = async () => {
+    console.log('Loading categories...');
     const { data, error } = await supabase
       .from('categories')
       .select('*')
       .order('name');
     
+    console.log('Categories response:', { data, error });
     if (!error && data) {
       setCategories(data as Category[]);
+      console.log('Categories loaded:', data);
     }
   };
 
   const loadSubcategories = async () => {
+    console.log('Loading subcategories...');
     const { data, error } = await supabase
       .from('subcategories')
       .select('*')
       .order('name');
     
+    console.log('Subcategories response:', { data, error });
     if (!error && data) {
       setSubcategories(data);
+      console.log('Subcategories loaded:', data);
     }
   };
 
@@ -374,12 +380,18 @@ export default function TransactionImportTable({
                             categoryId: value,
                             subcategoryId: undefined // Reset subcategory when category changes
                           })}
-                          options={categories
-                            .filter(cat => cat.type === transaction.type)
-                            .map(cat => ({
-                              value: cat.id,
-                              label: `${cat.icon || ''} ${cat.name}`
-                            }))}
+                           options={(() => {
+                             const filteredCategories = categories.map(cat => ({
+                               value: cat.id,
+                               label: `${cat.icon || ''} ${cat.name}`
+                             }));
+                             console.log('Filtered categories for transaction:', { 
+                               transactionType: transaction.type, 
+                               totalCategories: categories.length,
+                               filteredOptions: filteredCategories 
+                             });
+                             return filteredCategories;
+                           })()}
                           placeholder="Selecionar categoria"
                           searchPlaceholder="Buscar categoria..."
                           emptyText="Nenhuma categoria encontrada"
