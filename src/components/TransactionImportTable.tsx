@@ -90,30 +90,44 @@ export default function TransactionImportTable({
   }, [transactions, sortBy, sortOrder]);
 
   const loadCategories = async () => {
-    console.log('Loading categories...');
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('name');
-    
-    console.log('Categories response:', { data, error });
-    if (!error && data) {
-      setCategories(data as Category[]);
-      console.log('Categories loaded:', data);
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('Error loading categories:', error);
+        return;
+      }
+      
+      if (data) {
+        setCategories(data as Category[]);
+        console.log('Categories loaded successfully:', data.length, 'categories');
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error);
     }
   };
 
   const loadSubcategories = async () => {
-    console.log('Loading subcategories...');
-    const { data, error } = await supabase
-      .from('subcategories')
-      .select('*')
-      .order('name');
-    
-    console.log('Subcategories response:', { data, error });
-    if (!error && data) {
-      setSubcategories(data);
-      console.log('Subcategories loaded:', data);
+    try {
+      const { data, error } = await supabase
+        .from('subcategories')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('Error loading subcategories:', error);
+        return;
+      }
+      
+      if (data) {
+        setSubcategories(data);
+        console.log('Subcategories loaded successfully:', data.length, 'subcategories');
+      }
+    } catch (error) {
+      console.error('Failed to load subcategories:', error);
     }
   };
 
@@ -433,18 +447,10 @@ export default function TransactionImportTable({
                             categoryId: value,
                             subcategoryId: undefined // Reset subcategory when category changes
                           })}
-                           options={(() => {
-                             const filteredCategories = categories.map(cat => ({
-                               value: cat.id,
-                               label: `${cat.icon || ''} ${cat.name}`
-                             }));
-                             console.log('Filtered categories for transaction:', { 
-                               transactionType: transaction.type, 
-                               totalCategories: categories.length,
-                               filteredOptions: filteredCategories 
-                             });
-                             return filteredCategories;
-                           })()}
+                           options={categories.map(cat => ({
+                             value: cat.id,
+                             label: cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+                           }))}
                           placeholder="Selecionar categoria"
                           searchPlaceholder="Buscar categoria..."
                           emptyText="Nenhuma categoria encontrada"
