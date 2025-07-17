@@ -250,28 +250,6 @@ export default function ImportExtract() {
           )}
         </div>
 
-        {/* Status badges */}
-        {importedData.length > 0 && (
-          <div className="flex gap-2 flex-wrap">
-            <Badge variant="secondary">
-              {importedData.length} transações carregadas
-            </Badge>
-            <Badge variant={stats.uncategorized === 0 ? "default" : "destructive"}>
-              {stats.categorized} categorizadas
-            </Badge>
-            {stats.uncategorized > 0 && (
-              <Badge variant="destructive">
-                {stats.uncategorized} sem categoria
-              </Badge>
-            )}
-            <Badge variant="outline" className="text-purple-600">
-              {new Intl.NumberFormat('pt-BR', { 
-                style: 'currency', 
-                currency: 'BRL' 
-              }).format(stats.totalValue)} total
-            </Badge>
-          </div>
-        )}
       </div>
 
       <Separator />

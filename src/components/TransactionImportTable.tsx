@@ -186,7 +186,7 @@ export default function TransactionImportTable({
   return (
     <div className="space-y-6">
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold">{tableData.length}</div>
@@ -201,18 +201,10 @@ export default function TransactionImportTable({
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-success">
-              {tableData.filter(t => t.type === 'income').length}
+            <div className="text-2xl font-bold">
+              {formatCurrency(tableData.reduce((sum, t) => sum + t.amount, 0))}
             </div>
-            <div className="text-sm text-muted-foreground">Receitas</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-destructive">
-              {tableData.filter(t => t.type === 'expense').length}
-            </div>
-            <div className="text-sm text-muted-foreground">Gastos</div>
+            <div className="text-sm text-muted-foreground">Valor total</div>
           </CardContent>
         </Card>
       </div>
@@ -238,20 +230,19 @@ export default function TransactionImportTable({
                   className="w-48"
                 />
 
-                {bulkCategory && (
-                  <Combobox
-                    value={bulkSubcategory}
-                    onValueChange={setBulkSubcategory}
-                    options={getFilteredSubcategories(bulkCategory).map(sub => ({
-                      value: sub.id,
-                      label: sub.name
-                    }))}
-                    placeholder="Selecionar subcategoria"
-                    searchPlaceholder="Buscar subcategoria..."
-                    emptyText="Nenhuma subcategoria encontrada"
-                    className="w-48"
-                  />
-                )}
+                <Combobox
+                  value={bulkSubcategory}
+                  onValueChange={setBulkSubcategory}
+                  options={getFilteredSubcategories(bulkCategory).map(sub => ({
+                    value: sub.id,
+                    label: sub.name
+                  }))}
+                  placeholder="Selecionar subcategoria"
+                  disabled={!bulkCategory}
+                  searchPlaceholder="Buscar subcategoria..."
+                  emptyText="Nenhuma subcategoria encontrada"
+                  className="w-48"
+                />
 
               <Button onClick={applyBulkCategory} disabled={!bulkCategory}>
                 Aplicar Categoria
@@ -406,7 +397,8 @@ export default function TransactionImportTable({
                             value: sub.id,
                             label: sub.name
                           }))}
-                          placeholder={transaction.categoryId ? "Selecionar subcategoria" : "Selecione categoria primeiro"}
+                          placeholder="Selecionar subcategoria"
+                          disabled={!transaction.categoryId}
                           searchPlaceholder="Buscar subcategoria..."
                           emptyText="Nenhuma subcategoria encontrada"
                           className="w-40"
