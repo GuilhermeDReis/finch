@@ -62,16 +62,19 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
 
           const dataKey = headers.find(h => h.trim().toLowerCase() === 'data');
           const valorKey = headers.find(h => h.trim().toLowerCase() === 'valor');
-          const idKey = headers.find(h => h.trim().toLowerCase() === 'identificador');
+          const idKey = headers.find(h => {
+            const normalized = h.trim().toLowerCase();
+            return normalized === 'identificador' || normalized === 'id_transacao';
+          });
           const descKey = headers.find(h => {
             const normalized = h.trim().toLowerCase();
-            return normalized.includes('descri') || normalized.includes('descriÃ§Ã£o');
+            return normalized === 'descricao' || normalized.includes('descri') || normalized.includes('descriÃ§Ã£o');
           });
 
           console.log('Chaves encontradas:', { dataKey, valorKey, idKey, descKey });
 
           if (!dataKey || !valorKey || !idKey || !descKey) {
-            throw new Error(`Cabeçalhos ausentes. Encontrados: ${headers.join(', ')}. Necessário: Data, Valor, Identificador, Descrição.`);
+            throw new Error(`Cabeçalhos ausentes. Encontrados: ${headers.join(', ')}. Necessário: Data, Valor, ID_Transacao ou Identificador, Descricao.`);
           }
 
           setMessage('Convertendo dados...');
