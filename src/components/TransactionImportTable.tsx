@@ -46,6 +46,7 @@ interface TransactionRow extends ParsedTransaction {
     confidence: number;
     reasoning: string;
     isAISuggested: boolean;
+    usedFallback?: boolean;
   };
 }
 
