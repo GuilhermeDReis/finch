@@ -125,24 +125,31 @@ export default function ImportExtract() {
         console.log(`🔍 [DEBUG] Processando transação ${index}:`, {
           transaction: transaction.description,
           suggestion,
-          hasAISuggestion: !!suggestion
+          hasAISuggestion: !!suggestion,
+          categoryId: suggestion?.category_id
         });
         
         const result = {
           ...transaction,
           selected: false,
-          categoryId: suggestion?.category_id,
-          subcategoryId: suggestion?.subcategory_id,
+          categoryId: suggestion?.category_id || undefined,
+          subcategoryId: suggestion?.subcategory_id || undefined,
           aiSuggestion: suggestion ? {
-            categoryId: suggestion.category_id,
-            confidence: suggestion.confidence,
-            reasoning: suggestion.reasoning,
+            categoryId: suggestion.category_id || '',
+            confidence: suggestion.confidence || 0,
+            reasoning: suggestion.reasoning || 'Categoria sugerida pela IA',
             isAISuggested: true,
             usedFallback: usedFallback || false
           } : undefined
         };
         
-        console.log(`🔍 [DEBUG] Resultado final transação ${index}:`, result);
+        console.log(`🔍 [DEBUG] Resultado final transação ${index}:`, {
+          id: result.id,
+          description: result.description,
+          categoryId: result.categoryId,
+          hasAiSuggestion: !!result.aiSuggestion,
+          aiSuggestion: result.aiSuggestion
+        });
         return result;
       });
 
@@ -150,7 +157,12 @@ export default function ImportExtract() {
         length: updatedData.length,
         transactionsWithAI: updatedData.filter(t => t.aiSuggestion).length,
         firstTransactionWithAI: updatedData.find(t => t.aiSuggestion),
-        allTransactions: updatedData
+        sampleTransactions: updatedData.slice(0, 3).map(t => ({
+          id: t.id,
+          description: t.description,
+          categoryId: t.categoryId,
+          hasAiSuggestion: !!t.aiSuggestion
+        }))
       });
 
       setProcessedData(updatedData);

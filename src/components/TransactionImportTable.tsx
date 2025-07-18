@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Check, X, Edit2, Save, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -64,7 +65,13 @@ export default function TransactionImportTable({
       length: transactions.length,
       firstTransaction: transactions[0],
       transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length,
-      allTransactions: transactions
+      sampleTransactions: transactions.slice(0, 3).map(t => ({
+        id: t.id,
+        description: t.description,
+        categoryId: t.categoryId,
+        hasAiSuggestion: !!t.aiSuggestion,
+        aiSuggestion: t.aiSuggestion
+      }))
     });
     
     const sortedData = [...transactions]
@@ -83,7 +90,13 @@ export default function TransactionImportTable({
       length: sortedData.length,
       firstTransactionWithAI: sortedData.find(t => t.aiSuggestion),
       transactionsWithAI: sortedData.filter(t => t.aiSuggestion).length,
-      allData: sortedData
+      sampleData: sortedData.slice(0, 3).map(t => ({
+        id: t.id,
+        description: t.description,
+        categoryId: t.categoryId,
+        hasAiSuggestion: !!t.aiSuggestion,
+        aiSuggestion: t.aiSuggestion
+      }))
     });
     
     setTableData(sortedData);
@@ -476,7 +489,7 @@ export default function TransactionImportTable({
                     hasAISuggestion: !!transaction.aiSuggestion,
                     aiSuggestion: transaction.aiSuggestion,
                     categoryId: transaction.categoryId,
-                    transaction
+                    description: transaction.description
                   });
                   
                   const category = categories.find(c => c.id === transaction.categoryId);
@@ -541,12 +554,12 @@ export default function TransactionImportTable({
                                   variant="secondary" 
                                   className={`text-xs ${
                                     transaction.aiSuggestion.usedFallback
-                                      ? 'bg-orange/20 text-orange border-orange/30'
+                                      ? 'bg-orange-100 text-orange-800 border-orange-200'
                                       : transaction.aiSuggestion.confidence >= 0.8 
-                                      ? 'bg-success/20 text-success' 
+                                      ? 'bg-green-100 text-green-800 border-green-200' 
                                       : transaction.aiSuggestion.confidence >= 0.5 
-                                      ? 'bg-warning/20 text-warning'
-                                      : 'bg-muted text-muted-foreground'
+                                      ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                      : 'bg-gray-100 text-gray-600 border-gray-200'
                                   }`}
                                   title={`${transaction.aiSuggestion.reasoning}${
                                     transaction.aiSuggestion.usedFallback 
@@ -601,8 +614,8 @@ export default function TransactionImportTable({
                                   variant="outline" 
                                   className={`text-xs ${
                                     transaction.aiSuggestion.isAISuggested 
-                                      ? 'border-primary/50 text-primary' 
-                                      : 'border-muted text-muted-foreground'
+                                      ? 'border-blue-200 text-blue-700 bg-blue-50' 
+                                      : 'border-gray-200 text-gray-600 bg-gray-50'
                                   }`}
                                   title={transaction.aiSuggestion.reasoning}
                                 >
