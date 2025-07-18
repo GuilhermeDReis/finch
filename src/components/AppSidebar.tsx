@@ -1,5 +1,7 @@
-import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, User, LogOut } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 import {
   Sidebar,
@@ -11,6 +13,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
+  SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -27,6 +30,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
+  const { user, signOut } = useAuth();
 
   const isActive = (path: string) => {
     if (path === "/") {
@@ -97,6 +101,38 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      
+      <SidebarFooter className="p-2 border-t">
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {!isCollapsed && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <div className="flex items-center gap-2 p-2 text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      <span className="text-sm truncate">{user?.email}</span>
+                    </div>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Button
+                    variant="ghost"
+                    onClick={signOut}
+                    className={`w-full gap-2 p-2 ${isCollapsed ? 'justify-center px-0' : 'justify-start'}`}
+                    title={isCollapsed ? 'Sair' : undefined}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {!isCollapsed && 'Sair'}
+                  </Button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarFooter>
     </Sidebar>
   );
 }
