@@ -35,6 +35,29 @@ export interface Transaction {
   updated_at: Date;
 }
 
+export interface AISuggestion {
+  categoryId: string;
+  confidence: number;
+  reasoning?: string;
+  isAISuggested?: boolean;
+  usedFallback?: boolean;
+}
+
+export interface TransactionRow {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  originalDescription: string;
+  type: TransactionType;
+  selected: boolean;
+  categoryId?: string;
+  subcategoryId?: string;
+  editedDescription?: string;
+  isEditing?: boolean;
+  aiSuggestion?: AISuggestion;
+}
+
 export interface TransactionFormData {
   type: TransactionType;
   amount: string;

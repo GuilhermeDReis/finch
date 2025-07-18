@@ -9,33 +9,17 @@ import { useToast } from '@/hooks/use-toast';
 import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
 import { supabase } from '@/integrations/supabase/client';
-
-interface ParsedTransaction {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-  originalDescription: string;
-  type: 'income' | 'expense';
-}
-
-interface TransactionRow extends ParsedTransaction {
-  categoryId?: string;
-  subcategoryId?: string;
-  editedDescription?: string;
-  isEditing?: boolean;
-  selected?: boolean;
-}
+import type { TransactionRow } from '@/types/transaction';
 
 export default function ImportExtract() {
-  const [importedData, setImportedData] = useState<ParsedTransaction[]>([]);
+  const [importedData, setImportedData] = useState<TransactionRow[]>([]);
   const [processedData, setProcessedData] = useState<TransactionRow[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [filename, setFilename] = useState('');
   const { toast } = useToast();
 
-  const handleDataParsed = async (data: ParsedTransaction[]) => {
+  const handleDataParsed = async (data: TransactionRow[]) => {
     console.log('🔍 [DEBUG] handleDataParsed called with data:', {
       length: data.length,
       firstTransaction: data[0],
@@ -70,7 +54,7 @@ export default function ImportExtract() {
     setProcessedData(transactions);
   };
 
-  const processWithAI = async (transactions: ParsedTransaction[]) => {
+  const processWithAI = async (transactions: TransactionRow[]) => {
     setIsProcessingAI(true);
     
     try {
@@ -150,6 +134,7 @@ export default function ImportExtract() {
           categoryId: suggestion?.category_id,
           subcategoryId: suggestion?.subcategory_id,
           aiSuggestion: suggestion ? {
+            categoryId: suggestion.category_id,
             confidence: suggestion.confidence,
             reasoning: suggestion.reasoning,
             isAISuggested: true,

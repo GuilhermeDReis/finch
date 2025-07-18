@@ -10,15 +10,7 @@ import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import { supabase } from '@/integrations/supabase/client';
-
-interface ParsedTransaction {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-  originalDescription: string;
-  type: 'income' | 'expense';
-}
+import type { TransactionRow } from '@/types/transaction';
 
 interface Category {
   id: string;
@@ -36,22 +28,8 @@ interface Subcategory {
   category_id: string;
 }
 
-interface TransactionRow extends ParsedTransaction {
-  categoryId?: string;
-  subcategoryId?: string;
-  editedDescription?: string;
-  isEditing?: boolean;
-  selected?: boolean;
-  aiSuggestion?: {
-    confidence: number;
-    reasoning: string;
-    isAISuggested: boolean;
-    usedFallback?: boolean;
-  };
-}
-
 interface TransactionImportTableProps {
-  transactions: ParsedTransaction[];
+  transactions: TransactionRow[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
