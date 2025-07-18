@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Check, X, Edit2, Save, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -59,7 +58,7 @@ export default function TransactionImportTable({
     loadSubcategories();
   }, []);
 
-  // Initialize table data
+  // Initialize table data when transactions change
   useEffect(() => {
     console.log('🔍 [DEBUG] transactions prop changed:', {
       length: transactions.length,
@@ -69,13 +68,13 @@ export default function TransactionImportTable({
         id: t.id,
         description: t.description,
         categoryId: t.categoryId,
+        subcategoryId: t.subcategoryId,
         hasAiSuggestion: !!t.aiSuggestion,
         aiSuggestion: t.aiSuggestion
       }))
     });
     
     const sortedData = [...transactions]
-      .map(t => ({ ...t, selected: false }))
       .sort((a, b) => {
         if (sortBy === 'date') {
           const comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -94,13 +93,13 @@ export default function TransactionImportTable({
         id: t.id,
         description: t.description,
         categoryId: t.categoryId,
+        subcategoryId: t.subcategoryId,
         hasAiSuggestion: !!t.aiSuggestion,
         aiSuggestion: t.aiSuggestion
       }))
     });
     
     setTableData(sortedData);
-    onTransactionsUpdate(sortedData);
   }, [transactions, sortBy, sortOrder]);
 
   const loadCategories = async () => {
@@ -489,6 +488,7 @@ export default function TransactionImportTable({
                     hasAISuggestion: !!transaction.aiSuggestion,
                     aiSuggestion: transaction.aiSuggestion,
                     categoryId: transaction.categoryId,
+                    subcategoryId: transaction.subcategoryId,
                     description: transaction.description
                   });
                   
@@ -552,14 +552,14 @@ export default function TransactionImportTable({
                               <div className="flex items-center gap-1">
                                 <Badge 
                                   variant="secondary" 
-                                  className={`text-xs ${
+                                  className={`text-xs border ${
                                     transaction.aiSuggestion.usedFallback
-                                      ? 'bg-orange-100 text-orange-800 border-orange-200'
+                                      ? 'bg-orange-50 text-orange-700 border-orange-200'
                                       : transaction.aiSuggestion.confidence >= 0.8 
-                                      ? 'bg-green-100 text-green-800 border-green-200' 
+                                      ? 'bg-green-50 text-green-700 border-green-200' 
                                       : transaction.aiSuggestion.confidence >= 0.5 
-                                      ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                                      : 'bg-gray-100 text-gray-600 border-gray-200'
+                                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                      : 'bg-gray-50 text-gray-600 border-gray-200'
                                   }`}
                                   title={`${transaction.aiSuggestion.reasoning}${
                                     transaction.aiSuggestion.usedFallback 
@@ -612,7 +612,7 @@ export default function TransactionImportTable({
                               <div className="flex items-center gap-1">
                                 <Badge 
                                   variant="outline" 
-                                  className={`text-xs ${
+                                  className={`text-xs border ${
                                     transaction.aiSuggestion.isAISuggested 
                                       ? 'border-blue-200 text-blue-700 bg-blue-50' 
                                       : 'border-gray-200 text-gray-600 bg-gray-50'

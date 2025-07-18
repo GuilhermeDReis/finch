@@ -126,7 +126,8 @@ export default function ImportExtract() {
           transaction: transaction.description,
           suggestion,
           hasAISuggestion: !!suggestion,
-          categoryId: suggestion?.category_id
+          categoryId: suggestion?.category_id,
+          subcategoryId: suggestion?.subcategory_id
         });
         
         const result = {
@@ -147,6 +148,7 @@ export default function ImportExtract() {
           id: result.id,
           description: result.description,
           categoryId: result.categoryId,
+          subcategoryId: result.subcategoryId,
           hasAiSuggestion: !!result.aiSuggestion,
           aiSuggestion: result.aiSuggestion
         });
@@ -161,10 +163,12 @@ export default function ImportExtract() {
           id: t.id,
           description: t.description,
           categoryId: t.categoryId,
+          subcategoryId: t.subcategoryId,
           hasAiSuggestion: !!t.aiSuggestion
         }))
       });
 
+      // Atualizar processedData com as sugestões da IA
       setProcessedData(updatedData);
       
       const suggestedCount = aiSuggestions?.filter((s: any) => s.confidence > 0.3).length || 0;
@@ -457,8 +461,8 @@ export default function ImportExtract() {
         </div>
       )}
 
-      {/* Import table */}
-      {importedData.length > 0 && (
+      {/* Import table - Agora usando processedData que contém as sugestões da IA */}
+      {processedData.length > 0 && (
         <div className="space-y-4">
           {stats.uncategorized > 0 && (
             <Alert>
@@ -471,7 +475,7 @@ export default function ImportExtract() {
           )}
           
           <TransactionImportTable
-            transactions={importedData}
+            transactions={processedData}
             onTransactionsUpdate={handleTransactionsUpdate}
           />
         </div>
