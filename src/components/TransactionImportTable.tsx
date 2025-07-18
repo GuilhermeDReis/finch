@@ -532,15 +532,21 @@ export default function TransactionImportTable({
                                 <Badge 
                                   variant="secondary" 
                                   className={`text-xs ${
-                                    transaction.aiSuggestion.confidence >= 0.8 
+                                    transaction.aiSuggestion.usedFallback
+                                      ? 'bg-orange/20 text-orange border-orange/30'
+                                      : transaction.aiSuggestion.confidence >= 0.8 
                                       ? 'bg-success/20 text-success' 
                                       : transaction.aiSuggestion.confidence >= 0.5 
                                       ? 'bg-warning/20 text-warning'
                                       : 'bg-muted text-muted-foreground'
                                   }`}
-                                  title={transaction.aiSuggestion.reasoning}
+                                  title={`${transaction.aiSuggestion.reasoning}${
+                                    transaction.aiSuggestion.usedFallback 
+                                      ? ' (Sistema de fallback usado devido à sobrecarga da IA)' 
+                                      : ''
+                                  }`}
                                 >
-                                  🤖 {Math.round(transaction.aiSuggestion.confidence * 100)}%
+                                  {transaction.aiSuggestion.usedFallback ? '⚠️' : '🤖'} {Math.round(transaction.aiSuggestion.confidence * 100)}%
                                 </Badge>
                               </div>
                             )}

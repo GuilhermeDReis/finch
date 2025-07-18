@@ -106,12 +106,16 @@ export default function ImportExtract() {
         throw new Error(`Erro na IA: ${response.error.message}`);
       }
 
-      const aiSuggestions = response.data?.suggestions || [];
-      console.log('🎯 Sugestões da IA recebidas:', aiSuggestions.length);
+      const { suggestions: aiSuggestions, usedFallback, message } = response.data || {};
+      console.log('🎯 Resposta da IA recebida:', { 
+        suggestions: aiSuggestions?.length || 0, 
+        usedFallback,
+        message 
+      });
 
       // Aplicar sugestões da IA aos dados processados
       const updatedData = transactions.map((transaction, index) => {
-        const suggestion = aiSuggestions[index];
+        const suggestion = aiSuggestions?.[index];
         return {
           ...transaction,
           selected: false,
@@ -120,18 +124,29 @@ export default function ImportExtract() {
           aiSuggestion: suggestion ? {
             confidence: suggestion.confidence,
             reasoning: suggestion.reasoning,
-            isAISuggested: true
+            isAISuggested: true,
+            usedFallback: usedFallback || false
           } : undefined
         };
       });
 
       setProcessedData(updatedData);
       
-      const suggestedCount = aiSuggestions.filter(s => s.confidence > 0.5).length;
-      toast({
-        title: "IA processou as transações",
-        description: `${suggestedCount} de ${transactions.length} transações categorizadas automaticamente`,
-      });
+      const suggestedCount = aiSuggestions?.filter((s: any) => s.confidence > 0.3).length || 0;
+      
+      // Mostrar mensagem diferente dependendo se foi usado fallback
+      if (usedFallback) {
+        toast({
+          title: "IA temporariamente indisponível",
+          description: `Categorização básica aplicada em ${suggestedCount} de ${transactions.length} transações. Revise as sugestões antes de importar.`,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "IA processou as transações",
+          description: `${suggestedCount} de ${transactions.length} transações categorizadas automaticamente`,
+        });
+      }
 
     } catch (error) {
       console.error('Erro no processamento da IA:', error);
