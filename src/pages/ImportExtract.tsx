@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Save, X, Trash2 } from 'lucide-react';
+import { Upload, FileText, Save, X, Trash2, Bot, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -31,16 +31,20 @@ export default function ImportExtract() {
   const [importedData, setImportedData] = useState<ParsedTransaction[]>([]);
   const [processedData, setProcessedData] = useState<TransactionRow[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [filename, setFilename] = useState('');
   const { toast } = useToast();
 
-  const handleDataParsed = (data: ParsedTransaction[]) => {
+  const handleDataParsed = async (data: ParsedTransaction[]) => {
     setImportedData(data);
     setProcessedData(data.map(t => ({ ...t, selected: false })));
     toast({
       title: "Arquivo processado",
       description: `${data.length} transações carregadas com sucesso`,
     });
+
+    // Processar automaticamente com IA
+    await processWithAI(data);
   };
 
   const handleError = (error: string) => {
@@ -53,6 +57,92 @@ export default function ImportExtract() {
 
   const handleTransactionsUpdate = (transactions: TransactionRow[]) => {
     setProcessedData(transactions);
+  };
+
+  const processWithAI = async (transactions: ParsedTransaction[]) => {
+    setIsProcessingAI(true);
+    
+    try {
+      console.log('🤖 Iniciando processamento com IA...');
+      
+      // Carregar categorias e subcategorias
+      const [categoriesResult, subcategoriesResult] = await Promise.all([
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('subcategories').select('*').order('name')
+      ]);
+
+      if (categoriesResult.error) {
+        throw new Error(`Erro ao carregar categorias: ${categoriesResult.error.message}`);
+      }
+
+      if (subcategoriesResult.error) {
+        throw new Error(`Erro ao carregar subcategorias: ${subcategoriesResult.error.message}`);
+      }
+
+      const categories = categoriesResult.data || [];
+      const subcategories = subcategoriesResult.data || [];
+
+      console.log('📊 Dados carregados:', { 
+        transactionCount: transactions.length,
+        categoryCount: categories.length,
+        subcategoryCount: subcategories.length 
+      });
+
+      // Chamar Edge Function para processamento com Gemini
+      const response = await supabase.functions.invoke('gemini-categorize-transactions', {
+        body: {
+          transactions: transactions.map(t => ({
+            date: t.date,
+            description: t.description,
+            amount: t.amount,
+            payment_method: t.type === 'income' ? 'Entrada' : 'Saída'
+          })),
+          categories,
+          subcategories
+        }
+      });
+
+      if (response.error) {
+        throw new Error(`Erro na IA: ${response.error.message}`);
+      }
+
+      const aiSuggestions = response.data?.suggestions || [];
+      console.log('🎯 Sugestões da IA recebidas:', aiSuggestions.length);
+
+      // Aplicar sugestões da IA aos dados processados
+      const updatedData = transactions.map((transaction, index) => {
+        const suggestion = aiSuggestions[index];
+        return {
+          ...transaction,
+          selected: false,
+          categoryId: suggestion?.category_id,
+          subcategoryId: suggestion?.subcategory_id,
+          aiSuggestion: suggestion ? {
+            confidence: suggestion.confidence,
+            reasoning: suggestion.reasoning,
+            isAISuggested: true
+          } : undefined
+        };
+      });
+
+      setProcessedData(updatedData);
+      
+      const suggestedCount = aiSuggestions.filter(s => s.confidence > 0.5).length;
+      toast({
+        title: "IA processou as transações",
+        description: `${suggestedCount} de ${transactions.length} transações categorizadas automaticamente`,
+      });
+
+    } catch (error) {
+      console.error('Erro no processamento da IA:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro na IA",
+        description: error.message || "Falha ao processar com IA, continue manualmente",
+      });
+    } finally {
+      setIsProcessingAI(false);
+    }
   };
 
   const clearData = () => {
@@ -221,22 +311,36 @@ export default function ImportExtract() {
           
           {importedData.length > 0 && (
             <div className="flex gap-2">
+              {isProcessingAI && (
+                <div className="flex items-center gap-2 text-primary">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">IA processando...</span>
+                </div>
+              )}
               <Button
                 variant="outline"
                 onClick={clearData}
-                disabled={isImporting}
+                disabled={isImporting || isProcessingAI}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Limpar Dados
               </Button>
               <Button
+                onClick={() => processWithAI(importedData)}
+                disabled={isImporting || isProcessingAI || importedData.length === 0}
+                variant="outline"
+              >
+                <Bot className="h-4 w-4 mr-2" />
+                Processar com IA
+              </Button>
+              <Button
                 onClick={importTransactions}
-                disabled={isImporting || stats.uncategorized > 0}
+                disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
                 className="min-w-[140px]"
               >
                 {isImporting ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     Importando...
                   </>
                 ) : (

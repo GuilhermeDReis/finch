@@ -42,6 +42,11 @@ interface TransactionRow extends ParsedTransaction {
   editedDescription?: string;
   isEditing?: boolean;
   selected?: boolean;
+  aiSuggestion?: {
+    confidence: number;
+    reasoning: string;
+    isAISuggested: boolean;
+  };
 }
 
 interface TransactionImportTableProps {
@@ -171,7 +176,7 @@ export default function TransactionImportTable({
           name: cat.name,
           type: cat.type,
           color: cat.color,
-          icon: cat.icon
+          
         });
       });
 
@@ -379,7 +384,7 @@ export default function TransactionImportTable({
                   onValueChange={setBulkCategory}
                   options={categories.map(cat => ({
                     value: cat.id,
-                    label: `${cat.icon || ''} ${cat.name}`
+                    label: cat.name
                   }))}
                   placeholder="Selecionar categoria"
                   searchPlaceholder="Buscar categoria..."
@@ -518,41 +523,81 @@ export default function TransactionImportTable({
                             autoFocus
                           />
                         ) : (
-                          <div className="max-w-xs truncate" title={transaction.description}>
-                            {transaction.description}
+                          <div className="flex flex-col gap-1">
+                            <div className="max-w-xs truncate" title={transaction.description}>
+                              {transaction.description}
+                            </div>
+                            {transaction.aiSuggestion && (
+                              <div className="flex items-center gap-1">
+                                <Badge 
+                                  variant="secondary" 
+                                  className={`text-xs ${
+                                    transaction.aiSuggestion.confidence >= 0.8 
+                                      ? 'bg-success/20 text-success' 
+                                      : transaction.aiSuggestion.confidence >= 0.5 
+                                      ? 'bg-warning/20 text-warning'
+                                      : 'bg-muted text-muted-foreground'
+                                  }`}
+                                  title={transaction.aiSuggestion.reasoning}
+                                >
+                                  🤖 {Math.round(transaction.aiSuggestion.confidence * 100)}%
+                                </Badge>
+                              </div>
+                            )}
                           </div>
                         )}
                       </TableCell>
                       
                        <TableCell>
-                         <Combobox
-                           value={transaction.categoryId || ''}
-                           onValueChange={(value) => {
-                             console.log('🔄 Category selection changed:', { 
-                               transactionId: transaction.id, 
-                               newValue: value,
-                               availableCategories: categories.length 
-                             });
-                             updateTransaction(transaction.id, {
-                               categoryId: value,
-                               subcategoryId: undefined // Reset subcategory when category changes
-                             });
-                           }}
-                           options={(() => {
-                             const options = categories.map(cat => ({
-                               value: cat.id,
-                               label: cat.icon ? `${cat.icon} ${cat.name}` : cat.name
-                             }));
-                             console.log('🎯 Available category options:', options.length, options.slice(0, 3));
-                             return options;
-                           })()}
-                           placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}
-                           searchPlaceholder="Buscar categoria..."
-                           emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                           className="w-40"
-                           disabled={loadingCategories}
-                         />
-                      </TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Combobox
+                              value={transaction.categoryId || ''}
+                              onValueChange={(value) => {
+                                console.log('🔄 Category selection changed:', { 
+                                  transactionId: transaction.id, 
+                                  newValue: value,
+                                  availableCategories: categories.length 
+                                });
+                                updateTransaction(transaction.id, {
+                                  categoryId: value,
+                                  subcategoryId: undefined, // Reset subcategory when category changes
+                                  aiSuggestion: transaction.aiSuggestion ? {
+                                    ...transaction.aiSuggestion,
+                                    isAISuggested: false // Mark as manually modified
+                                  } : undefined
+                                });
+                              }}
+                              options={(() => {
+                                const options = categories.map(cat => ({
+                                  value: cat.id,
+                                  label: cat.name
+                                }));
+                                console.log('🎯 Available category options:', options.length, options.slice(0, 3));
+                                return options;
+                              })()}
+                              placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}
+                              searchPlaceholder="Buscar categoria..."
+                              emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+                              className="w-40"
+                              disabled={loadingCategories}
+                            />
+                            {transaction.aiSuggestion && transaction.categoryId && (
+                              <div className="flex items-center gap-1">
+                                <Badge 
+                                  variant="outline" 
+                                  className={`text-xs ${
+                                    transaction.aiSuggestion.isAISuggested 
+                                      ? 'border-primary/50 text-primary' 
+                                      : 'border-muted text-muted-foreground'
+                                  }`}
+                                  title={transaction.aiSuggestion.reasoning}
+                                >
+                                  {transaction.aiSuggestion.isAISuggested ? '🤖 IA' : '👤 Manual'}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                       </TableCell>
                       
                       <TableCell>
                         <Combobox
