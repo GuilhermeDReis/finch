@@ -75,13 +75,20 @@ export default function TransactionImportTable({
 
   // Load categories and subcategories
   useEffect(() => {
-    console.log('Component mounted, loading categories and subcategories...');
+    console.log('🔍 [DEBUG] TransactionImportTable mounted, loading categories and subcategories...');
     loadCategories();
     loadSubcategories();
   }, []);
 
   // Initialize table data
   useEffect(() => {
+    console.log('🔍 [DEBUG] transactions prop changed:', {
+      length: transactions.length,
+      firstTransaction: transactions[0],
+      transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length,
+      allTransactions: transactions
+    });
+    
     const sortedData = [...transactions]
       .map(t => ({ ...t, selected: false }))
       .sort((a, b) => {
@@ -94,6 +101,13 @@ export default function TransactionImportTable({
         }
       });
     
+    console.log('🔍 [DEBUG] sortedData after processing:', {
+      length: sortedData.length,
+      firstTransactionWithAI: sortedData.find(t => t.aiSuggestion),
+      transactionsWithAI: sortedData.filter(t => t.aiSuggestion).length,
+      allData: sortedData
+    });
+    
     setTableData(sortedData);
     onTransactionsUpdate(sortedData);
   }, [transactions, sortBy, sortOrder]);
@@ -101,11 +115,11 @@ export default function TransactionImportTable({
   const loadCategories = async () => {
     try {
       setLoadingCategories(true);
-      console.log('🔍 Starting to load categories...');
+      console.log('🔍 [DEBUG] Starting to load categories...');
       
       // Verificar se o usuário está autenticado
       const { data: authData, error: authError } = await supabase.auth.getUser();
-      console.log('👤 Auth check result:', { 
+      console.log('👤 [DEBUG] Auth check result:', { 
         authData: authData?.user?.id ? 'User authenticated' : 'No user',
         authError: authError?.message || 'No auth error',
         userId: authData?.user?.id
@@ -222,10 +236,18 @@ export default function TransactionImportTable({
   };
 
   const updateTransaction = (id: string, updates: Partial<TransactionRow>) => {
+    console.log('🔍 [DEBUG] updateTransaction called:', { id, updates });
+    
     setTableData(prev => {
       const updated = prev.map(t => 
         t.id === id ? { ...t, ...updates } : t
       );
+      
+      console.log('🔍 [DEBUG] updateTransaction result:', {
+        updatedTransaction: updated.find(t => t.id === id),
+        transactionsWithAI: updated.filter(t => t.aiSuggestion).length
+      });
+      
       onTransactionsUpdate(updated);
       return updated;
     });
@@ -472,6 +494,13 @@ export default function TransactionImportTable({
               </TableHeader>
               <TableBody>
                 {getCurrentPageData().map(transaction => {
+                  console.log(`🔍 [DEBUG] Renderizando transação ${transaction.id}:`, {
+                    hasAISuggestion: !!transaction.aiSuggestion,
+                    aiSuggestion: transaction.aiSuggestion,
+                    categoryId: transaction.categoryId,
+                    transaction
+                  });
+                  
                   const category = categories.find(c => c.id === transaction.categoryId);
                   const subcategory = subcategories.find(s => s.id === transaction.subcategoryId);
                   
@@ -560,7 +589,7 @@ export default function TransactionImportTable({
                             <Combobox
                               value={transaction.categoryId || ''}
                               onValueChange={(value) => {
-                                console.log('🔄 Category selection changed:', { 
+                                console.log('🔄 [DEBUG] Category selection changed:', { 
                                   transactionId: transaction.id, 
                                   newValue: value,
                                   availableCategories: categories.length 
@@ -579,7 +608,7 @@ export default function TransactionImportTable({
                                   value: cat.id,
                                   label: cat.name
                                 }));
-                                console.log('🎯 Available category options:', options.length, options.slice(0, 3));
+                                console.log('🎯 [DEBUG] Available category options:', options.length, options.slice(0, 3));
                                 return options;
                               })()}
                               placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}

@@ -36,6 +36,12 @@ export default function ImportExtract() {
   const { toast } = useToast();
 
   const handleDataParsed = async (data: ParsedTransaction[]) => {
+    console.log('🔍 [DEBUG] handleDataParsed called with data:', {
+      length: data.length,
+      firstTransaction: data[0],
+      allTransactions: data
+    });
+    
     setImportedData(data);
     setProcessedData(data.map(t => ({ ...t, selected: false })));
     toast({
@@ -56,6 +62,11 @@ export default function ImportExtract() {
   };
 
   const handleTransactionsUpdate = (transactions: TransactionRow[]) => {
+    console.log('🔍 [DEBUG] handleTransactionsUpdate called with:', {
+      length: transactions.length,
+      firstTransactionWithAI: transactions.find(t => t.aiSuggestion),
+      transactionsWithAI: transactions.filter(t => t.aiSuggestion).length
+    });
     setProcessedData(transactions);
   };
 
@@ -63,7 +74,10 @@ export default function ImportExtract() {
     setIsProcessingAI(true);
     
     try {
-      console.log('🤖 Iniciando processamento com IA...');
+      console.log('🤖 [DEBUG] Iniciando processamento com IA...', {
+        transactionCount: transactions.length,
+        firstTransaction: transactions[0]
+      });
       
       // Carregar categorias e subcategorias
       const [categoriesResult, subcategoriesResult] = await Promise.all([
@@ -82,7 +96,7 @@ export default function ImportExtract() {
       const categories = categoriesResult.data || [];
       const subcategories = subcategoriesResult.data || [];
 
-      console.log('📊 Dados carregados:', { 
+      console.log('📊 [DEBUG] Dados carregados:', { 
         transactionCount: transactions.length,
         categoryCount: categories.length,
         subcategoryCount: subcategories.length 
@@ -102,21 +116,35 @@ export default function ImportExtract() {
         }
       });
 
+      console.log('🎯 [DEBUG] Response da Edge Function:', {
+        error: response.error,
+        data: response.data,
+        rawResponse: response
+      });
+
       if (response.error) {
         throw new Error(`Erro na IA: ${response.error.message}`);
       }
 
       const { suggestions: aiSuggestions, usedFallback, message } = response.data || {};
-      console.log('🎯 Resposta da IA recebida:', { 
+      console.log('🎯 [DEBUG] Resposta da IA detalhada:', { 
         suggestions: aiSuggestions?.length || 0, 
         usedFallback,
-        message 
+        message,
+        firstSuggestion: aiSuggestions?.[0],
+        allSuggestions: aiSuggestions
       });
 
       // Aplicar sugestões da IA aos dados processados
       const updatedData = transactions.map((transaction, index) => {
         const suggestion = aiSuggestions?.[index];
-        return {
+        console.log(`🔍 [DEBUG] Processando transação ${index}:`, {
+          transaction: transaction.description,
+          suggestion,
+          hasAISuggestion: !!suggestion
+        });
+        
+        const result = {
           ...transaction,
           selected: false,
           categoryId: suggestion?.category_id,
@@ -128,6 +156,16 @@ export default function ImportExtract() {
             usedFallback: usedFallback || false
           } : undefined
         };
+        
+        console.log(`🔍 [DEBUG] Resultado final transação ${index}:`, result);
+        return result;
+      });
+
+      console.log('🔍 [DEBUG] updatedData final:', {
+        length: updatedData.length,
+        transactionsWithAI: updatedData.filter(t => t.aiSuggestion).length,
+        firstTransactionWithAI: updatedData.find(t => t.aiSuggestion),
+        allTransactions: updatedData
       });
 
       setProcessedData(updatedData);
@@ -149,7 +187,7 @@ export default function ImportExtract() {
       }
 
     } catch (error) {
-      console.error('Erro no processamento da IA:', error);
+      console.error('⚠️ [DEBUG] Erro no processamento da IA:', error);
       toast({
         variant: "destructive",
         title: "Erro na IA",
