@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Save, X, Trash2, Bot, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Upload, FileText, Save, X, Trash2, Bot, Loader2, Building2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
+import { BelvoConnectWidget } from '@/components/BelvoConnectWidget';
 import { supabase } from '@/integrations/supabase/client';
 import type { TransactionRow } from '@/types/transaction';
 
@@ -357,9 +359,9 @@ export default function ImportExtract() {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Importar Extrato Bancário</h1>
+            <h1 className="text-3xl font-bold">Importar Extrato</h1>
             <p className="text-muted-foreground">
-              Importe transações de arquivos CSV do seu banco
+              Importe transações via CSV ou conecte sua conta bancária diretamente
             </p>
           </div>
           
@@ -412,53 +414,72 @@ export default function ImportExtract() {
 
       <Separator />
 
-      {/* File upload section */}
+      {/* Tabs for import methods */}
       {importedData.length === 0 && (
-        <div className="space-y-6">
-          <CSVUploader 
-            onDataParsed={handleDataParsed}
-            onError={handleError}
-          />
-          
-          {/* Instructions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Formato do Arquivo CSV
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h4 className="font-semibold">Estrutura obrigatória:</h4>
-                <div className="bg-muted p-3 rounded-md font-mono text-sm mt-2">
-                  Data,Valor,ID_Transacao,Descricao
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Tabs defaultValue="csv" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="csv" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Upload CSV
+            </TabsTrigger>
+            <TabsTrigger value="bank" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Conectar Banco
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="csv" className="space-y-6">
+            <CSVUploader 
+              onDataParsed={handleDataParsed}
+              onError={handleError}
+            />
+            
+            {/* Instructions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Formato do Arquivo CSV
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <h4 className="font-semibold">Especificações:</h4>
-                  <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                    <li>Data: DD/MM/AAAA</li>
-                    <li>Valor: Formato brasileiro (1.234,56)</li>
-                    <li>Codificação: latin-1 (Windows-1252)</li>
-                    <li>Tamanho máximo: 10MB</li>
-                  </ul>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold">Exemplo:</h4>
-                  <div className="bg-muted p-3 rounded-md font-mono text-xs">
-                    15/01/2024,-150,50,Supermercado XYZ<br />
-                    16/01/2024,2.500,00,Salário Janeiro<br />
-                    17/01/2024,-45,30,Combustível
+                  <h4 className="font-semibold">Estrutura obrigatória:</h4>
+                  <div className="bg-muted p-3 rounded-md font-mono text-sm mt-2">
+                    Data,Valor,ID_Transacao,Descricao
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-semibold">Especificações:</h4>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                      <li>Data: DD/MM/AAAA</li>
+                      <li>Valor: Formato brasileiro (1.234,56)</li>
+                      <li>Codificação: latin-1 (Windows-1252)</li>
+                      <li>Tamanho máximo: 10MB</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-semibold">Exemplo:</h4>
+                    <div className="bg-muted p-3 rounded-md font-mono text-xs">
+                      15/01/2024,-150,50,Supermercado XYZ<br />
+                      16/01/2024,2.500,00,Salário Janeiro<br />
+                      17/01/2024,-45,30,Combustível
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="bank" className="space-y-6">
+            <div className="flex justify-center">
+              <BelvoConnectWidget />
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
 
       {/* Import table - Agora usando processedData que contém as sugestões da IA */}
