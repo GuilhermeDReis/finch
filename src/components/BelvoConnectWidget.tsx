@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Building2 } from 'lucide-react';
+import { Loader2, Building2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,6 +34,7 @@ export function BelvoConnectWidget() {
   const [sdkLoaded, setSdkLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const { toast } = useToast();
 
   // Load Belvo SDK dynamically
@@ -67,33 +68,79 @@ export function BelvoConnectWidget() {
     loadBelvoSDK();
   }, []);
 
-  // Get access token from our API
-  const getAccessToken = async () => {
+  // Get access token from our API with retry logic
+  const getAccessToken = async (retryCount = 0) => {
+    const maxRetries = 3;
+    
     try {
       setIsLoading(true);
       setError(null);
+      
+      if (retryCount > 0) {
+        setIsRetrying(true);
+        console.log(`Tentativa ${retryCount + 1} de ${maxRetries + 1} para obter token`);
+      }
 
-      console.log('Requesting access token from Belvo API');
+      console.log('Solicitando token de acesso da API Belvo...');
       
       const { data, error: functionError } = await supabase.functions.invoke('belvo-token');
       
       if (functionError) {
-        console.error('Function error:', functionError);
-        throw new Error('Erro ao obter token de acesso');
+        console.error('Erro da função:', functionError);
+        throw new Error('Erro ao chamar função de token');
       }
 
-      if (!data?.access_token) {
-        console.error('No access token in response:', data);
+      if (!data) {
+        console.error('Nenhum dado retornado da função');
+        throw new Error('Nenhum dado retornado');
+      }
+
+      // Verificar se é erro de bloqueio temporário
+      if (data.error && data.error.includes('blocked by security service')) {
+        if (retryCount < maxRetries) {
+          const delay = Math.pow(2, retryCount + 1) * 2000; // Delay maior para bloqueios
+          console.log(`Bloqueio detectado, tentando novamente em ${delay}ms...`);
+          
+          toast({
+            title: "Serviço temporariamente bloqueado",
+            description: `Tentando novamente em ${delay/1000} segundos...`,
+            variant: "destructive",
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return getAccessToken(retryCount + 1);
+        } else {
+          throw new Error('Serviço Belvo temporariamente indisponível. Tente novamente em alguns minutos.');
+        }
+      }
+
+      if (data.error) {
+        console.error('Erro retornado pela função:', data.error);
+        throw new Error(data.details || data.error);
+      }
+
+      if (!data.access_token) {
+        console.error('Token de acesso não recebido:', data);
         throw new Error('Token de acesso não recebido');
       }
 
-      console.log('Access token received successfully');
+      console.log('Token de acesso recebido com sucesso');
       setAccessToken(data.access_token);
       
       return data.access_token;
     } catch (err) {
-      console.error('Error getting access token:', err);
+      console.error('Erro ao obter token de acesso:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      
+      // Retry logic para outros tipos de erro
+      if (retryCount < maxRetries && !errorMessage.includes('temporariamente indisponível')) {
+        const delay = Math.pow(2, retryCount + 1) * 1000;
+        console.log(`Erro geral, tentando novamente em ${delay}ms...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return getAccessToken(retryCount + 1);
+      }
+      
       setError(errorMessage);
       toast({
         title: "Erro",
@@ -103,6 +150,7 @@ export function BelvoConnectWidget() {
       return null;
     } finally {
       setIsLoading(false);
+      setIsRetrying(false);
     }
   };
 
@@ -168,7 +216,22 @@ export function BelvoConnectWidget() {
       <CardContent className="space-y-4">
         {error && (
           <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              {error.includes('temporariamente') && (
+                <div className="mt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => getAccessToken()}
+                    disabled={isLoading}
+                  >
+                    Tentar Novamente
+                  </Button>
+                </div>
+              )}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -177,7 +240,12 @@ export function BelvoConnectWidget() {
           disabled={!sdkLoaded || isLoading}
           className="w-full"
         >
-          {isLoading ? (
+          {isRetrying ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Tentando novamente...
+            </>
+          ) : isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Obtendo token...
@@ -199,6 +267,9 @@ export function BelvoConnectWidget() {
           <p>✓ Ambiente sandbox (teste)</p>
           <p>✓ Bancos brasileiros suportados</p>
           <p>✓ Conexão segura e criptografada</p>
+          {error && error.includes('temporariamente') && (
+            <p className="text-orange-600 mt-2">⚠️ Serviço pode estar temporariamente bloqueado</p>
+          )}
         </div>
       </CardContent>
     </Card>
