@@ -40,19 +40,24 @@ export function BelvoConnectWidget() {
   useEffect(() => {
     const loadBelvoSDK = () => {
       if (window.belvoSDK) {
+        console.log('Belvo SDK already loaded');
         setSdkLoaded(true);
         return;
       }
 
+      const sdkUrl = 'https://cdn.belvo.io/belvo-widget-1-stable.js';
+      console.log('Loading Belvo SDK from:', sdkUrl);
+
       const script = document.createElement('script');
-      script.src = 'https://cdn.belvo.io/belvo-widget-1.5.0.js';
+      script.src = sdkUrl;
       script.async = true;
       script.onload = () => {
-        console.log('Belvo SDK loaded successfully');
+        console.log('Belvo SDK loaded successfully from stable URL');
         setSdkLoaded(true);
       };
-      script.onerror = () => {
-        console.error('Failed to load Belvo SDK');
+      script.onerror = (event) => {
+        console.error('Failed to load Belvo SDK from stable URL:', event);
+        console.error('Script element:', script);
         setError('Falha ao carregar o SDK da Belvo');
       };
       
