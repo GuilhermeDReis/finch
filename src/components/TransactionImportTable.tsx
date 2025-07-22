@@ -34,27 +34,45 @@ interface TransactionImportTableProps {
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
+// Função para criar deep clone seguro
+const createDeepClone = <T,>(obj: T): T => {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return new Date(obj.getTime()) as unknown as T;
+  if (Array.isArray(obj)) return obj.map(item => createDeepClone(item)) as unknown as T;
+  
+  const cloned = {} as T;
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      cloned[key] = createDeepClone(obj[key]);
+    }
+  }
+  return cloned;
+};
+
 // Função para normalizar e validar dados de transação
 const normalizeAndValidateTransaction = (transaction: TransactionRow): TransactionRow => {
-  const normalized = {
-    ...transaction,
-    // Garantir que subcategoryId seja sempre string ou undefined
-    subcategoryId: typeof transaction.subcategoryId === 'string' 
-      ? transaction.subcategoryId 
-      : undefined,
-    // Garantir que categoryId seja sempre string ou undefined
-    categoryId: typeof transaction.categoryId === 'string' 
-      ? transaction.categoryId 
-      : undefined,
-    // Garantir que description seja sempre string
-    description: transaction.description || '',
-    // Garantir que amount seja sempre number
-    amount: typeof transaction.amount === 'number' ? transaction.amount : 0,
-    // Garantir que type seja válido
-    type: transaction.type === 'income' || transaction.type === 'expense' 
-      ? transaction.type 
-      : 'expense'
-  };
+  const normalized = createDeepClone(transaction);
+  
+  // Garantir que subcategoryId seja sempre string ou undefined
+  normalized.subcategoryId = typeof transaction.subcategoryId === 'string' 
+    ? transaction.subcategoryId 
+    : undefined;
+    
+  // Garantir que categoryId seja sempre string ou undefined
+  normalized.categoryId = typeof transaction.categoryId === 'string' 
+    ? transaction.categoryId 
+    : undefined;
+    
+  // Garantir que description seja sempre string
+  normalized.description = transaction.description || '';
+  
+  // Garantir que amount seja sempre number
+  normalized.amount = typeof transaction.amount === 'number' ? transaction.amount : 0;
+  
+  // Garantir que type seja válido
+  normalized.type = transaction.type === 'income' || transaction.type === 'expense' 
+    ? transaction.type 
+    : 'expense';
 
   // Validar e limpar subcategoryId se for um objeto
   if (typeof transaction.subcategoryId === 'object' && transaction.subcategoryId !== null) {
@@ -84,6 +102,220 @@ const normalizeAndValidateTransaction = (transaction: TransactionRow): Transacti
 
   return normalized;
 };
+
+// Componente memoizado para linha da transação
+const TransactionRow = React.memo(({
+  transaction,
+  categories,
+  subcategories,
+  selectedRows,
+  loadingCategories,
+  loadingSubcategories,
+  categoryOptions,
+  onUpdateTransaction,
+  onToggleSelection,
+  needsAttention,
+  getFilteredSubcategories,
+  formatCurrency,
+  formatDate
+}: {
+  transaction: TransactionRow;
+  categories: Category[];
+  subcategories: Subcategory[];
+  selectedRows: Set<string>;
+  loadingCategories: boolean;
+  loadingSubcategories: boolean;
+  categoryOptions: Array<{value: string; label: string}>;
+  onUpdateTransaction: (id: string, updates: Partial<TransactionRow>) => void;
+  onToggleSelection: (id: string) => void;
+  needsAttention: (transaction: TransactionRow) => boolean;
+  getFilteredSubcategories: (categoryId: string) => Subcategory[];
+  formatCurrency: (amount: number) => string;
+  formatDate: (dateStr: string) => string;
+}) => {
+  const requiresAttention = needsAttention(transaction);
+  
+  // Keys estáveis para os Comboboxes
+  const categoryKey = `category-${transaction.id}-${transaction.categoryId || 'none'}`;
+  const subcategoryKey = `subcategory-${transaction.id}-${transaction.categoryId || 'none'}-${transaction.subcategoryId || 'none'}`;
+  
+  console.log(`🔍 [RENDER] Rendering transaction ${transaction.id}:`, {
+    hasAISuggestion: !!transaction.aiSuggestion,
+    categoryId: transaction.categoryId,
+    subcategoryId: transaction.subcategoryId,
+    description: transaction.description,
+    categoryKey,
+    subcategoryKey,
+    categoryIdType: typeof transaction.categoryId,
+    subcategoryIdType: typeof transaction.subcategoryId
+  });
+  
+  const handleCategoryChange = useCallback((value: string) => {
+    console.log('🔄 [CATEGORY] Category selection changed:', { 
+      transactionId: transaction.id, 
+      oldValue: transaction.categoryId,
+      newValue: value,
+      valueType: typeof value,
+      timestamp: Date.now()
+    });
+    
+    onUpdateTransaction(transaction.id, {
+      categoryId: value,
+      subcategoryId: undefined, // Reset subcategory when category changes
+      aiSuggestion: transaction.aiSuggestion ? {
+        ...transaction.aiSuggestion,
+        isAISuggested: false // Mark as manually modified
+      } : undefined
+    });
+  }, [transaction.id, transaction.categoryId, transaction.aiSuggestion, onUpdateTransaction]);
+  
+  const handleSubcategoryChange = useCallback((value: string) => {
+    console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
+      transactionId: transaction.id, 
+      oldValue: transaction.subcategoryId,
+      newValue: value,
+      valueType: typeof value,
+      categoryId: transaction.categoryId,
+      timestamp: Date.now()
+    });
+    
+    onUpdateTransaction(transaction.id, {
+      subcategoryId: value
+    });
+  }, [transaction.id, transaction.subcategoryId, transaction.categoryId, onUpdateTransaction]);
+  
+  const handleDescriptionChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdateTransaction(transaction.id, {
+      editedDescription: e.target.value
+    });
+  }, [transaction.id, onUpdateTransaction]);
+  
+  const handleDescriptionBlur = useCallback(() => {
+    onUpdateTransaction(transaction.id, {
+      isEditing: false,
+      description: transaction.editedDescription || transaction.description
+    });
+  }, [transaction.id, transaction.editedDescription, transaction.description, onUpdateTransaction]);
+  
+  const handleDescriptionKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      onUpdateTransaction(transaction.id, {
+        isEditing: false,
+        description: transaction.editedDescription || transaction.description
+      });
+    }
+  }, [transaction.id, transaction.editedDescription, transaction.description, onUpdateTransaction]);
+  
+  const handleEditToggle = useCallback(() => {
+    onUpdateTransaction(transaction.id, {
+      isEditing: !transaction.isEditing,
+      editedDescription: transaction.description
+    });
+  }, [transaction.id, transaction.isEditing, transaction.description, onUpdateTransaction]);
+  
+  const handleRowToggle = useCallback(() => {
+    onToggleSelection(transaction.id);
+  }, [transaction.id, onToggleSelection]);
+  
+  return (
+    <TableRow 
+      key={transaction.id}
+      className={`
+        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
+        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
+        transition-colors duration-200
+      `}
+    >
+      <TableCell>
+        <Checkbox
+          checked={selectedRows.has(transaction.id)}
+          onCheckedChange={handleRowToggle}
+        />
+      </TableCell>
+      
+      <TableCell className="font-mono text-sm">
+        {formatDate(transaction.date)}
+      </TableCell>
+      
+      <TableCell>
+        <span className={`font-semibold ${
+          transaction.type === 'income' ? 'text-success' : 'text-destructive'
+        }`}>
+          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+        </span>
+      </TableCell>
+      
+      <TableCell>
+        {transaction.isEditing ? (
+          <Input
+            value={transaction.editedDescription || transaction.description}
+            onChange={handleDescriptionChange}
+            onBlur={handleDescriptionBlur}
+            onKeyDown={handleDescriptionKeyDown}
+            autoFocus
+          />
+        ) : (
+          <div className="max-w-xs" title={transaction.description}>
+            <span className="block truncate">{transaction.description}</span>
+            {requiresAttention && (
+              <div className="flex items-center gap-1 mt-1">
+                <AlertCircle className="h-3 w-3 text-yellow-600" />
+                <span className="text-xs text-yellow-600">Requer atenção</span>
+              </div>
+            )}
+          </div>
+        )}
+      </TableCell>
+
+      <TableCell>
+        <TransactionIndicators transaction={transaction} />
+      </TableCell>
+      
+      <TableCell>
+        <Combobox
+          key={categoryKey}
+          value={transaction.categoryId || ''}
+          onValueChange={handleCategoryChange}
+          options={categoryOptions}
+          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+          searchPlaceholder="Buscar categoria..."
+          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+          width="w-60"
+          disabled={loadingCategories}
+        />
+      </TableCell>
+      
+      <TableCell>
+        <Combobox
+          key={subcategoryKey}
+          value={transaction.subcategoryId || ''}
+          onValueChange={handleSubcategoryChange}
+          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+            value: sub.id,
+            label: sub.name
+          }))}
+          placeholder="Selecionar subcategoria"
+          disabled={!transaction.categoryId || loadingSubcategories}
+          searchPlaceholder="Buscar subcategoria..."
+          emptyText="Nenhuma subcategoria encontrada"
+          width="w-60"
+        />
+      </TableCell>
+      
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleEditToggle}
+        >
+          <Edit2 className="h-4 w-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+TransactionRow.displayName = 'TransactionRow';
 
 export default function TransactionImportTable({ 
   transactions, 
@@ -244,7 +476,7 @@ export default function TransactionImportTable({
     }
   };
 
-  // Função de atualização robusta com validação
+  // Função de atualização melhorada com deep cloning e isolamento
   const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
     console.log('🔄 [UPDATE] updateTransaction called:', { 
       id, 
@@ -253,50 +485,68 @@ export default function TransactionImportTable({
       categoryIdUpdate: updates.categoryId,
       subcategoryIdUpdate: updates.subcategoryId,
       categoryIdType: typeof updates.categoryId,
-      subcategoryIdType: typeof updates.subcategoryId
+      subcategoryIdType: typeof updates.subcategoryId,
+      timestamp: Date.now()
     });
     
     setTableData(prev => {
-      const updated = prev.map(t => {
-        if (t.id === id) {
-          // Criar nova instância da transação com validação
-          const updatedTransaction = normalizeAndValidateTransaction({
-            ...t,
+      // Criar uma cópia completamente nova do array
+      const newData = prev.map(transaction => {
+        if (transaction.id === id) {
+          // Encontrou a transação a ser atualizada
+          console.log('🔄 [UPDATE] Found transaction to update:', {
+            id,
+            before: {
+              categoryId: transaction.categoryId,
+              subcategoryId: transaction.subcategoryId,
+            }
+          });
+          
+          // Criar deep clone da transação
+          const clonedTransaction = createDeepClone(transaction);
+          
+          // Aplicar updates de forma segura
+          const updatedTransaction = {
+            ...clonedTransaction,
             ...updates,
             // Garantir que IDs sejam strings válidas ou undefined
             categoryId: typeof updates.categoryId === 'string' && updates.categoryId !== '' 
               ? updates.categoryId 
-              : (updates.categoryId === '' ? undefined : t.categoryId),
+              : (updates.categoryId === '' ? undefined : clonedTransaction.categoryId),
             subcategoryId: typeof updates.subcategoryId === 'string' && updates.subcategoryId !== '' 
               ? updates.subcategoryId 
-              : (updates.subcategoryId === '' ? undefined : t.subcategoryId)
-          });
+              : (updates.subcategoryId === '' ? undefined : clonedTransaction.subcategoryId)
+          };
+          
+          // Normalizar o resultado
+          const normalizedTransaction = normalizeAndValidateTransaction(updatedTransaction);
           
           console.log('🔄 [UPDATE] Transaction updated:', {
             id,
-            before: {
-              categoryId: t.categoryId,
-              subcategoryId: t.subcategoryId,
-            },
             after: {
-              categoryId: updatedTransaction.categoryId,
-              subcategoryId: updatedTransaction.subcategoryId,
+              categoryId: normalizedTransaction.categoryId,
+              subcategoryId: normalizedTransaction.subcategoryId,
             },
-            updates: updates
+            updates: updates,
+            timestamp: Date.now()
           });
           
-          return updatedTransaction;
+          return normalizedTransaction;
         }
-        return t;
+        
+        // Para outras transações, retornar deep clone para garantir isolamento
+        return createDeepClone(transaction);
       });
       
       console.log('🔍 [UPDATE] updateTransaction result:', {
-        updatedTransaction: updated.find(t => t.id === id),
-        transactionsWithAI: updated.filter(t => t.aiSuggestion).length
+        updatedTransaction: newData.find(t => t.id === id),
+        transactionsWithAI: newData.filter(t => t.aiSuggestion).length,
+        timestamp: Date.now()
       });
       
-      onTransactionsUpdate(updated);
-      return updated;
+      // Atualizar o parent component
+      onTransactionsUpdate(newData);
+      return newData;
     });
   }, [onTransactionsUpdate]);
 
@@ -371,6 +621,21 @@ export default function TransactionImportTable({
     return options;
   }, [categories]);
 
+  // Enhanced function to check if transaction needs attention
+  const needsAttention = useCallback((transaction: TransactionRow) => {
+    // Missing category or subcategory
+    if (!transaction.categoryId || !transaction.subcategoryId) {
+      return true;
+    }
+    
+    // Low AI confidence (below 50%)
+    if (transaction.aiSuggestion && transaction.aiSuggestion.confidence < 0.5) {
+      return true;
+    }
+    
+    return false;
+  }, []);
+
   const totalPages = Math.ceil(tableData.length / itemsPerPage);
   
   const totalEntrada = tableData
@@ -403,21 +668,6 @@ export default function TransactionImportTable({
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('pt-BR');
   };
-
-  // Enhanced function to check if transaction needs attention
-  const needsAttention = useCallback((transaction: TransactionRow) => {
-    // Missing category or subcategory
-    if (!transaction.categoryId || !transaction.subcategoryId) {
-      return true;
-    }
-    
-    // Low AI confidence (below 50%)
-    if (transaction.aiSuggestion && transaction.aiSuggestion.confidence < 0.5) {
-      return true;
-    }
-    
-    return false;
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -574,159 +824,24 @@ export default function TransactionImportTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {getCurrentPageData().map(transaction => {
-                  console.log(`🔍 [RENDER] Rendering transaction ${transaction.id}:`, {
-                    hasAISuggestion: !!transaction.aiSuggestion,
-                    categoryId: transaction.categoryId,
-                    subcategoryId: transaction.subcategoryId,
-                    description: transaction.description,
-                    categoryIdType: typeof transaction.categoryId,
-                    subcategoryIdType: typeof transaction.subcategoryId
-                  });
-                  
-                  const category = categories.find(c => c.id === transaction.categoryId);
-                  const subcategory = subcategories.find(s => s.id === transaction.subcategoryId);
-                  const requiresAttention = needsAttention(transaction);
-                  
-                  return (
-                    <TableRow 
-                      key={transaction.id}
-                      className={`
-                        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
-                        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
-                        transition-colors duration-200
-                      `}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedRows.has(transaction.id)}
-                          onCheckedChange={() => toggleRowSelection(transaction.id)}
-                        />
-                      </TableCell>
-                      
-                      <TableCell className="font-mono text-sm">
-                        {formatDate(transaction.date)}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <span className={`font-semibold ${
-                          transaction.type === 'income' ? 'text-success' : 'text-destructive'
-                        }`}>
-                          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                        </span>
-                      </TableCell>
-                      
-                      <TableCell>
-                        {transaction.isEditing ? (
-                          <Input
-                            value={transaction.editedDescription || transaction.description}
-                            onChange={(e) => updateTransaction(transaction.id, {
-                              editedDescription: e.target.value
-                            })}
-                            onBlur={() => updateTransaction(transaction.id, {
-                              isEditing: false,
-                              description: transaction.editedDescription || transaction.description
-                            })}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                updateTransaction(transaction.id, {
-                                  isEditing: false,
-                                  description: transaction.editedDescription || transaction.description
-                                });
-                              }
-                            }}
-                            autoFocus
-                          />
-                        ) : (
-                          <div className="max-w-xs" title={transaction.description}>
-                            <span className="block truncate">{transaction.description}</span>
-                            {requiresAttention && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <AlertCircle className="h-3 w-3 text-yellow-600" />
-                                <span className="text-xs text-yellow-600">Requer atenção</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        <TransactionIndicators transaction={transaction} />
-                      </TableCell>
-                      
-                      <TableCell>
-                        <Combobox
-                          key={`category-${transaction.id}-${transaction.categoryId || 'empty'}-${Date.now()}`}
-                          value={transaction.categoryId || ''}
-                          onValueChange={(value) => {
-                            console.log('🔄 [CATEGORY] Category selection changed:', { 
-                              transactionId: transaction.id, 
-                              oldValue: transaction.categoryId,
-                              newValue: value,
-                              valueType: typeof value,
-                              availableCategories: categories.length 
-                            });
-                            updateTransaction(transaction.id, {
-                              categoryId: value,
-                              subcategoryId: undefined, // Reset subcategory when category changes
-                              aiSuggestion: transaction.aiSuggestion ? {
-                                ...transaction.aiSuggestion,
-                                isAISuggested: false // Mark as manually modified
-                              } : undefined
-                            });
-                          }}
-                          options={categoryOptions}
-                          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-                          searchPlaceholder="Buscar categoria..."
-                          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                          width="w-60"
-                          disabled={loadingCategories}
-                        />
-                      </TableCell>
-                      
-                      <TableCell>
-                        <Combobox
-                          key={`subcategory-${transaction.id}-${transaction.categoryId || 'empty'}-${transaction.subcategoryId || 'empty'}-${Date.now()}`}
-                          value={transaction.subcategoryId || ''}
-                          onValueChange={(value) => {
-                            console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
-                              transactionId: transaction.id, 
-                              oldValue: transaction.subcategoryId,
-                              newValue: value,
-                              valueType: typeof value,
-                              categoryId: transaction.categoryId
-                            });
-                            updateTransaction(transaction.id, {
-                              subcategoryId: value
-                            });
-                          }}
-                          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-                            value: sub.id,
-                            label: sub.name
-                          }))}
-                          placeholder="Selecionar subcategoria"
-                          disabled={!transaction.categoryId || loadingSubcategories}
-                          searchPlaceholder="Buscar subcategoria..."
-                          emptyText="Nenhuma subcategoria encontrada"
-                          width="w-60"
-                        />
-                      </TableCell>
-                      
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => updateTransaction(transaction.id, {
-                            isEditing: !transaction.isEditing,
-                            editedDescription: transaction.description
-                          })}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {getCurrentPageData().map(transaction => (
+                  <TransactionRow
+                    key={`transaction-${transaction.id}`}
+                    transaction={transaction}
+                    categories={categories}
+                    subcategories={subcategories}
+                    selectedRows={selectedRows}
+                    loadingCategories={loadingCategories}
+                    loadingSubcategories={loadingSubcategories}
+                    categoryOptions={categoryOptions}
+                    onUpdateTransaction={updateTransaction}
+                    onToggleSelection={toggleRowSelection}
+                    needsAttention={needsAttention}
+                    getFilteredSubcategories={getFilteredSubcategories}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                  />
+                ))}
               </TableBody>
             </Table>
           </div>
