@@ -23,6 +23,19 @@ export default function TransactionIndicators({ transaction }: TransactionIndica
   const paymentMethod = getPaymentMethod(transaction.description);
   const PaymentIcon = paymentMethod.icon;
 
+  // Enhanced AI confidence color logic
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return 'bg-green-100 text-green-800 border-green-200';
+    if (confidence >= 0.5) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    return 'bg-red-100 text-red-800 border-red-200';
+  };
+
+  const getConfidenceLabel = (confidence: number) => {
+    if (confidence >= 0.8) return 'Alta';
+    if (confidence >= 0.5) return 'Média';
+    return 'Baixa';
+  };
+
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-1.5 min-w-[120px]">
@@ -42,32 +55,33 @@ export default function TransactionIndicators({ transaction }: TransactionIndica
           </TooltipContent>
         </Tooltip>
 
-        {/* Badges da IA (se houver sugestão) - apenas confiança */}
+        {/* Badge de Confiança da IA */}
         {transaction.aiSuggestion && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge 
-                variant="secondary" 
+                variant="outline" 
                 className={`text-xs border ${
                   transaction.aiSuggestion.usedFallback
                     ? 'bg-orange-50 text-orange-700 border-orange-200'
-                    : transaction.aiSuggestion.confidence >= 0.8 
-                    ? 'bg-green-50 text-green-700 border-green-200' 
-                    : transaction.aiSuggestion.confidence >= 0.5 
-                    ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                    : getConfidenceColor(transaction.aiSuggestion.confidence)
                 } w-fit`}
               >
-                {transaction.aiSuggestion.usedFallback ? '⚠️' : '🤖'} {Math.round(transaction.aiSuggestion.confidence * 100)}%
+                {transaction.aiSuggestion.usedFallback ? '⚠️ Fallback' : `🤖 ${getConfidenceLabel(transaction.aiSuggestion.confidence)} (${Math.round(transaction.aiSuggestion.confidence * 100)}%)`}
               </Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p>{transaction.aiSuggestion.reasoning}</p>
-              {transaction.aiSuggestion.usedFallback && (
-                <p className="text-xs mt-1 text-muted-foreground">
-                  Sistema de fallback usado devido à sobrecarga da IA
+              <div className="space-y-2">
+                <p className="font-medium">
+                  {transaction.aiSuggestion.usedFallback ? 'Sistema de fallback usado' : `Confiança: ${getConfidenceLabel(transaction.aiSuggestion.confidence)}`}
                 </p>
-              )}
+                <p className="text-sm">{transaction.aiSuggestion.reasoning}</p>
+                {transaction.aiSuggestion.usedFallback && (
+                  <p className="text-xs text-muted-foreground">
+                    IA temporariamente indisponível
+                  </p>
+                )}
+              </div>
             </TooltipContent>
           </Tooltip>
         )}

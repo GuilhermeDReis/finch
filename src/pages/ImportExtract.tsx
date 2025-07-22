@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
 import { BelvoConnectWidget } from '@/components/BelvoConnectWidget';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import type { TransactionRow } from '@/types/transaction';
 
@@ -354,153 +355,160 @@ export default function ImportExtract() {
   const stats = getStats();
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Importar Extrato</h1>
-            <p className="text-muted-foreground">
-              Importe transações via CSV ou conecte sua conta bancária diretamente
-            </p>
-          </div>
-          
-          {importedData.length > 0 && (
-            <div className="flex gap-2">
-              {isProcessingAI && (
-                <div className="flex items-center gap-2 text-primary">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">IA processando...</span>
-                </div>
-              )}
-              <Button
-                variant="outline"
-                onClick={clearData}
-                disabled={isImporting || isProcessingAI}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Limpar Dados
-              </Button>
-              <Button
-                onClick={() => processWithAI(importedData)}
-                disabled={isImporting || isProcessingAI || importedData.length === 0}
-                variant="outline"
-              >
-                <Bot className="h-4 w-4 mr-2" />
-                Processar com IA
-              </Button>
-              <Button
-                onClick={importTransactions}
-                disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
-                className="min-w-[140px]"
-              >
-                {isImporting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Importando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Importar ({stats.categorized})
-                  </>
-                )}
-              </Button>
+    <>
+      <LoadingOverlay 
+        isVisible={isProcessingAI} 
+        message="Processando transações com IA"
+      />
+      
+      <div className="space-y-6 p-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Importar Extrato</h1>
+              <p className="text-muted-foreground">
+                Importe transações via CSV ou conecte sua conta bancária diretamente
+              </p>
             </div>
-          )}
+            
+            {importedData.length > 0 && (
+              <div className="flex gap-2">
+                {isProcessingAI && (
+                  <div className="flex items-center gap-2 text-primary">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">IA processando...</span>
+                  </div>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={clearData}
+                  disabled={isImporting || isProcessingAI}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpar Dados
+                </Button>
+                <Button
+                  onClick={() => processWithAI(importedData)}
+                  disabled={isImporting || isProcessingAI || importedData.length === 0}
+                  variant="outline"
+                >
+                  <Bot className="h-4 w-4 mr-2" />
+                  Processar com IA
+                </Button>
+                <Button
+                  onClick={importTransactions}
+                  disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
+                  className="min-w-[140px]"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Importando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Importar ({stats.categorized})
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+
         </div>
 
-      </div>
+        <Separator />
 
-      <Separator />
+        {/* Tabs for import methods */}
+        {importedData.length === 0 && (
+          <Tabs defaultValue="csv" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="csv" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Upload CSV
+              </TabsTrigger>
+              <TabsTrigger value="bank" className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Conectar Banco
+              </TabsTrigger>
+            </TabsList>
 
-      {/* Tabs for import methods */}
-      {importedData.length === 0 && (
-        <Tabs defaultValue="csv" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="csv" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Upload CSV
-            </TabsTrigger>
-            <TabsTrigger value="bank" className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Conectar Banco
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="csv" className="space-y-6">
-            <CSVUploader 
-              onDataParsed={handleDataParsed}
-              onError={handleError}
-            />
-            
-            {/* Instructions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Formato do Arquivo CSV
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h4 className="font-semibold">Estrutura obrigatória:</h4>
-                  <div className="bg-muted p-3 rounded-md font-mono text-sm mt-2">
-                    Data,Valor,ID_Transacao,Descricao
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TabsContent value="csv" className="space-y-6">
+              <CSVUploader 
+                onDataParsed={handleDataParsed}
+                onError={handleError}
+              />
+              
+              {/* Instructions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Formato do Arquivo CSV
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div>
-                    <h4 className="font-semibold">Especificações:</h4>
-                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                      <li>Data: DD/MM/AAAA</li>
-                      <li>Valor: Formato brasileiro (1.234,56)</li>
-                      <li>Codificação: latin-1 (Windows-1252)</li>
-                      <li>Tamanho máximo: 10MB</li>
-                    </ul>
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-semibold">Exemplo:</h4>
-                    <div className="bg-muted p-3 rounded-md font-mono text-xs">
-                      15/01/2024,-150,50,Supermercado XYZ<br />
-                      16/01/2024,2.500,00,Salário Janeiro<br />
-                      17/01/2024,-45,30,Combustível
+                    <h4 className="font-semibold">Estrutura obrigatória:</h4>
+                    <div className="bg-muted p-3 rounded-md font-mono text-sm mt-2">
+                      Data,Valor,ID_Transacao,Descricao
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-semibold">Especificações:</h4>
+                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li>Data: DD/MM/AAAA</li>
+                        <li>Valor: Formato brasileiro (1.234,56)</li>
+                        <li>Codificação: latin-1 (Windows-1252)</li>
+                        <li>Tamanho máximo: 10MB</li>
+                      </ul>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-semibold">Exemplo:</h4>
+                      <div className="bg-muted p-3 rounded-md font-mono text-xs">
+                        15/01/2024,-150,50,Supermercado XYZ<br />
+                        16/01/2024,2.500,00,Salário Janeiro<br />
+                        17/01/2024,-45,30,Combustível
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="bank" className="space-y-6">
-            <div className="flex justify-center">
-              <BelvoConnectWidget />
-            </div>
-          </TabsContent>
-        </Tabs>
-      )}
+            <TabsContent value="bank" className="space-y-6">
+              <div className="flex justify-center">
+                <BelvoConnectWidget />
+              </div>
+            </TabsContent>
+          </Tabs>
+        )}
 
-      {/* Import table - Agora usando processedData que contém as sugestões da IA */}
-      {processedData.length > 0 && (
-        <div className="space-y-4">
-          {stats.uncategorized > 0 && (
-            <Alert>
-              <Upload className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Atenção:</strong> {stats.uncategorized} transações ainda precisam de categoria. 
-                Categorize todas as transações antes de importar.
-              </AlertDescription>
-            </Alert>
-          )}
-          
-          <TransactionImportTable
-            transactions={processedData}
-            onTransactionsUpdate={handleTransactionsUpdate}
-          />
-        </div>
-      )}
-    </div>
+        {/* Import table - Agora usando processedData que contém as sugestões da IA */}
+        {processedData.length > 0 && (
+          <div className="space-y-4">
+            {stats.uncategorized > 0 && (
+              <Alert>
+                <Upload className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Atenção:</strong> {stats.uncategorized} transações ainda precisam de categoria. 
+                  Categorize todas as transações antes de importar.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <TransactionImportTable
+              transactions={processedData}
+              onTransactionsUpdate={handleTransactionsUpdate}
+            />
+          </div>
+        )}
+      </div>
+    </>
   );
 }

@@ -42,7 +42,7 @@ export function AppSidebar() {
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-primary/10 text-primary font-medium" 
+      ? "bg-primary text-primary-foreground" 
       : "text-muted-foreground hover:bg-muted hover:text-foreground";
 
   return (
@@ -50,9 +50,9 @@ export function AppSidebar() {
       className="border-r bg-background"
       collapsible="icon"
     >
-      <SidebarHeader className="border-b p-2">
+      <SidebarHeader className={`border-b ${isCollapsed ? 'p-2' : 'p-3'}`}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-2'}`}>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <FileText className="h-5 w-5 text-primary-foreground" />
             </div>
@@ -65,14 +65,15 @@ export function AppSidebar() {
             )}
           </div>
           
-          {/* Botão de expandir/recolher */}
-          <SidebarTrigger className="h-7 w-7 p-0 hover:bg-muted rounded-md transition-colors">
-            <Menu className="h-4 w-4" />
-          </SidebarTrigger>
+          {!isCollapsed && (
+            <SidebarTrigger className="h-7 w-7 p-0 hover:bg-muted rounded-md transition-colors">
+              <Menu className="h-4 w-4" />
+            </SidebarTrigger>
+          )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="p-2">
+      <SidebarContent className={isCollapsed ? 'p-1' : 'p-2'}>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -80,7 +81,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 
-                    className={`h-10 ${isCollapsed ? 'justify-center px-0' : 'justify-start px-3'} transition-all duration-200`}
+                    className={`h-12 ${isCollapsed ? 'justify-center px-0 mx-1' : 'justify-start px-3'} transition-all duration-200`}
                   >
                     <NavLink
                       to={item.url}
@@ -103,16 +104,16 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       
-      <SidebarFooter className="p-2 border-t">
+      <SidebarFooter className={`border-t ${isCollapsed ? 'p-1' : 'p-2'}`}>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {!isCollapsed && (
+              {!isCollapsed && user?.email && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <div className="flex items-center gap-2 p-2 text-muted-foreground">
                       <User className="h-4 w-4" />
-                      <span className="text-sm truncate">{user?.email}</span>
+                      <span className="text-sm truncate">{user.email}</span>
                     </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -122,7 +123,7 @@ export function AppSidebar() {
                   <Button
                     variant="ghost"
                     onClick={signOut}
-                    className={`w-full gap-2 p-2 ${isCollapsed ? 'justify-center px-0' : 'justify-start'}`}
+                    className={`w-full gap-2 p-2 h-12 ${isCollapsed ? 'justify-center px-0 mx-1' : 'justify-start'}`}
                     title={isCollapsed ? 'Sair' : undefined}
                   >
                     <LogOut className="h-4 w-4" />

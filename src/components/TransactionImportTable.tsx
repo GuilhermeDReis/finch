@@ -404,6 +404,21 @@ export default function TransactionImportTable({
     return new Date(dateStr).toLocaleDateString('pt-BR');
   };
 
+  // Enhanced function to check if transaction needs attention
+  const needsAttention = useCallback((transaction: TransactionRow) => {
+    // Missing category or subcategory
+    if (!transaction.categoryId || !transaction.subcategoryId) {
+      return true;
+    }
+    
+    // Low AI confidence (below 50%)
+    if (transaction.aiSuggestion && transaction.aiSuggestion.confidence < 0.5) {
+      return true;
+    }
+    
+    return false;
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Statistics - Principais */}
@@ -571,13 +586,15 @@ export default function TransactionImportTable({
                   
                   const category = categories.find(c => c.id === transaction.categoryId);
                   const subcategory = subcategories.find(s => s.id === transaction.subcategoryId);
+                  const requiresAttention = needsAttention(transaction);
                   
                   return (
                     <TableRow 
                       key={transaction.id}
                       className={`
-                        ${!transaction.categoryId ? 'bg-warning/10' : ''}
+                        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
                         ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
+                        transition-colors duration-200
                       `}
                     >
                       <TableCell>
@@ -623,6 +640,12 @@ export default function TransactionImportTable({
                         ) : (
                           <div className="max-w-xs" title={transaction.description}>
                             <span className="block truncate">{transaction.description}</span>
+                            {requiresAttention && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <AlertCircle className="h-3 w-3 text-yellow-600" />
+                                <span className="text-xs text-yellow-600">Requer atenção</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </TableCell>
