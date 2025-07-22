@@ -9,6 +9,7 @@ import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
+import TransactionIndicators from './TransactionIndicators';
 import { supabase } from '@/integrations/supabase/client';
 import type { TransactionRow } from '@/types/transaction';
 
@@ -33,8 +34,8 @@ interface TransactionImportTableProps {
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
-// Função para normalizar dados de transação
-const normalizeTransactionData = (transaction: TransactionRow): TransactionRow => {
+// Função para normalizar e validar dados de transação
+const normalizeAndValidateTransaction = (transaction: TransactionRow): TransactionRow => {
   const normalized = {
     ...transaction,
     // Garantir que subcategoryId seja sempre string ou undefined
@@ -55,21 +56,30 @@ const normalizeTransactionData = (transaction: TransactionRow): TransactionRow =
       : 'expense'
   };
 
-  console.log('🔧 [DEBUG] Normalizing transaction:', {
-    original: {
-      id: transaction.id,
-      subcategoryId: transaction.subcategoryId,
-      categoryId: transaction.categoryId,
-      subcategoryIdType: typeof transaction.subcategoryId,
-      categoryIdType: typeof transaction.categoryId
-    },
-    normalized: {
-      id: normalized.id,
-      subcategoryId: normalized.subcategoryId,
-      categoryId: normalized.categoryId,
-      subcategoryIdType: typeof normalized.subcategoryId,
-      categoryIdType: typeof normalized.categoryId
-    }
+  // Validar e limpar subcategoryId se for um objeto
+  if (typeof transaction.subcategoryId === 'object' && transaction.subcategoryId !== null) {
+    console.warn('🔧 [VALIDATION] Found object in subcategoryId, cleaning:', {
+      transactionId: transaction.id,
+      subcategoryId: transaction.subcategoryId
+    });
+    normalized.subcategoryId = undefined;
+  }
+
+  // Validar e limpar categoryId se for um objeto
+  if (typeof transaction.categoryId === 'object' && transaction.categoryId !== null) {
+    console.warn('🔧 [VALIDATION] Found object in categoryId, cleaning:', {
+      transactionId: transaction.id,
+      categoryId: transaction.categoryId
+    });
+    normalized.categoryId = undefined;
+  }
+
+  console.log('🔧 [VALIDATION] Transaction normalized:', {
+    id: normalized.id,
+    categoryId: normalized.categoryId,
+    subcategoryId: normalized.subcategoryId,
+    categoryIdValid: typeof normalized.categoryId === 'string' || normalized.categoryId === undefined,
+    subcategoryIdValid: typeof normalized.subcategoryId === 'string' || normalized.subcategoryId === undefined
   });
 
   return normalized;
@@ -100,7 +110,7 @@ export default function TransactionImportTable({
     loadSubcategories();
   }, []);
 
-  // Initialize table data when transactions change with normalization
+  // Initialize table data when transactions change with validation
   useEffect(() => {
     console.log('🔍 [DEBUG] transactions prop changed:', {
       length: transactions.length,
@@ -117,8 +127,8 @@ export default function TransactionImportTable({
       }))
     });
     
-    // Normalizar dados antes de processar
-    const normalizedTransactions = transactions.map(normalizeTransactionData);
+    // Normalizar e validar dados antes de processar
+    const normalizedTransactions = transactions.map(normalizeAndValidateTransaction);
     
     const sortedData = [...normalizedTransactions]
       .sort((a, b) => {
@@ -131,11 +141,11 @@ export default function TransactionImportTable({
         }
       });
     
-    console.log('🔍 [DEBUG] sortedData after normalization and processing:', {
+    console.log('🔍 [DEBUG] sortedData after validation and processing:', {
       length: sortedData.length,
       firstTransactionWithAI: sortedData.find(t => t.aiSuggestion),
       transactionsWithAI: sortedData.filter(t => t.aiSuggestion).length,
-      sampleData: sortedData.slice(0, 3).map(t => ({
+      validatedData: sortedData.slice(0, 3).map(t => ({
         id: t.id,
         description: t.description,
         categoryId: t.categoryId,
@@ -154,7 +164,6 @@ export default function TransactionImportTable({
       setLoadingCategories(true);
       console.log('🔍 [DEBUG] Starting to load categories...');
       
-      // Verificar se o usuário está autenticado
       const { data: authData, error: authError } = await supabase.auth.getUser();
       console.log('👤 [DEBUG] Auth check result:', { 
         authData: authData?.user?.id ? 'User authenticated' : 'No user',
@@ -172,18 +181,6 @@ export default function TransactionImportTable({
         return;
       }
 
-      // Test database connection
-      console.log('🔗 Testing database connection...');
-      const { count, error: countError } = await supabase
-        .from('categories')
-        .select('*', { count: 'exact', head: true });
-      
-      console.log('📊 Database connection test:', { 
-        count, 
-        countError: countError?.message || 'No error' 
-      });
-
-      // Fetch categories with all details
       console.log('📊 Fetching categories from database...');
       const { data, error, status, statusText } = await supabase
         .from('categories')
@@ -195,18 +192,11 @@ export default function TransactionImportTable({
         dataLength: data?.length || 0, 
         error: error?.message || 'No error',
         status,
-        statusText,
-        rawData: data
+        statusText
       });
       
       if (error) {
         console.error('❌ Error loading categories:', error);
-        console.error('❌ Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
         return;
       }
       
@@ -221,30 +211,12 @@ export default function TransactionImportTable({
         return;
       }
       
-      console.log('📝 Processing categories data...');
-      data.forEach((cat, index) => {
-        console.log(`🏷️ Category ${index + 1}:`, {
-          id: cat.id,
-          name: cat.name,
-          type: cat.type,
-          color: cat.color,
-          
-        });
-      });
-
       setCategories(data as Category[]);
       console.log('✅ Categories loaded and set successfully:', data.length, 'categories');
-      console.log('✅ State should be updated now');
     } catch (error) {
       console.error('💥 Exception in loadCategories:', error);
-      console.error('💥 Exception details:', {
-        name: error instanceof Error ? error.name : 'Unknown',
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack'
-      });
     } finally {
       setLoadingCategories(false);
-      console.log('🏁 loadCategories finished, loadingCategories set to false');
     }
   };
 
@@ -272,9 +244,9 @@ export default function TransactionImportTable({
     }
   };
 
-  // Memoized update function with better validation
+  // Função de atualização robusta com validação
   const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
-    console.log('🔄 [DEBUG] updateTransaction called:', { 
+    console.log('🔄 [UPDATE] updateTransaction called:', { 
       id, 
       updates,
       updatesKeys: Object.keys(updates),
@@ -287,29 +259,30 @@ export default function TransactionImportTable({
     setTableData(prev => {
       const updated = prev.map(t => {
         if (t.id === id) {
-          // Normalizar os updates antes de aplicar
-          const normalizedUpdates = {
+          // Criar nova instância da transação com validação
+          const updatedTransaction = normalizeAndValidateTransaction({
+            ...t,
             ...updates,
-            categoryId: typeof updates.categoryId === 'string' ? updates.categoryId : t.categoryId,
-            subcategoryId: typeof updates.subcategoryId === 'string' ? updates.subcategoryId : t.subcategoryId
-          };
+            // Garantir que IDs sejam strings válidas ou undefined
+            categoryId: typeof updates.categoryId === 'string' && updates.categoryId !== '' 
+              ? updates.categoryId 
+              : (updates.categoryId === '' ? undefined : t.categoryId),
+            subcategoryId: typeof updates.subcategoryId === 'string' && updates.subcategoryId !== '' 
+              ? updates.subcategoryId 
+              : (updates.subcategoryId === '' ? undefined : t.subcategoryId)
+          });
           
-          const updatedTransaction = { ...t, ...normalizedUpdates };
-          
-          console.log('🔄 [DEBUG] Transaction updated:', {
+          console.log('🔄 [UPDATE] Transaction updated:', {
             id,
             before: {
               categoryId: t.categoryId,
               subcategoryId: t.subcategoryId,
-              categoryIdType: typeof t.categoryId,
-              subcategoryIdType: typeof t.subcategoryId
             },
             after: {
               categoryId: updatedTransaction.categoryId,
               subcategoryId: updatedTransaction.subcategoryId,
-              categoryIdType: typeof updatedTransaction.categoryId,
-              subcategoryIdType: typeof updatedTransaction.subcategoryId
-            }
+            },
+            updates: updates
           });
           
           return updatedTransaction;
@@ -317,7 +290,7 @@ export default function TransactionImportTable({
         return t;
       });
       
-      console.log('🔍 [DEBUG] updateTransaction result:', {
+      console.log('🔍 [UPDATE] updateTransaction result:', {
         updatedTransaction: updated.find(t => t.id === id),
         transactionsWithAI: updated.filter(t => t.aiSuggestion).length
       });
@@ -369,10 +342,11 @@ export default function TransactionImportTable({
     setSelectedRows(new Set());
   }, [bulkCategory, bulkSubcategory, selectedRows, updateTransaction]);
 
-  // Memoized filtered subcategories
+  // Função otimizada para filtrar subcategorias
   const getFilteredSubcategories = useCallback((categoryId: string) => {
+    if (!categoryId) return [];
     const filtered = subcategories.filter(sub => sub.category_id === categoryId);
-    console.log('🔍 [DEBUG] getFilteredSubcategories:', {
+    console.log('🔍 [SUBCATEGORIES] getFilteredSubcategories:', {
       categoryId,
       totalSubcategories: subcategories.length,
       filteredCount: filtered.length,
@@ -387,19 +361,18 @@ export default function TransactionImportTable({
     return tableData.slice(startIndex, endIndex);
   }, [tableData, currentPage, itemsPerPage]);
 
-  // Memoized category options
+  // Opções memoizadas para melhor performance
   const categoryOptions = useMemo(() => {
     const options = categories.map(cat => ({
       value: cat.id,
       label: cat.name
     }));
-    console.log('🎯 [DEBUG] Category options memoized:', options.length);
+    console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
     return options;
   }, [categories]);
 
   const totalPages = Math.ceil(tableData.length / itemsPerPage);
   
-  // Calcular totalizadores
   const totalEntrada = tableData
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -410,7 +383,6 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
   
-  // Calcular totalizadores por método de pagamento (busca na descrição - apenas saídas)
   const calculatePaymentMethodTotal = (keyword: string) => {
     return tableData
       .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
@@ -498,29 +470,29 @@ export default function TransactionImportTable({
             <div className="flex items-center gap-4 flex-wrap">
               <span>{selectedRows.size} item(s) selecionado(s)</span>
               
-                <Combobox
-                  value={bulkCategory}
-                  onValueChange={setBulkCategory}
-                  options={categoryOptions}
-                  placeholder="Selecionar categoria"
-                  searchPlaceholder="Buscar categoria..."
-                  emptyText="Nenhuma categoria encontrada"
-                  className="w-48"
-                />
+              <Combobox
+                value={bulkCategory}
+                onValueChange={setBulkCategory}
+                options={categoryOptions}
+                placeholder="Selecionar categoria"
+                searchPlaceholder="Buscar categoria..."
+                emptyText="Nenhuma categoria encontrada"
+                width="w-60"
+              />
 
-                <Combobox
-                  value={bulkSubcategory}
-                  onValueChange={setBulkSubcategory}
-                  options={getFilteredSubcategories(bulkCategory).map(sub => ({
-                    value: sub.id,
-                    label: sub.name
-                  }))}
-                  placeholder="Selecionar subcategoria"
-                  disabled={!bulkCategory}
-                  searchPlaceholder="Buscar subcategoria..."
-                  emptyText="Nenhuma subcategoria encontrada"
-                  className="w-48"
-                />
+              <Combobox
+                value={bulkSubcategory}
+                onValueChange={setBulkSubcategory}
+                options={getFilteredSubcategories(bulkCategory).map(sub => ({
+                  value: sub.id,
+                  label: sub.name
+                }))}
+                placeholder="Selecionar subcategoria"
+                disabled={!bulkCategory}
+                searchPlaceholder="Buscar subcategoria..."
+                emptyText="Nenhuma subcategoria encontrada"
+                width="w-60"
+              />
 
               <Button onClick={applyBulkCategory} disabled={!bulkCategory}>
                 Aplicar Categoria
@@ -554,7 +526,7 @@ export default function TransactionImportTable({
                     />
                   </TableHead>
                   <TableHead 
-                    className="cursor-pointer"
+                    className="cursor-pointer w-24"
                     onClick={() => {
                       if (sortBy === 'date') {
                         setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -567,7 +539,7 @@ export default function TransactionImportTable({
                     Data {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </TableHead>
                   <TableHead 
-                    className="cursor-pointer"
+                    className="cursor-pointer w-32"
                     onClick={() => {
                       if (sortBy === 'amount') {
                         setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -579,17 +551,17 @@ export default function TransactionImportTable({
                   >
                     Valor {sortBy === 'amount' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Subcategoria</TableHead>
-                  <TableHead>Ações</TableHead>
+                  <TableHead className="w-80">Descrição</TableHead>
+                  <TableHead className="w-40">Indicadores</TableHead>
+                  <TableHead className="w-64">Categoria</TableHead>
+                  <TableHead className="w-64">Subcategoria</TableHead>
+                  <TableHead className="w-16">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {getCurrentPageData().map(transaction => {
-                  console.log(`🔍 [DEBUG] Renderizando transação ${transaction.id}:`, {
+                  console.log(`🔍 [RENDER] Rendering transaction ${transaction.id}:`, {
                     hasAISuggestion: !!transaction.aiSuggestion,
-                    aiSuggestion: transaction.aiSuggestion,
                     categoryId: transaction.categoryId,
                     subcategoryId: transaction.subcategoryId,
                     description: transaction.description,
@@ -649,90 +621,52 @@ export default function TransactionImportTable({
                             autoFocus
                           />
                         ) : (
-                          <div className="flex flex-col gap-1">
-                            <div className="max-w-xs truncate" title={transaction.description}>
-                              {transaction.description}
-                            </div>
-                            {transaction.aiSuggestion && (
-                              <div className="flex items-center gap-1">
-                                <Badge 
-                                  variant="secondary" 
-                                  className={`text-xs border ${
-                                    transaction.aiSuggestion.usedFallback
-                                      ? 'bg-orange-50 text-orange-700 border-orange-200'
-                                      : transaction.aiSuggestion.confidence >= 0.8 
-                                      ? 'bg-green-50 text-green-700 border-green-200' 
-                                      : transaction.aiSuggestion.confidence >= 0.5 
-                                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                      : 'bg-gray-50 text-gray-600 border-gray-200'
-                                  }`}
-                                  title={`${transaction.aiSuggestion.reasoning}${
-                                    transaction.aiSuggestion.usedFallback 
-                                      ? ' (Sistema de fallback usado devido à sobrecarga da IA)' 
-                                      : ''
-                                  }`}
-                                >
-                                  {transaction.aiSuggestion.usedFallback ? '⚠️' : '🤖'} {Math.round(transaction.aiSuggestion.confidence * 100)}%
-                                </Badge>
-                              </div>
-                            )}
+                          <div className="max-w-xs" title={transaction.description}>
+                            <span className="block truncate">{transaction.description}</span>
                           </div>
                         )}
                       </TableCell>
-                      
-                       <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Combobox
-                              key={`category-${transaction.id}-${transaction.categoryId || 'empty'}`}
-                              value={transaction.categoryId || ''}
-                              onValueChange={(value) => {
-                                console.log('🔄 [DEBUG] Category selection changed:', { 
-                                  transactionId: transaction.id, 
-                                  oldValue: transaction.categoryId,
-                                  newValue: value,
-                                  valueType: typeof value,
-                                  availableCategories: categories.length 
-                                });
-                                updateTransaction(transaction.id, {
-                                  categoryId: value,
-                                  subcategoryId: undefined, // Reset subcategory when category changes
-                                  aiSuggestion: transaction.aiSuggestion ? {
-                                    ...transaction.aiSuggestion,
-                                    isAISuggested: false // Mark as manually modified
-                                  } : undefined
-                                });
-                              }}
-                              options={categoryOptions}
-                              placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}
-                              searchPlaceholder="Buscar categoria..."
-                              emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                              className="w-40"
-                              disabled={loadingCategories}
-                            />
-                            {transaction.aiSuggestion && transaction.categoryId && (
-                              <div className="flex items-center gap-1">
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-xs border ${
-                                    transaction.aiSuggestion.isAISuggested 
-                                      ? 'border-blue-200 text-blue-700 bg-blue-50' 
-                                      : 'border-gray-200 text-gray-600 bg-gray-50'
-                                  }`}
-                                  title={transaction.aiSuggestion.reasoning}
-                                >
-                                  {transaction.aiSuggestion.isAISuggested ? '🤖 IA' : '👤 Manual'}
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                       </TableCell>
+
+                      <TableCell>
+                        <TransactionIndicators transaction={transaction} />
+                      </TableCell>
                       
                       <TableCell>
                         <Combobox
-                          key={`subcategory-${transaction.id}-${transaction.categoryId || 'empty'}-${transaction.subcategoryId || 'empty'}`}
+                          key={`category-${transaction.id}-${transaction.categoryId || 'empty'}-${Date.now()}`}
+                          value={transaction.categoryId || ''}
+                          onValueChange={(value) => {
+                            console.log('🔄 [CATEGORY] Category selection changed:', { 
+                              transactionId: transaction.id, 
+                              oldValue: transaction.categoryId,
+                              newValue: value,
+                              valueType: typeof value,
+                              availableCategories: categories.length 
+                            });
+                            updateTransaction(transaction.id, {
+                              categoryId: value,
+                              subcategoryId: undefined, // Reset subcategory when category changes
+                              aiSuggestion: transaction.aiSuggestion ? {
+                                ...transaction.aiSuggestion,
+                                isAISuggested: false // Mark as manually modified
+                              } : undefined
+                            });
+                          }}
+                          options={categoryOptions}
+                          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+                          searchPlaceholder="Buscar categoria..."
+                          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+                          width="w-60"
+                          disabled={loadingCategories}
+                        />
+                      </TableCell>
+                      
+                      <TableCell>
+                        <Combobox
+                          key={`subcategory-${transaction.id}-${transaction.categoryId || 'empty'}-${transaction.subcategoryId || 'empty'}-${Date.now()}`}
                           value={transaction.subcategoryId || ''}
                           onValueChange={(value) => {
-                            console.log('🔄 [DEBUG] Subcategory selection changed:', { 
+                            console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
                               transactionId: transaction.id, 
                               oldValue: transaction.subcategoryId,
                               newValue: value,
@@ -748,10 +682,10 @@ export default function TransactionImportTable({
                             label: sub.name
                           }))}
                           placeholder="Selecionar subcategoria"
-                          disabled={!transaction.categoryId}
+                          disabled={!transaction.categoryId || loadingSubcategories}
                           searchPlaceholder="Buscar subcategoria..."
                           emptyText="Nenhuma subcategoria encontrada"
-                          className="w-40"
+                          width="w-60"
                         />
                       </TableCell>
                       

@@ -1,3 +1,4 @@
+
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 
@@ -31,6 +32,7 @@ interface ComboboxProps {
   emptyText?: string
   className?: string
   disabled?: boolean
+  width?: string
 }
 
 export function Combobox({
@@ -42,6 +44,7 @@ export function Combobox({
   emptyText = "Nenhuma opção encontrada.",
   className,
   disabled = false,
+  width = "w-full"
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -55,13 +58,21 @@ export function Combobox({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className={cn("w-full justify-between", className)}
+          className={cn(width, "justify-between", className)}
+          title={selectedOption?.label || placeholder}
         >
-          {selectedOption?.label ?? placeholder}
+          <span className="truncate text-left">
+            {selectedOption?.label ?? placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0 bg-background border shadow-lg z-50" side="bottom" align="start">
+      <PopoverContent 
+        className="p-0 bg-background border shadow-lg z-50" 
+        side="bottom" 
+        align="start"
+        style={{ width: 'var(--radix-popover-trigger-width)', minWidth: '300px' }}
+      >
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
@@ -75,14 +86,17 @@ export function Combobox({
                     onValueChange?.(option.value === value ? "" : option.value)
                     setOpen(false)
                   }}
+                  className="cursor-pointer"
                 >
                   <Check
                     className={cn(
-                      "mr-2 h-4 w-4",
+                      "mr-2 h-4 w-4 shrink-0",
                       value === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  {option.label}
+                  <span className="truncate" title={option.label}>
+                    {option.label}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
