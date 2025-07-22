@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Check, X, Edit2, Save, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -33,6 +33,48 @@ interface TransactionImportTableProps {
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
+// Função para normalizar dados de transação
+const normalizeTransactionData = (transaction: TransactionRow): TransactionRow => {
+  const normalized = {
+    ...transaction,
+    // Garantir que subcategoryId seja sempre string ou undefined
+    subcategoryId: typeof transaction.subcategoryId === 'string' 
+      ? transaction.subcategoryId 
+      : undefined,
+    // Garantir que categoryId seja sempre string ou undefined
+    categoryId: typeof transaction.categoryId === 'string' 
+      ? transaction.categoryId 
+      : undefined,
+    // Garantir que description seja sempre string
+    description: transaction.description || '',
+    // Garantir que amount seja sempre number
+    amount: typeof transaction.amount === 'number' ? transaction.amount : 0,
+    // Garantir que type seja válido
+    type: transaction.type === 'income' || transaction.type === 'expense' 
+      ? transaction.type 
+      : 'expense'
+  };
+
+  console.log('🔧 [DEBUG] Normalizing transaction:', {
+    original: {
+      id: transaction.id,
+      subcategoryId: transaction.subcategoryId,
+      categoryId: transaction.categoryId,
+      subcategoryIdType: typeof transaction.subcategoryId,
+      categoryIdType: typeof transaction.categoryId
+    },
+    normalized: {
+      id: normalized.id,
+      subcategoryId: normalized.subcategoryId,
+      categoryId: normalized.categoryId,
+      subcategoryIdType: typeof normalized.subcategoryId,
+      categoryIdType: typeof normalized.categoryId
+    }
+  });
+
+  return normalized;
+};
+
 export default function TransactionImportTable({ 
   transactions, 
   onTransactionsUpdate 
@@ -58,7 +100,7 @@ export default function TransactionImportTable({
     loadSubcategories();
   }, []);
 
-  // Initialize table data when transactions change
+  // Initialize table data when transactions change with normalization
   useEffect(() => {
     console.log('🔍 [DEBUG] transactions prop changed:', {
       length: transactions.length,
@@ -70,11 +112,15 @@ export default function TransactionImportTable({
         categoryId: t.categoryId,
         subcategoryId: t.subcategoryId,
         hasAiSuggestion: !!t.aiSuggestion,
-        aiSuggestion: t.aiSuggestion
+        categoryIdType: typeof t.categoryId,
+        subcategoryIdType: typeof t.subcategoryId
       }))
     });
     
-    const sortedData = [...transactions]
+    // Normalizar dados antes de processar
+    const normalizedTransactions = transactions.map(normalizeTransactionData);
+    
+    const sortedData = [...normalizedTransactions]
       .sort((a, b) => {
         if (sortBy === 'date') {
           const comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -85,7 +131,7 @@ export default function TransactionImportTable({
         }
       });
     
-    console.log('🔍 [DEBUG] sortedData after processing:', {
+    console.log('🔍 [DEBUG] sortedData after normalization and processing:', {
       length: sortedData.length,
       firstTransactionWithAI: sortedData.find(t => t.aiSuggestion),
       transactionsWithAI: sortedData.filter(t => t.aiSuggestion).length,
@@ -95,7 +141,8 @@ export default function TransactionImportTable({
         categoryId: t.categoryId,
         subcategoryId: t.subcategoryId,
         hasAiSuggestion: !!t.aiSuggestion,
-        aiSuggestion: t.aiSuggestion
+        categoryIdType: typeof t.categoryId,
+        subcategoryIdType: typeof t.subcategoryId
       }))
     });
     
@@ -225,13 +272,50 @@ export default function TransactionImportTable({
     }
   };
 
-  const updateTransaction = (id: string, updates: Partial<TransactionRow>) => {
-    console.log('🔍 [DEBUG] updateTransaction called:', { id, updates });
+  // Memoized update function with better validation
+  const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
+    console.log('🔄 [DEBUG] updateTransaction called:', { 
+      id, 
+      updates,
+      updatesKeys: Object.keys(updates),
+      categoryIdUpdate: updates.categoryId,
+      subcategoryIdUpdate: updates.subcategoryId,
+      categoryIdType: typeof updates.categoryId,
+      subcategoryIdType: typeof updates.subcategoryId
+    });
     
     setTableData(prev => {
-      const updated = prev.map(t => 
-        t.id === id ? { ...t, ...updates } : t
-      );
+      const updated = prev.map(t => {
+        if (t.id === id) {
+          // Normalizar os updates antes de aplicar
+          const normalizedUpdates = {
+            ...updates,
+            categoryId: typeof updates.categoryId === 'string' ? updates.categoryId : t.categoryId,
+            subcategoryId: typeof updates.subcategoryId === 'string' ? updates.subcategoryId : t.subcategoryId
+          };
+          
+          const updatedTransaction = { ...t, ...normalizedUpdates };
+          
+          console.log('🔄 [DEBUG] Transaction updated:', {
+            id,
+            before: {
+              categoryId: t.categoryId,
+              subcategoryId: t.subcategoryId,
+              categoryIdType: typeof t.categoryId,
+              subcategoryIdType: typeof t.subcategoryId
+            },
+            after: {
+              categoryId: updatedTransaction.categoryId,
+              subcategoryId: updatedTransaction.subcategoryId,
+              categoryIdType: typeof updatedTransaction.categoryId,
+              subcategoryIdType: typeof updatedTransaction.subcategoryId
+            }
+          });
+          
+          return updatedTransaction;
+        }
+        return t;
+      });
       
       console.log('🔍 [DEBUG] updateTransaction result:', {
         updatedTransaction: updated.find(t => t.id === id),
@@ -241,32 +325,36 @@ export default function TransactionImportTable({
       onTransactionsUpdate(updated);
       return updated;
     });
-  };
+  }, [onTransactionsUpdate]);
 
-  const toggleRowSelection = (id: string) => {
-    const newSelected = new Set(selectedRows);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedRows(newSelected);
-  };
+  const toggleRowSelection = useCallback((id: string) => {
+    setSelectedRows(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(id)) {
+        newSelected.delete(id);
+      } else {
+        newSelected.add(id);
+      }
+      return newSelected;
+    });
+  }, []);
 
-  const toggleAllSelection = () => {
+  const toggleAllSelection = useCallback(() => {
     const currentPageIds = getCurrentPageData().map(t => t.id);
     const allSelected = currentPageIds.every(id => selectedRows.has(id));
     
-    const newSelected = new Set(selectedRows);
-    if (allSelected) {
-      currentPageIds.forEach(id => newSelected.delete(id));
-    } else {
-      currentPageIds.forEach(id => newSelected.add(id));
-    }
-    setSelectedRows(newSelected);
-  };
+    setSelectedRows(prev => {
+      const newSelected = new Set(prev);
+      if (allSelected) {
+        currentPageIds.forEach(id => newSelected.delete(id));
+      } else {
+        currentPageIds.forEach(id => newSelected.add(id));
+      }
+      return newSelected;
+    });
+  }, [selectedRows]);
 
-  const applyBulkCategory = () => {
+  const applyBulkCategory = useCallback(() => {
     if (!bulkCategory) return;
     
     selectedRows.forEach(id => {
@@ -279,17 +367,35 @@ export default function TransactionImportTable({
     setBulkCategory('');
     setBulkSubcategory('');
     setSelectedRows(new Set());
-  };
+  }, [bulkCategory, bulkSubcategory, selectedRows, updateTransaction]);
 
-  const getFilteredSubcategories = (categoryId: string) => {
-    return subcategories.filter(sub => sub.category_id === categoryId);
-  };
+  // Memoized filtered subcategories
+  const getFilteredSubcategories = useCallback((categoryId: string) => {
+    const filtered = subcategories.filter(sub => sub.category_id === categoryId);
+    console.log('🔍 [DEBUG] getFilteredSubcategories:', {
+      categoryId,
+      totalSubcategories: subcategories.length,
+      filteredCount: filtered.length,
+      filtered: filtered.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
+    });
+    return filtered;
+  }, [subcategories]);
 
-  const getCurrentPageData = () => {
+  const getCurrentPageData = useCallback(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return tableData.slice(startIndex, endIndex);
-  };
+  }, [tableData, currentPage, itemsPerPage]);
+
+  // Memoized category options
+  const categoryOptions = useMemo(() => {
+    const options = categories.map(cat => ({
+      value: cat.id,
+      label: cat.name
+    }));
+    console.log('🎯 [DEBUG] Category options memoized:', options.length);
+    return options;
+  }, [categories]);
 
   const totalPages = Math.ceil(tableData.length / itemsPerPage);
   
@@ -395,10 +501,7 @@ export default function TransactionImportTable({
                 <Combobox
                   value={bulkCategory}
                   onValueChange={setBulkCategory}
-                  options={categories.map(cat => ({
-                    value: cat.id,
-                    label: cat.name
-                  }))}
+                  options={categoryOptions}
                   placeholder="Selecionar categoria"
                   searchPlaceholder="Buscar categoria..."
                   emptyText="Nenhuma categoria encontrada"
@@ -489,7 +592,9 @@ export default function TransactionImportTable({
                     aiSuggestion: transaction.aiSuggestion,
                     categoryId: transaction.categoryId,
                     subcategoryId: transaction.subcategoryId,
-                    description: transaction.description
+                    description: transaction.description,
+                    categoryIdType: typeof transaction.categoryId,
+                    subcategoryIdType: typeof transaction.subcategoryId
                   });
                   
                   const category = categories.find(c => c.id === transaction.categoryId);
@@ -578,11 +683,14 @@ export default function TransactionImportTable({
                        <TableCell>
                           <div className="flex flex-col gap-1">
                             <Combobox
+                              key={`category-${transaction.id}-${transaction.categoryId || 'empty'}`}
                               value={transaction.categoryId || ''}
                               onValueChange={(value) => {
                                 console.log('🔄 [DEBUG] Category selection changed:', { 
                                   transactionId: transaction.id, 
+                                  oldValue: transaction.categoryId,
                                   newValue: value,
+                                  valueType: typeof value,
                                   availableCategories: categories.length 
                                 });
                                 updateTransaction(transaction.id, {
@@ -594,14 +702,7 @@ export default function TransactionImportTable({
                                   } : undefined
                                 });
                               }}
-                              options={(() => {
-                                const options = categories.map(cat => ({
-                                  value: cat.id,
-                                  label: cat.name
-                                }));
-                                console.log('🎯 [DEBUG] Available category options:', options.length, options.slice(0, 3));
-                                return options;
-                              })()}
+                              options={categoryOptions}
                               placeholder={loadingCategories ? "Carregando categorias..." : "Selecionar categoria"}
                               searchPlaceholder="Buscar categoria..."
                               emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
@@ -628,10 +729,20 @@ export default function TransactionImportTable({
                       
                       <TableCell>
                         <Combobox
+                          key={`subcategory-${transaction.id}-${transaction.categoryId || 'empty'}-${transaction.subcategoryId || 'empty'}`}
                           value={transaction.subcategoryId || ''}
-                          onValueChange={(value) => updateTransaction(transaction.id, {
-                            subcategoryId: value
-                          })}
+                          onValueChange={(value) => {
+                            console.log('🔄 [DEBUG] Subcategory selection changed:', { 
+                              transactionId: transaction.id, 
+                              oldValue: transaction.subcategoryId,
+                              newValue: value,
+                              valueType: typeof value,
+                              categoryId: transaction.categoryId
+                            });
+                            updateTransaction(transaction.id, {
+                              subcategoryId: value
+                            });
+                          }}
                           options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
                             value: sub.id,
                             label: sub.name
