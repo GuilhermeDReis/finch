@@ -42,69 +42,34 @@ export default function TransactionIndicators({ transaction }: TransactionIndica
           </TooltipContent>
         </Tooltip>
 
-        {/* Badge do Tipo de Transação */}
-        <Badge 
-          variant={transaction.type === 'income' ? 'income' : 'expense'}
-          className="text-xs font-medium w-fit"
-        >
-          {transaction.type === 'income' ? 'Entrada' : 'Saída'}
-        </Badge>
-
-        {/* Badges da IA (se houver sugestão) */}
+        {/* Badges da IA (se houver sugestão) - apenas confiança */}
         {transaction.aiSuggestion && (
-          <div className="flex flex-col gap-1">
-            {/* Badge de Confiança */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge 
-                  variant="secondary" 
-                  className={`text-xs border ${
-                    transaction.aiSuggestion.usedFallback
-                      ? 'bg-orange-50 text-orange-700 border-orange-200'
-                      : transaction.aiSuggestion.confidence >= 0.8 
-                      ? 'bg-green-50 text-green-700 border-green-200' 
-                      : transaction.aiSuggestion.confidence >= 0.5 
-                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                      : 'bg-gray-50 text-gray-600 border-gray-200'
-                  } w-fit`}
-                >
-                  {transaction.aiSuggestion.usedFallback ? '⚠️' : '🤖'} {Math.round(transaction.aiSuggestion.confidence * 100)}%
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p>{transaction.aiSuggestion.reasoning}</p>
-                {transaction.aiSuggestion.usedFallback && (
-                  <p className="text-xs mt-1 text-muted-foreground">
-                    Sistema de fallback usado devido à sobrecarga da IA
-                  </p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-
-            {/* Badge Manual vs IA */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge 
-                  variant="outline" 
-                  className={`text-xs border w-fit ${
-                    transaction.aiSuggestion.isAISuggested 
-                      ? 'border-blue-200 text-blue-700 bg-blue-50' 
-                      : 'border-gray-200 text-gray-600 bg-gray-50'
-                  }`}
-                >
-                  {transaction.aiSuggestion.isAISuggested ? '🤖 IA' : '👤 Manual'}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {transaction.aiSuggestion.isAISuggested 
-                    ? 'Categoria sugerida pela IA' 
-                    : 'Categoria definida manualmente'
-                  }
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge 
+                variant="secondary" 
+                className={`text-xs border ${
+                  transaction.aiSuggestion.usedFallback
+                    ? 'bg-orange-50 text-orange-700 border-orange-200'
+                    : transaction.aiSuggestion.confidence >= 0.8 
+                    ? 'bg-green-50 text-green-700 border-green-200' 
+                    : transaction.aiSuggestion.confidence >= 0.5 
+                    ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                } w-fit`}
+              >
+                {transaction.aiSuggestion.usedFallback ? '⚠️' : '🤖'} {Math.round(transaction.aiSuggestion.confidence * 100)}%
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p>{transaction.aiSuggestion.reasoning}</p>
+              {transaction.aiSuggestion.usedFallback && (
+                <p className="text-xs mt-1 text-muted-foreground">
+                  Sistema de fallback usado devido à sobrecarga da IA
                 </p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+              )}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
     </TooltipProvider>

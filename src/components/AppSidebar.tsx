@@ -1,3 +1,4 @@
+
 import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, User, LogOut } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,14 +35,14 @@ export function AppSidebar() {
 
   const isActive = (path: string) => {
     if (path === "/") {
-      return currentPath === "/" || currentPath === "/transactions";
+      return currentPath === "/" || currentPath === "/dashboard";
     }
-    return currentPath === path;
+    return currentPath === path || currentPath.startsWith(path);
   };
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-primary/10 text-primary border-r-2 border-primary font-medium" 
+      ? "bg-primary/10 text-primary font-medium" 
       : "text-muted-foreground hover:bg-muted hover:text-foreground";
 
   return (
@@ -49,9 +50,9 @@ export function AppSidebar() {
       className="border-r bg-background"
       collapsible="icon"
     >
-      <SidebarHeader className="border-b p-3">
+      <SidebarHeader className="border-b p-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <FileText className="h-5 w-5 text-primary-foreground" />
             </div>
@@ -64,8 +65,8 @@ export function AppSidebar() {
             )}
           </div>
           
-          {/* Botão de expandir/recolher dentro do sidebar */}
-          <SidebarTrigger className="h-8 w-8 p-0 hover:bg-muted rounded-md transition-colors">
+          {/* Botão de expandir/recolher */}
+          <SidebarTrigger className="h-7 w-7 p-0 hover:bg-muted rounded-md transition-colors">
             <Menu className="h-4 w-4" />
           </SidebarTrigger>
         </div>
@@ -79,7 +80,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 
-                    className={`h-11 ${isCollapsed ? 'justify-center px-0' : 'justify-start px-3'} transition-all duration-200`}
+                    className={`h-10 ${isCollapsed ? 'justify-center px-0' : 'justify-start px-3'} transition-all duration-200`}
                   >
                     <NavLink
                       to={item.url}
