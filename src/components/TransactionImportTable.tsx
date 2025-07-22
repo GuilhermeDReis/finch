@@ -11,6 +11,13 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import TransactionIndicators from './TransactionIndicators';
 import { supabase } from '@/integrations/supabase/client';
+import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
+import { 
+  validateAndFixDuplicateIds,
+  createIsolatedTransaction,
+  verifyTransactionIntegrity,
+  generateStableKey
+} from '@/utils/transactionIntegrity';
 import type { TransactionRow } from '@/types/transaction';
 
 interface Category {
@@ -34,47 +41,32 @@ interface TransactionImportTableProps {
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
-// Função para criar deep clone seguro
-const createDeepClone = <T,>(obj: T): T => {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (obj instanceof Date) return new Date(obj.getTime()) as unknown as T;
-  if (Array.isArray(obj)) return obj.map(item => createDeepClone(item)) as unknown as T;
-  
-  const cloned = {} as T;
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      cloned[key] = createDeepClone(obj[key]);
-    }
-  }
-  return cloned;
-};
-
-// Função para normalizar e validar dados de transação
+// Enhanced normalization with integrity checks
 const normalizeAndValidateTransaction = (transaction: TransactionRow): TransactionRow => {
-  const normalized = createDeepClone(transaction);
+  const normalized = createIsolatedTransaction(transaction);
   
-  // Garantir que subcategoryId seja sempre string ou undefined
+  // Ensure subcategoryId is always string or undefined
   normalized.subcategoryId = typeof transaction.subcategoryId === 'string' 
     ? transaction.subcategoryId 
     : undefined;
     
-  // Garantir que categoryId seja sempre string ou undefined
+  // Ensure categoryId is always string or undefined
   normalized.categoryId = typeof transaction.categoryId === 'string' 
     ? transaction.categoryId 
     : undefined;
     
-  // Garantir que description seja sempre string
+  // Ensure description is always string
   normalized.description = transaction.description || '';
   
-  // Garantir que amount seja sempre number
+  // Ensure amount is always number
   normalized.amount = typeof transaction.amount === 'number' ? transaction.amount : 0;
   
-  // Garantir que type seja válido
+  // Ensure type is valid
   normalized.type = transaction.type === 'income' || transaction.type === 'expense' 
     ? transaction.type 
     : 'expense';
 
-  // Validar e limpar subcategoryId se for um objeto
+  // Validate and clean subcategoryId if it's an object
   if (typeof transaction.subcategoryId === 'object' && transaction.subcategoryId !== null) {
     console.warn('🔧 [VALIDATION] Found object in subcategoryId, cleaning:', {
       transactionId: transaction.id,
@@ -83,7 +75,7 @@ const normalizeAndValidateTransaction = (transaction: TransactionRow): Transacti
     normalized.subcategoryId = undefined;
   }
 
-  // Validar e limpar categoryId se for um objeto
+  // Validate and clean categoryId if it's an object
   if (typeof transaction.categoryId === 'object' && transaction.categoryId !== null) {
     console.warn('🔧 [VALIDATION] Found object in categoryId, cleaning:', {
       transactionId: transaction.id,
@@ -92,18 +84,10 @@ const normalizeAndValidateTransaction = (transaction: TransactionRow): Transacti
     normalized.categoryId = undefined;
   }
 
-  console.log('🔧 [VALIDATION] Transaction normalized:', {
-    id: normalized.id,
-    categoryId: normalized.categoryId,
-    subcategoryId: normalized.subcategoryId,
-    categoryIdValid: typeof normalized.categoryId === 'string' || normalized.categoryId === undefined,
-    subcategoryIdValid: typeof normalized.subcategoryId === 'string' || normalized.subcategoryId === undefined
-  });
-
   return normalized;
 };
 
-// Componente memoizado para linha da transação
+// Enhanced TransactionRow component with stable keys
 const TransactionRow = React.memo(({
   transaction,
   categories,
@@ -135,27 +119,15 @@ const TransactionRow = React.memo(({
 }) => {
   const requiresAttention = needsAttention(transaction);
   
-  // Keys estáveis para os Comboboxes
-  const categoryKey = `category-${transaction.id}-${transaction.categoryId || 'none'}`;
-  const subcategoryKey = `subcategory-${transaction.id}-${transaction.categoryId || 'none'}-${transaction.subcategoryId || 'none'}`;
-  
-  console.log(`🔍 [RENDER] Rendering transaction ${transaction.id}:`, {
-    hasAISuggestion: !!transaction.aiSuggestion,
-    categoryId: transaction.categoryId,
-    subcategoryId: transaction.subcategoryId,
-    description: transaction.description,
-    categoryKey,
-    subcategoryKey,
-    categoryIdType: typeof transaction.categoryId,
-    subcategoryIdType: typeof transaction.subcategoryId
-  });
+  // Generate stable keys using the utility function
+  const categoryKey = generateStableKey(transaction, 'category-');
+  const subcategoryKey = generateStableKey(transaction, 'subcategory-');
   
   const handleCategoryChange = useCallback((value: string) => {
     console.log('🔄 [CATEGORY] Category selection changed:', { 
       transactionId: transaction.id, 
       oldValue: transaction.categoryId,
       newValue: value,
-      valueType: typeof value,
       timestamp: Date.now()
     });
     
@@ -174,7 +146,6 @@ const TransactionRow = React.memo(({
       transactionId: transaction.id, 
       oldValue: transaction.subcategoryId,
       newValue: value,
-      valueType: typeof value,
       categoryId: transaction.categoryId,
       timestamp: Date.now()
     });
@@ -335,6 +306,9 @@ export default function TransactionImportTable({
   
   const itemsPerPage = 50;
 
+  // Initialize integrity monitoring
+  const { setOperation } = useTransactionIntegrity(tableData, true);
+
   // Load categories and subcategories
   useEffect(() => {
     console.log('🔍 [DEBUG] TransactionImportTable mounted, loading categories and subcategories...');
@@ -342,25 +316,34 @@ export default function TransactionImportTable({
     loadSubcategories();
   }, []);
 
-  // Initialize table data when transactions change with validation
+  // Enhanced initialization with ID validation
   useEffect(() => {
     console.log('🔍 [DEBUG] transactions prop changed:', {
       length: transactions.length,
       firstTransaction: transactions[0],
-      transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length,
-      sampleTransactions: transactions.slice(0, 3).map(t => ({
-        id: t.id,
-        description: t.description,
-        categoryId: t.categoryId,
-        subcategoryId: t.subcategoryId,
-        hasAiSuggestion: !!t.aiSuggestion,
-        categoryIdType: typeof t.categoryId,
-        subcategoryIdType: typeof t.subcategoryId
-      }))
+      transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length
     });
     
-    // Normalizar e validar dados antes de processar
-    const normalizedTransactions = transactions.map(normalizeAndValidateTransaction);
+    if (transactions.length === 0) {
+      setTableData([]);
+      return;
+    }
+    
+    // Validate and fix duplicate IDs
+    const { transactions: fixedTransactions, hadDuplicates, duplicateReport } = validateAndFixDuplicateIds(transactions);
+    
+    if (hadDuplicates) {
+      console.warn('🚨 [IMPORT_TABLE] Fixed duplicate IDs during initialization:', {
+        duplicatesFixed: duplicateReport.length,
+        duplicateReport
+      });
+      
+      // Notify parent component of ID changes
+      onTransactionsUpdate(fixedTransactions);
+    }
+    
+    // Normalize and validate each transaction
+    const normalizedTransactions = fixedTransactions.map(normalizeAndValidateTransaction);
     
     const sortedData = [...normalizedTransactions]
       .sort((a, b) => {
@@ -373,23 +356,8 @@ export default function TransactionImportTable({
         }
       });
     
-    console.log('🔍 [DEBUG] sortedData after validation and processing:', {
-      length: sortedData.length,
-      firstTransactionWithAI: sortedData.find(t => t.aiSuggestion),
-      transactionsWithAI: sortedData.filter(t => t.aiSuggestion).length,
-      validatedData: sortedData.slice(0, 3).map(t => ({
-        id: t.id,
-        description: t.description,
-        categoryId: t.categoryId,
-        subcategoryId: t.subcategoryId,
-        hasAiSuggestion: !!t.aiSuggestion,
-        categoryIdType: typeof t.categoryId,
-        subcategoryIdType: typeof t.subcategoryId
-      }))
-    });
-    
     setTableData(sortedData);
-  }, [transactions, sortBy, sortOrder]);
+  }, [transactions, sortBy, sortOrder, onTransactionsUpdate]);
 
   const loadCategories = async () => {
     try {
@@ -476,79 +444,76 @@ export default function TransactionImportTable({
     }
   };
 
-  // Função de atualização melhorada com deep cloning e isolamento
+  // Enhanced update function with integrity verification
   const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
     console.log('🔄 [UPDATE] updateTransaction called:', { 
       id, 
       updates,
-      updatesKeys: Object.keys(updates),
-      categoryIdUpdate: updates.categoryId,
-      subcategoryIdUpdate: updates.subcategoryId,
-      categoryIdType: typeof updates.categoryId,
-      subcategoryIdType: typeof updates.subcategoryId,
       timestamp: Date.now()
     });
     
+    setOperation(`update-${id}`);
+    
     setTableData(prev => {
-      // Criar uma cópia completamente nova do array
+      // Create snapshot for integrity verification
+      const beforeSnapshot = prev.map(t => createIsolatedTransaction(t));
+      
+      // Verify that only one transaction has this ID
+      const transactionsWithSameId = prev.filter(t => t.id === id);
+      if (transactionsWithSameId.length > 1) {
+        console.error('🚨 [UPDATE] Multiple transactions with same ID detected:', {
+          id,
+          count: transactionsWithSameId.length,
+          transactions: transactionsWithSameId.map(t => ({
+            id: t.id,
+            description: t.description
+          }))
+        });
+      }
+      
+      // Create completely new array with isolated transactions
       const newData = prev.map(transaction => {
         if (transaction.id === id) {
-          // Encontrou a transação a ser atualizada
-          console.log('🔄 [UPDATE] Found transaction to update:', {
-            id,
-            before: {
-              categoryId: transaction.categoryId,
-              subcategoryId: transaction.subcategoryId,
-            }
-          });
+          // Create isolated copy and apply updates
+          const isolatedTransaction = createIsolatedTransaction(transaction);
           
-          // Criar deep clone da transação
-          const clonedTransaction = createDeepClone(transaction);
-          
-          // Aplicar updates de forma segura
           const updatedTransaction = {
-            ...clonedTransaction,
+            ...isolatedTransaction,
             ...updates,
-            // Garantir que IDs sejam strings válidas ou undefined
+            // Ensure IDs are strings or undefined
             categoryId: typeof updates.categoryId === 'string' && updates.categoryId !== '' 
               ? updates.categoryId 
-              : (updates.categoryId === '' ? undefined : clonedTransaction.categoryId),
+              : (updates.categoryId === '' ? undefined : isolatedTransaction.categoryId),
             subcategoryId: typeof updates.subcategoryId === 'string' && updates.subcategoryId !== '' 
               ? updates.subcategoryId 
-              : (updates.subcategoryId === '' ? undefined : clonedTransaction.subcategoryId)
+              : (updates.subcategoryId === '' ? undefined : isolatedTransaction.subcategoryId)
           };
           
-          // Normalizar o resultado
-          const normalizedTransaction = normalizeAndValidateTransaction(updatedTransaction);
-          
-          console.log('🔄 [UPDATE] Transaction updated:', {
-            id,
-            after: {
-              categoryId: normalizedTransaction.categoryId,
-              subcategoryId: normalizedTransaction.subcategoryId,
-            },
-            updates: updates,
-            timestamp: Date.now()
-          });
-          
-          return normalizedTransaction;
+          return normalizeAndValidateTransaction(updatedTransaction);
         }
         
-        // Para outras transações, retornar deep clone para garantir isolamento
-        return createDeepClone(transaction);
+        // Return isolated copy for other transactions
+        return createIsolatedTransaction(transaction);
       });
       
-      console.log('🔍 [UPDATE] updateTransaction result:', {
-        updatedTransaction: newData.find(t => t.id === id),
-        transactionsWithAI: newData.filter(t => t.aiSuggestion).length,
-        timestamp: Date.now()
-      });
+      // Verify integrity
+      const integrityOk = verifyTransactionIntegrity(
+        beforeSnapshot,
+        newData,
+        id,
+        `update-${Object.keys(updates).join(',')}`
+      );
       
-      // Atualizar o parent component
+      if (!integrityOk) {
+        console.error('🚨 [UPDATE] Rolling back due to integrity violation');
+        return prev; // Rollback on integrity violation
+      }
+      
+      // Update parent component
       onTransactionsUpdate(newData);
       return newData;
     });
-  }, [onTransactionsUpdate]);
+  }, [onTransactionsUpdate, setOperation]);
 
   const toggleRowSelection = useCallback((id: string) => {
     setSelectedRows(prev => {
@@ -592,7 +557,6 @@ export default function TransactionImportTable({
     setSelectedRows(new Set());
   }, [bulkCategory, bulkSubcategory, selectedRows, updateTransaction]);
 
-  // Função otimizada para filtrar subcategorias
   const getFilteredSubcategories = useCallback((categoryId: string) => {
     if (!categoryId) return [];
     const filtered = subcategories.filter(sub => sub.category_id === categoryId);
@@ -826,7 +790,7 @@ export default function TransactionImportTable({
               <TableBody>
                 {getCurrentPageData().map(transaction => (
                   <TransactionRow
-                    key={`transaction-${transaction.id}`}
+                    key={generateStableKey(transaction, 'transaction-')}
                     transaction={transaction}
                     categories={categories}
                     subcategories={subcategories}
