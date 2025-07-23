@@ -132,24 +132,21 @@ export default function ImportExtract() {
         // Create visible transactions list - only include transactions that should be shown
         const visibleTransactions = [
           ...duplicateResults.newTransactions,
-          // Add refund representative transactions (value 0, no category/subcategory)
+          // Add refund representative transactions (no category/subcategory)
           ...duplicateResults.refundedTransactions.map(r => ({
             ...r.originalTransaction,
             id: `refund-${r.id}`,
-            amount: 0, // Zero value represents total refund
             status: 'refunded' as const,
             categoryId: undefined,
             subcategoryId: undefined,
-            description: `Estorno Total: ${r.originalTransaction.description}`,
-            selected: true
+            description: `${r.originalTransaction.description} (Estorno)`
           })),
           // Add unified PIX representative transactions
           ...duplicateResults.unifiedPixTransactions.map(u => ({
             ...u.pixTransaction,
             id: `unified-pix-${u.id}`,
             status: 'unified-pix' as const,
-            description: `PIX Crédito: ${u.pixTransaction.description}`,
-            selected: true
+            description: `PIX Crédito: ${u.pixTransaction.description}`
           }))
         ];
 
@@ -294,16 +291,14 @@ export default function ImportExtract() {
       // Add new transactions
       visibleTransactions.push(...duplicateAnalysis.newTransactions);
       
-      // Add refund representative transactions (value 0, no category/subcategory)
+      // Add refund representative transactions (no category/subcategory)
       visibleTransactions.push(...duplicateAnalysis.refundedTransactions.map(r => ({
         ...r.originalTransaction,
         id: `refund-${r.id}`,
-        amount: 0, // Zero value represents total refund
         status: 'refunded' as const,
         categoryId: undefined,
         subcategoryId: undefined,
-        description: `Estorno Total: ${r.originalTransaction.description}`,
-        selected: true
+        description: `${r.originalTransaction.description} (Estorno)`
       })));
       
       // Add unified PIX representative transactions
