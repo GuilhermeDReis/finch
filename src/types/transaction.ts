@@ -62,6 +62,7 @@ export interface TransactionRow {
   status?: TransactionStatus;
   groupedWith?: string[]; // IDs of transactions this is grouped with
   groupType?: 'refund' | 'pix-credit';
+  isGrouped?: boolean;
 }
 
 export interface RefundedTransaction {

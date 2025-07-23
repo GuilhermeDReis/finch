@@ -12,7 +12,7 @@ import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
 import DuplicateAnalysisCard from '@/components/DuplicateAnalysisCard';
 import ImportResultsCard from '@/components/ImportResultsCard';
-import LoadingOverlay from '@/components/LoadingOverlay';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
@@ -45,7 +45,10 @@ export default function ImportExtract() {
   const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
     duplicates: any[];
     newTransactions: TransactionRow[];
+    refundedTransactions: RefundedTransaction[];
+    unifiedPixTransactions: UnifiedPixTransaction[];
   } | null>(null);
+  const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
   const { toast } = useToast();
 
   const handleDataParsed = async (parsedTransactions: TransactionRow[]) => {
@@ -134,7 +137,7 @@ export default function ImportExtract() {
         throw sessionError;
       }
 
-      setImportSession(session);
+      setImportSession(session as ImportSession);
 
       // Process with AI categorization
       const { data: categorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
@@ -380,16 +383,39 @@ export default function ImportExtract() {
 
       {/* Step Content */}
       {currentStep === 'upload' && (
-        <CSVUploader onDataParsed={handleDataParsed} />
+        <CSVUploader 
+          onDataParsed={handleDataParsed}
+          onError={(error) => {
+            console.error('CSV Upload Error:', error);
+            toast({
+              title: "Erro ao processar arquivo CSV",
+              description: error,
+              variant: "destructive"
+            });
+          }}
+        />
       )}
 
       {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
         <DuplicateAnalysisCard
-          duplicates={duplicateAnalysis.duplicates}
-          newTransactions={duplicateAnalysis.newTransactions}
-          refundedTransactions={refundedTransactions}
-          unifiedPixTransactions={unifiedPixTransactions}
-          onComplete={handleDuplicateAnalysisComplete}
+          analysis={{
+            totalNew: duplicateAnalysis.newTransactions.length,
+            totalDuplicates: duplicateAnalysis.duplicates.length,
+            ...duplicateAnalysis
+          }}
+          selectedMode={selectedImportMode}
+          onModeChange={setSelectedImportMode}
+          onProceed={async () => {
+            await handleDuplicateAnalysisComplete(
+              [...duplicateAnalysis.newTransactions, ...duplicateAnalysis.duplicates.map(d => d.new)],
+              selectedImportMode === 'new-only' ? 'import' : 
+              selectedImportMode === 'update-existing' ? 'overwrite' : 'import'
+            );
+          }}
+          onCancel={() => {
+            setDuplicateAnalysis(null);
+            setCurrentStep('upload');
+          }}
         />
       )}
 
@@ -456,13 +482,20 @@ export default function ImportExtract() {
 
       {currentStep === 'results' && importResults && (
         <ImportResultsCard
-          results={importResults}
-          onNewImport={resetImport}
+          result={{
+            successful: importResults.imported,
+            failed: 0,
+            skipped: importResults.skipped,
+            updated: 0,
+            total: importResults.imported + importResults.skipped,
+            errors: importResults.errors
+          }}
+          onClose={resetImport}
         />
       )}
 
       {/* Loading Overlay */}
-      {isProcessing && <LoadingOverlay />}
+      <LoadingOverlay isVisible={isProcessing} />
     </div>
   );
 }

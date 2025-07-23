@@ -1,6 +1,20 @@
 
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
+export interface DuplicateAnalysis {
+  totalNew: number;
+  totalDuplicates: number;
+  duplicates: Array<{
+    existing: any;
+    new: TransactionRow;
+    similarity: number;
+    reasons: string[];
+  }>;
+  newTransactions: TransactionRow[];
+  refundedTransactions: RefundedTransaction[];
+  unifiedPixTransactions: UnifiedPixTransaction[];
+}
+
 export interface DuplicateDetectionResult {
   duplicates: Array<{
     existing: any;
