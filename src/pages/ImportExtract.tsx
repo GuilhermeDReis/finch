@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,16 +129,28 @@ export default function ImportExtract() {
       } else {
         console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
         
-        // Automatically select "import-all" and proceed with all transactions
-        const allTransactions = [
+        // Create visible transactions list - only include transactions that should be shown
+        const visibleTransactions = [
           ...duplicateResults.newTransactions,
-          ...duplicateResults.refundedTransactions.map(r => r.originalTransaction),
-          ...duplicateResults.refundedTransactions.map(r => r.refundTransaction),
-          ...duplicateResults.unifiedPixTransactions.map(u => u.creditTransaction),
-          ...duplicateResults.unifiedPixTransactions.map(u => u.pixTransaction)
+          // Add refund representative transactions (no category/subcategory)
+          ...duplicateResults.refundedTransactions.map(r => ({
+            ...r.originalTransaction,
+            id: `refund-${r.id}`,
+            status: 'refunded' as const,
+            categoryId: undefined,
+            subcategoryId: undefined,
+            description: `${r.originalTransaction.description} (Estorno)`
+          })),
+          // Add unified PIX representative transactions
+          ...duplicateResults.unifiedPixTransactions.map(u => ({
+            ...u.pixTransaction,
+            id: `unified-pix-${u.id}`,
+            status: 'unified-pix' as const,
+            description: `PIX Crédito: ${u.pixTransaction.description}`
+          }))
         ];
 
-        await handleAICategorization(allTransactions);
+        await handleAICategorization(visibleTransactions);
       }
 
     } catch (error) {
@@ -273,8 +284,39 @@ export default function ImportExtract() {
       return;
     }
 
+    // Create visible transactions list based on selected mode
+    const visibleTransactions = [];
+    
+    if (duplicateAnalysis) {
+      // Add new transactions
+      visibleTransactions.push(...duplicateAnalysis.newTransactions);
+      
+      // Add refund representative transactions (no category/subcategory)
+      visibleTransactions.push(...duplicateAnalysis.refundedTransactions.map(r => ({
+        ...r.originalTransaction,
+        id: `refund-${r.id}`,
+        status: 'refunded' as const,
+        categoryId: undefined,
+        subcategoryId: undefined,
+        description: `${r.originalTransaction.description} (Estorno)`
+      })));
+      
+      // Add unified PIX representative transactions
+      visibleTransactions.push(...duplicateAnalysis.unifiedPixTransactions.map(u => ({
+        ...u.pixTransaction,
+        id: `unified-pix-${u.id}`,
+        status: 'unified-pix' as const,
+        description: `PIX Crédito: ${u.pixTransaction.description}`
+      })));
+      
+      // Add duplicates based on selected mode
+      if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
+        visibleTransactions.push(...duplicateAnalysis.duplicates.map(d => d.new));
+      }
+    }
+
     // Continue with AI categorization
-    await handleAICategorization(selectedTransactions);
+    await handleAICategorization(visibleTransactions);
   };
 
   const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
