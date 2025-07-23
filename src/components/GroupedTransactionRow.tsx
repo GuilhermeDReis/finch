@@ -56,7 +56,7 @@ export default function GroupedTransactionRow({
       </TableCell>
       
       <TableCell>
-        <span className={`font-semibold ${isRefund ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
+        <span className="font-semibold text-gray-500 line-through">
           {formatCurrency(displayInfo.amount)}
         </span>
       </TableCell>
@@ -71,7 +71,7 @@ export default function GroupedTransactionRow({
       </TableCell>
 
       <TableCell>
-        <Badge variant={displayInfo.badgeVariant} className="flex items-center gap-1 text-xs px-2 py-1">
+        <Badge variant={displayInfo.badgeVariant} className="flex items-center gap-1">
           <AlertCircle className="h-3 w-3" />
           {displayInfo.badgeText}
         </Badge>

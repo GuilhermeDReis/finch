@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Upload, FileText, Save, X, Trash2, Bot, Loader2, Building2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -31,19 +32,6 @@ export default function ImportExtract() {
   const [isAnalyzingDuplicates, setIsAnalyzingDuplicates] = useState(false);
   const [filename, setFilename] = useState('');
   const { toast } = useToast();
-
-  const getStats = () => {
-    const categorized = processedData.filter(t => t.categoryId).length;
-    const uncategorized = processedData.length - categorized;
-    
-    // Calculate totals including unified PIX transactions
-    const transactionValue = processedData.reduce((sum, t) => sum + (t.type === 'expense' ? -t.amount : t.amount), 0);
-    const unifiedPixValue = duplicateAnalysis?.unifiedPixTransactions.reduce((sum, t) => sum - t.pixTransaction.amount, 0) || 0;
-    
-    const totalValue = transactionValue + unifiedPixValue;
-
-    return { categorized, uncategorized, totalValue };
-  };
 
   const handleDataParsed = async (data: TransactionRow[]) => {
     console.log('🔍 [DEBUG] handleDataParsed called with data:', {
@@ -445,9 +433,9 @@ export default function ImportExtract() {
               amount: unified.pixTransaction.amount,
               description: `PIX (via Crédito): ${unified.pixTransaction.description}`,
               original_description: unified.pixTransaction.originalDescription,
-              category_id: unified.categoryId || null,
+              category_id: null,
               subcategory_id: null,
-              type: 'expense', // Always expense for credit totals
+              type: 'expense',
               import_session_id: session.id,
               payment_method: 'PIX',
               notes: JSON.stringify({
@@ -504,6 +492,14 @@ export default function ImportExtract() {
     } finally {
       setIsImporting(false);
     }
+  };
+
+  const getStats = () => {
+    const categorized = processedData.filter(t => t.categoryId).length;
+    const uncategorized = processedData.length - categorized;
+    const totalValue = processedData.reduce((sum, t) => sum + (t.type === 'expense' ? -t.amount : t.amount), 0);
+
+    return { categorized, uncategorized, totalValue };
   };
 
   const stats = getStats();

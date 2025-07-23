@@ -1,3 +1,4 @@
+
 export type TransactionType = 'income' | 'expense';
 
 export type PaymentMethod = 
@@ -75,8 +76,6 @@ export interface UnifiedPixTransaction {
   creditTransaction: TransactionRow;
   pixTransaction: TransactionRow;
   status: 'unified-pix';
-  categoryId?: string; // Add category for PIX unified transactions
-  type: 'expense'; // Always expense for credit totals
 }
 
 export interface TransactionFormData {
