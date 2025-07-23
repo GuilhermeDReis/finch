@@ -403,49 +403,32 @@ serve(async (req) => {
       const incomeCategories = categories.filter((cat: Category) => cat.type === 'income');
       const expenseCategories = categories.filter((cat: Category) => cat.type === 'expense');
 
-      const prompt = `Você é um especialista em categorização de transações financeiras BRASILEIRAS.
+      // Optimized prompt - shorter and clearer
+      const prompt = `Categorize these ${transactions.length} Brazilian transactions. Return ONLY valid JSON array.
 
-IMPORTANTE: Se você detectar que uma transação foi classificada incorretamente como receita/gasto, pode sugerir uma categoria do tipo correto e indicar isso no reasoning.
+INCOME CATEGORIES:
+${incomeCategories.map((cat: Category) => `${cat.id}:${cat.name}`).join('\n')}
 
-CATEGORIAS DISPONÍVEIS:
+EXPENSE CATEGORIES:
+${expenseCategories.map((cat: Category) => `${cat.id}:${cat.name}`).join('\n')}
 
-RECEITAS:
-${incomeCategories.map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
+KEY RULES:
+- iFood/Uber/99/D Market = expense
+- PIX "enviada" = expense, "recebida" = income
+- If type seems wrong, correct it
 
-GASTOS:
-${expenseCategories.map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
-
-SUBCATEGORIAS:
-${categories.map((cat: Category) => {
-  const catSubcategories = subcategories.filter((sub: Subcategory) => sub.category_id === cat.id);
-  return `${cat.name}:\n${catSubcategories.map((sub: Subcategory) => `  ${sub.id}: ${sub.name}`).join('\n')}`;
-}).join('\n\n')}
-
-TRANSAÇÕES PARA ANÁLISE:
+TRANSACTIONS:
 ${transactionsWithType.map((t: any, index: number) => 
-  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | DETECTADO_COMO: ${t.detectedType.toUpperCase()} | ${t.date}`
+  `${index}. "${t.description}" R$${t.amount} TYPE:${t.detectedType}`
 ).join('\n')}
 
-INSTRUÇÕES IMPORTANTES:
-1. Analise estabelecimentos e padrões BRASILEIROS (Uber, iFood, D Market, etc.)
-2. UBER, 99, TAXI, IFOOD, D MARKET, AMERICANAS = sempre GASTOS (expense)
-3. "PIX enviado", "Transferência enviada" = sempre GASTOS (expense)
-4. "PIX recebido", "Transferência recebida" = sempre RECEITAS (income)
-5. Se detectar erro de tipo, use categoria correta e explique no reasoning
-6. Seja CONFIANTE (confiança 0.7+) para empresas conhecidas
-7. Use confiança 0.5-0.7 para padrões reconhecíveis
-8. Use confiança 0.3-0.5 apenas para casos duvidosos
+Return ONLY this JSON format:
+[{"transaction_index":0,"category_id":"uuid","subcategory_id":null,"confidence":0.8,"reasoning":"explanation"}]`;
 
-RESPONDA APENAS COM JSON:
-[
-  {
-    "transaction_index": 0,
-    "category_id": "uuid-da-categoria",
-    "subcategory_id": "uuid-ou-null",
-    "confidence": 0.85,
-    "reasoning": "Uber é sempre transporte/gasto, mesmo que detectado como receita"
-  }
-]`;
+      // Log the prompt for analysis
+      console.log('🔍 [GEMINI_PROMPT] Sending prompt to Gemini:');
+      console.log('📝 [PROMPT_CONTENT]:', prompt);
+      console.log('📊 [PROMPT_STATS] Length:', prompt.length, 'chars, Transactions:', transactions.length);
 
       console.log('🤖 [AI] Sending enhanced request to Gemini...');
       
@@ -453,22 +436,46 @@ RESPONDA APENAS COM JSON:
 
       if (geminiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
         const responseText = geminiResponse.candidates[0].content.parts[0].text;
-        console.log('📝 [AI] Raw response:', responseText.substring(0, 300) + '...');
+        console.log('🔍 [GEMINI_RESPONSE] Full response received:');
+        console.log('📄 [RESPONSE_TEXT]:', responseText);
+        console.log('📊 [RESPONSE_STATS] Length:', responseText.length, 'chars');
         
         try {
-          // Extract JSON from response
-          const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-            aiSuggestions = JSON.parse(jsonMatch[0]);
-            console.log(`✅ [AI] Parsed ${aiSuggestions.length} suggestions successfully`);
-          } else {
-            throw new Error('No JSON array found in response');
+          // Try multiple parsing strategies
+          let jsonText = responseText.trim();
+          
+          // Remove markdown formatting if present
+          if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/```json\n?/, '').replace(/```\n?$/, '').trim();
           }
+          
+          // Try to extract JSON array
+          const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            jsonText = jsonMatch[0];
+            console.log('🎯 [PARSING] Extracted JSON array:', jsonText.substring(0, 200) + '...');
+          }
+          
+          // Parse the JSON
+          aiSuggestions = JSON.parse(jsonText);
+          console.log(`✅ [AI] Successfully parsed ${aiSuggestions.length} suggestions`);
+          
+          // Validate the structure
+          if (!Array.isArray(aiSuggestions)) {
+            throw new Error('Response is not an array');
+          }
+          
+          if (aiSuggestions.length !== transactions.length) {
+            console.warn(`⚠️ [AI] Expected ${transactions.length} suggestions, got ${aiSuggestions.length}`);
+          }
+          
         } catch (parseError) {
           console.error('❌ [AI] Parse error:', parseError);
-          throw new Error('Failed to parse AI response');
+          console.error('🔍 [DEBUG] Raw response that failed to parse:', responseText);
+          throw new Error(`Failed to parse AI response: ${parseError.message}`);
         }
       } else {
+        console.error('❌ [GEMINI] Invalid response structure:', geminiResponse);
         throw new Error('Invalid response format from Gemini API');
       }
 
