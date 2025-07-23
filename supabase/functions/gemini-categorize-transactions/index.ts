@@ -45,10 +45,6 @@ serve(async (req) => {
 
     console.log('📊 [AI] Loaded', categories.length, 'categories and', subcategories.length, 'subcategories');
 
-    // Create category mapping for faster lookups
-    const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
-    const subcategoryMap = new Map(subcategories.map(sub => [sub.id, sub]));
-
     // Enhanced fallback patterns with Academia fix
     const fallbackPatterns = [
       // Health and fitness - prioritize ACADEMIA
@@ -90,11 +86,11 @@ serve(async (req) => {
       { keywords: ['pix recebido', 'transferencia recebida'], category: 'Renda', subcategory: 'Transferências' }
     ];
 
-    // Process transactions with enhanced fallback
-    const categorizedTransactions = transactions.map((transaction: any) => {
+    // Helper function to use fallback patterns
+    const categorizewithFallback = (transaction: any) => {
       const description = transaction.description.toLowerCase();
       
-      // Try fallback patterns first (prioritizing ACADEMIA)
+      // Try fallback patterns first
       for (const pattern of fallbackPatterns) {
         if (pattern.keywords.some(keyword => description.includes(keyword))) {
           const category = categories.find(cat => cat.name === pattern.category);
@@ -108,7 +104,7 @@ serve(async (req) => {
               id: transaction.id,
               categoryId: category.id,
               subcategoryId: subcategory.id,
-              confidence: 0.8,
+              confidence: 0.75,
               reasoning: `Categorizado por padrão: ${pattern.keywords.find(k => description.includes(k))}`,
               isAISuggested: true,
               usedFallback: true
@@ -123,8 +119,6 @@ serve(async (req) => {
         sub.name === 'Diversos' && sub.category_id === defaultCategory?.id
       );
       
-      console.log('⚠️ [AI] No pattern match for', transaction.description, '→ using default category');
-      
       return {
         id: transaction.id,
         categoryId: defaultCategory?.id,
@@ -134,7 +128,131 @@ serve(async (req) => {
         isAISuggested: true,
         usedFallback: true
       };
-    });
+    };
+
+    // Try to use Gemini AI first
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    let categorizedTransactions: any[] = [];
+
+    if (geminiApiKey) {
+      try {
+        console.log('🤖 [AI] Attempting Gemini AI categorization');
+        
+        // Prepare categories and subcategories for Gemini
+        const categoryData = categories.map(cat => ({
+          id: cat.id,
+          name: cat.name,
+          type: cat.type,
+          subcategories: subcategories.filter(sub => sub.category_id === cat.id).map(sub => ({
+            id: sub.id,
+            name: sub.name
+          }))
+        }));
+
+        // Prepare transactions for Gemini (limit to avoid token limits)
+        const transactionsForAI = transactions.slice(0, 50).map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          amount: t.amount,
+          type: t.type
+        }));
+
+        const prompt = `
+Você é um assistente de categorização financeira. Categorize as seguintes transações usando as categorias e subcategorias fornecidas.
+
+CATEGORIAS E SUBCATEGORIAS DISPONÍVEIS:
+${JSON.stringify(categoryData, null, 2)}
+
+TRANSAÇÕES PARA CATEGORIZAR:
+${JSON.stringify(transactionsForAI, null, 2)}
+
+INSTRUÇÕES:
+1. Para cada transação, escolha a categoria e subcategoria mais apropriada
+2. Considere o contexto da descrição, valor e tipo da transação
+3. Use sua experiência com transações financeiras brasileiras
+4. Retorne APENAS um array JSON válido com o formato:
+[
+  {
+    "id": "transaction_id",
+    "categoryId": "category_uuid",
+    "subcategoryId": "subcategory_uuid",
+    "confidence": 0.95,
+    "reasoning": "Explicação breve da categorização"
+  }
+]
+
+IMPORTANTE: Retorne apenas o JSON, sem texto adicional.
+`;
+
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.1,
+                topK: 1,
+                topP: 0.8,
+                maxOutputTokens: 8192,
+              },
+            }),
+          }
+        );
+
+        if (geminiResponse.ok) {
+          const geminiData = await geminiResponse.json();
+          const geminiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (geminiText) {
+            try {
+              // Clean up the response to extract JSON
+              const cleanedText = geminiText.replace(/```json\n?|\n?```/g, '').trim();
+              const geminiResults = JSON.parse(cleanedText);
+              
+              console.log('✅ [AI] Gemini AI categorization successful for', geminiResults.length, 'transactions');
+              
+              // Process all transactions with Gemini results + fallback for remaining
+              categorizedTransactions = transactions.map((transaction: any) => {
+                const geminiResult = geminiResults.find((r: any) => r.id === transaction.id);
+                
+                if (geminiResult) {
+                  return {
+                    ...geminiResult,
+                    isAISuggested: true,
+                    usedFallback: false
+                  };
+                } else {
+                  // Use fallback for transactions not processed by Gemini
+                  return categorizewithFallback(transaction);
+                }
+              });
+              
+            } catch (parseError) {
+              console.error('❌ [AI] Error parsing Gemini response:', parseError);
+              throw parseError;
+            }
+          } else {
+            throw new Error('Empty response from Gemini');
+          }
+        } else {
+          throw new Error(`Gemini API error: ${geminiResponse.status}`);
+        }
+      } catch (geminiError) {
+        console.error('❌ [AI] Gemini AI failed, falling back to patterns:', geminiError);
+        
+        // Fallback to pattern-based categorization
+        categorizedTransactions = transactions.map(categorizewithFallback);
+      }
+    } else {
+      console.log('⚠️ [AI] No Gemini API key found, using fallback patterns');
+      
+      // Use fallback patterns only
+      categorizedTransactions = transactions.map(categorizewithFallback);
+    }
 
     console.log('✅ [AI] Categorization completed for', categorizedTransactions.length, 'transactions');
 
