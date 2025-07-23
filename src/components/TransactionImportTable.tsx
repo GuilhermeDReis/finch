@@ -1,41 +1,17 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Check, X, Edit2, Save, AlertCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Checkbox } from './ui/checkbox';
-import { Badge } from './ui/badge';
-import { Alert, AlertDescription } from './ui/alert';
-import { Combobox } from './ui/combobox';
-import TransactionIndicators from './TransactionIndicators';
-import GroupedTransactionRow from './GroupedTransactionRow';
+import { Textarea } from './ui/textarea';
+import { Edit2, Save, X, Bot, Sparkles, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
-import { 
-  validateAndFixDuplicateIds,
-  createIsolatedTransaction,
-  verifyTransactionIntegrity,
-  generateStableKey
-} from '@/utils/transactionIntegrity';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
-
-interface Category {
-  id: string;
-  name: string;
-  type: 'income' | 'expense';
-  color: string;
-  icon?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface Subcategory {
-  id: string;
-  name: string;
-  category_id: string;
-}
+import GroupedTransactionRow from './GroupedTransactionRow';
 
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
@@ -44,828 +20,381 @@ interface TransactionImportTableProps {
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
-// Enhanced normalization with integrity checks
-const normalizeAndValidateTransaction = (transaction: TransactionRow): TransactionRow => {
-  const normalized = createIsolatedTransaction(transaction);
-  
-  // Ensure subcategoryId is always string or undefined
-  normalized.subcategoryId = typeof transaction.subcategoryId === 'string' 
-    ? transaction.subcategoryId 
-    : undefined;
-    
-  // Ensure categoryId is always string or undefined
-  normalized.categoryId = typeof transaction.categoryId === 'string' 
-    ? transaction.categoryId 
-    : undefined;
-    
-  // Ensure description is always string
-  normalized.description = transaction.description || '';
-  
-  // Ensure amount is always number
-  normalized.amount = typeof transaction.amount === 'number' ? transaction.amount : 0;
-  
-  // Ensure type is valid
-  normalized.type = transaction.type === 'income' || transaction.type === 'expense' 
-    ? transaction.type 
-    : 'expense';
+// Create a unified type for rendering
+type RenderableTransaction = TransactionRow | RefundedTransaction | UnifiedPixTransaction;
 
-  // Validate and clean subcategoryId if it's an object
-  if (typeof transaction.subcategoryId === 'object' && transaction.subcategoryId !== null) {
-    console.warn('🔧 [VALIDATION] Found object in subcategoryId, cleaning:', {
-      transactionId: transaction.id,
-      subcategoryId: transaction.subcategoryId
-    });
-    normalized.subcategoryId = undefined;
-  }
-
-  // Validate and clean categoryId if it's an object
-  if (typeof transaction.categoryId === 'object' && transaction.categoryId !== null) {
-    console.warn('🔧 [VALIDATION] Found object in categoryId, cleaning:', {
-      transactionId: transaction.id,
-      categoryId: transaction.categoryId
-    });
-    normalized.categoryId = undefined;
-  }
-
-  return normalized;
-};
-
-// Component-level functions that will be used by TransactionRow
-const getFilteredCategoriesByType = (categoryOptions: Array<{value: string; label: string; type: string}>, transactionType: 'income' | 'expense') => {
-  return categoryOptions.filter(cat => cat.type === transactionType);
-};
-
-// Enhanced TransactionRow component with stable keys
-const TransactionRow = React.memo(({
-  transaction,
-  categories,
-  subcategories,
-  selectedRows,
-  loadingCategories,
-  loadingSubcategories,
-  categoryOptions,
-  onUpdateTransaction,
-  onToggleSelection,
-  needsAttention,
-  getFilteredSubcategories,
-  formatCurrency,
-  formatDate
-}: {
-  transaction: TransactionRow;
-  categories: Category[];
-  subcategories: Subcategory[];
-  selectedRows: Set<string>;
-  loadingCategories: boolean;
-  loadingSubcategories: boolean;
-  categoryOptions: Array<{value: string; label: string; type: string}>;
-  onUpdateTransaction: (id: string, updates: Partial<TransactionRow>) => void;
-  onToggleSelection: (id: string) => void;
-  needsAttention: (transaction: TransactionRow) => boolean;
-  getFilteredSubcategories: (categoryId: string) => Subcategory[];
-  formatCurrency: (amount: number) => string;
-  formatDate: (dateStr: string) => string;
-}) => {
-  const requiresAttention = needsAttention(transaction);
-  
-  // Generate stable keys using the utility function
-  const categoryKey = generateStableKey(transaction, 'category-');
-  const subcategoryKey = generateStableKey(transaction, 'subcategory-');
-  
-  const handleCategoryChange = useCallback((value: string) => {
-    console.log('🔄 [CATEGORY] Category selection changed:', { 
-      transactionId: transaction.id, 
-      oldValue: transaction.categoryId,
-      newValue: value,
-      timestamp: Date.now()
-    });
-    
-    onUpdateTransaction(transaction.id, {
-      categoryId: value,
-      subcategoryId: undefined, // Reset subcategory when category changes
-      aiSuggestion: transaction.aiSuggestion ? {
-        ...transaction.aiSuggestion,
-        isAISuggested: false // Mark as manually modified
-      } : undefined
-    });
-  }, [transaction.id, transaction.categoryId, transaction.aiSuggestion, onUpdateTransaction]);
-  
-  const handleSubcategoryChange = useCallback((value: string) => {
-    console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
-      transactionId: transaction.id, 
-      oldValue: transaction.subcategoryId,
-      newValue: value,
-      categoryId: transaction.categoryId,
-      timestamp: Date.now()
-    });
-    
-    onUpdateTransaction(transaction.id, {
-      subcategoryId: value
-    });
-  }, [transaction.id, transaction.subcategoryId, transaction.categoryId, onUpdateTransaction]);
-  
-  const handleDescriptionChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateTransaction(transaction.id, {
-      editedDescription: e.target.value
-    });
-  }, [transaction.id, onUpdateTransaction]);
-  
-  const handleDescriptionBlur = useCallback(() => {
-    onUpdateTransaction(transaction.id, {
-      isEditing: false,
-      description: transaction.editedDescription || transaction.description
-    });
-  }, [transaction.id, transaction.editedDescription, transaction.description, onUpdateTransaction]);
-  
-  const handleDescriptionKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      onUpdateTransaction(transaction.id, {
-        isEditing: false,
-        description: transaction.editedDescription || transaction.description
-      });
-    }
-  }, [transaction.id, transaction.editedDescription, transaction.description, onUpdateTransaction]);
-  
-  const handleEditToggle = useCallback(() => {
-    onUpdateTransaction(transaction.id, {
-      isEditing: !transaction.isEditing,
-      editedDescription: transaction.description
-    });
-  }, [transaction.id, transaction.isEditing, transaction.description, onUpdateTransaction]);
-  
-  const handleRowToggle = useCallback(() => {
-    onToggleSelection(transaction.id);
-  }, [transaction.id, onToggleSelection]);
-  
-  return (
-    <TableRow 
-      key={transaction.id}
-      className={`
-        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
-        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
-        transition-colors duration-200
-      `}
-    >
-      <TableCell>
-        <Checkbox
-          checked={selectedRows.has(transaction.id)}
-          onCheckedChange={handleRowToggle}
-        />
-      </TableCell>
-      
-      <TableCell className="font-mono text-sm">
-        {formatDate(transaction.date)}
-      </TableCell>
-      
-      <TableCell>
-        <span className={`font-semibold ${
-          transaction.type === 'income' ? 'text-success' : 'text-destructive'
-        }`}>
-          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-        </span>
-      </TableCell>
-      
-      <TableCell>
-        {transaction.isEditing ? (
-          <Input
-            value={transaction.editedDescription || transaction.description}
-            onChange={handleDescriptionChange}
-            onBlur={handleDescriptionBlur}
-            onKeyDown={handleDescriptionKeyDown}
-            autoFocus
-          />
-        ) : (
-          <div className="max-w-xs" title={transaction.description}>
-            <span className="block truncate">{transaction.description}</span>
-            {requiresAttention && (
-              <div className="flex items-center gap-1 mt-1">
-                <AlertCircle className="h-3 w-3 text-yellow-600" />
-                <span className="text-xs text-yellow-600">Requer atenção</span>
-              </div>
-            )}
-          </div>
-        )}
-      </TableCell>
-
-      <TableCell>
-        <TransactionIndicators transaction={transaction} />
-      </TableCell>
-      
-      <TableCell>
-        <Combobox
-          key={categoryKey}
-          value={transaction.categoryId || ''}
-          onValueChange={handleCategoryChange}
-          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-          searchPlaceholder="Buscar categoria..."
-          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-          width="w-60"
-          disabled={loadingCategories}
-        />
-      </TableCell>
-      
-      <TableCell>
-        <Combobox
-          key={subcategoryKey}
-          value={transaction.subcategoryId || ''}
-          onValueChange={handleSubcategoryChange}
-          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-            value: sub.id,
-            label: sub.name
-          }))}
-          placeholder="Selecionar subcategoria"
-          disabled={!transaction.categoryId || loadingSubcategories}
-          searchPlaceholder="Buscar subcategoria..."
-          emptyText="Nenhuma subcategoria encontrada"
-          width="w-60"
-        />
-      </TableCell>
-      
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleEditToggle}
-        >
-          <Edit2 className="h-4 w-4" />
-        </Button>
-      </TableCell>
-    </TableRow>
-  );
-});
-
-TransactionRow.displayName = 'TransactionRow';
-
-export default function TransactionImportTable({ 
-  transactions, 
+export default function TransactionImportTable({
+  transactions,
   refundedTransactions = [],
   unifiedPixTransactions = [],
-  onTransactionsUpdate 
+  onTransactionsUpdate
 }: TransactionImportTableProps) {
-  const [tableData, setTableData] = useState<TransactionRow[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [loadingCategories, setLoadingCategories] = useState(true);
-  const [loadingSubcategories, setLoadingSubcategories] = useState(true);
-  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-  const [bulkCategory, setBulkCategory] = useState('');
-  const [bulkSubcategory, setBulkSubcategory] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  
-  const itemsPerPage = 50;
+  const [categories, setCategories] = useState<any[]>([]);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDescription, setEditingDescription] = useState('');
+  const [allSelected, setAllSelected] = useState(false);
+  const { toast } = useToast();
 
-  // Initialize integrity monitoring
-  const { setOperation } = useTransactionIntegrity(tableData, true);
-
-  // Load categories and subcategories
   useEffect(() => {
-    console.log('🔍 [DEBUG] TransactionImportTable mounted, loading categories and subcategories...');
-    loadCategories();
-    loadSubcategories();
-  }, []);
-
-  // Enhanced initialization with ID validation
-  useEffect(() => {
-    console.log('🔍 [DEBUG] transactions prop changed:', {
-      length: transactions.length,
-      firstTransaction: transactions[0],
-      transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length
-    });
-    
-    if (transactions.length === 0) {
-      setTableData([]);
-      return;
-    }
-    
-    // Validate and fix duplicate IDs
-    const { transactions: fixedTransactions, hadDuplicates, duplicateReport } = validateAndFixDuplicateIds(transactions);
-    
-    if (hadDuplicates) {
-      console.warn('🚨 [IMPORT_TABLE] Fixed duplicate IDs during initialization:', {
-        duplicatesFixed: duplicateReport.length,
-        duplicateReport
-      });
-      
-      // Notify parent component of ID changes
-      onTransactionsUpdate(fixedTransactions);
-    }
-    
-    // Normalize and validate each transaction
-    const normalizedTransactions = fixedTransactions.map(normalizeAndValidateTransaction);
-    
-    const sortedData = [...normalizedTransactions]
-      .sort((a, b) => {
-        if (sortBy === 'date') {
-          const comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
-          return sortOrder === 'asc' ? comparison : -comparison;
-        } else {
-          const comparison = a.amount - b.amount;
-          return sortOrder === 'asc' ? comparison : -comparison;
-        }
-      });
-    
-    setTableData(sortedData);
-  }, [transactions, sortBy, sortOrder, onTransactionsUpdate]);
-
-  const loadCategories = async () => {
-    try {
-      setLoadingCategories(true);
-      console.log('🔍 [DEBUG] Starting to load categories...');
-      
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      console.log('👤 [DEBUG] Auth check result:', { 
-        authData: authData?.user?.id ? 'User authenticated' : 'No user',
-        authError: authError?.message || 'No auth error',
-        userId: authData?.user?.id
-      });
-      
-      if (authError) {
-        console.error('❌ Authentication error:', authError);
-        return;
-      }
-      
-      if (!authData.user) {
-        console.log('❌ No authenticated user found');
-        return;
-      }
-
-      console.log('📊 Fetching categories from database...');
-      const { data, error, status, statusText } = await supabase
+    const loadCategories = async () => {
+      const { data, error } = await supabase
         .from('categories')
         .select('*')
         .order('name');
-      
-      console.log('📋 Categories query complete:', { 
-        dataExists: !!data,
-        dataLength: data?.length || 0, 
-        error: error?.message || 'No error',
-        status,
-        statusText
-      });
-      
+
       if (error) {
-        console.error('❌ Error loading categories:', error);
-        return;
+        toast({
+          variant: "destructive",
+          title: "Erro ao carregar categorias",
+          description: error.message,
+        });
+      } else {
+        setCategories(data || []);
       }
-      
-      if (!data) {
-        console.warn('⚠️ Categories data is null/undefined');
-        return;
-      }
+    };
 
-      if (data.length === 0) {
-        console.warn('⚠️ No categories found in database');
-        setCategories([]);
-        return;
-      }
-      
-      setCategories(data as Category[]);
-      console.log('✅ Categories loaded and set successfully:', data.length, 'categories');
-    } catch (error) {
-      console.error('💥 Exception in loadCategories:', error);
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
-
-  const loadSubcategories = async () => {
-    try {
-      setLoadingSubcategories(true);
+    const loadSubcategories = async () => {
       const { data, error } = await supabase
         .from('subcategories')
         .select('*')
         .order('name');
-      
+
       if (error) {
-        console.error('Error loading subcategories:', error);
-        return;
-      }
-      
-      if (data) {
-        setSubcategories(data);
-        console.log('Subcategories loaded successfully:', data.length, 'subcategories');
-      }
-    } catch (error) {
-      console.error('Failed to load subcategories:', error);
-    } finally {
-      setLoadingSubcategories(false);
-    }
-  };
-
-  // Enhanced update function with integrity verification
-  const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
-    console.log('🔄 [UPDATE] updateTransaction called:', { 
-      id, 
-      updates,
-      timestamp: Date.now()
-    });
-    
-    setOperation(`update-${id}`);
-    
-    setTableData(prev => {
-      // Create snapshot for integrity verification
-      const beforeSnapshot = prev.map(t => createIsolatedTransaction(t));
-      
-      // Verify that only one transaction has this ID
-      const transactionsWithSameId = prev.filter(t => t.id === id);
-      if (transactionsWithSameId.length > 1) {
-        console.error('🚨 [UPDATE] Multiple transactions with same ID detected:', {
-          id,
-          count: transactionsWithSameId.length,
-          transactions: transactionsWithSameId.map(t => ({
-            id: t.id,
-            description: t.description
-          }))
+        toast({
+          variant: "destructive",
+          title: "Erro ao carregar subcategorias",
+          description: error.message,
         });
-      }
-      
-      // Create completely new array with isolated transactions
-      const newData = prev.map(transaction => {
-        if (transaction.id === id) {
-          // Create isolated copy and apply updates
-          const isolatedTransaction = createIsolatedTransaction(transaction);
-          
-          const updatedTransaction = {
-            ...isolatedTransaction,
-            ...updates,
-            // Ensure IDs are strings or undefined
-            categoryId: typeof updates.categoryId === 'string' && updates.categoryId !== '' 
-              ? updates.categoryId 
-              : (updates.categoryId === '' ? undefined : isolatedTransaction.categoryId),
-            subcategoryId: typeof updates.subcategoryId === 'string' && updates.subcategoryId !== '' 
-              ? updates.subcategoryId 
-              : (updates.subcategoryId === '' ? undefined : isolatedTransaction.subcategoryId)
-          };
-          
-          return normalizeAndValidateTransaction(updatedTransaction);
-        }
-        
-        // Return isolated copy for other transactions
-        return createIsolatedTransaction(transaction);
-      });
-      
-      // Verify integrity
-      const integrityOk = verifyTransactionIntegrity(
-        beforeSnapshot,
-        newData,
-        id,
-        `update-${Object.keys(updates).join(',')}`
-      );
-      
-      if (!integrityOk) {
-        console.error('🚨 [UPDATE] Rolling back due to integrity violation');
-        return prev; // Rollback on integrity violation
-      }
-      
-      // Update parent component
-      onTransactionsUpdate(newData);
-      return newData;
-    });
-  }, [onTransactionsUpdate, setOperation]);
-
-  const toggleRowSelection = useCallback((id: string) => {
-    setSelectedRows(prev => {
-      const newSelected = new Set(prev);
-      if (newSelected.has(id)) {
-        newSelected.delete(id);
       } else {
-        newSelected.add(id);
+        setSubcategories(data || []);
       }
-      return newSelected;
+    };
+
+    loadCategories();
+    loadSubcategories();
+  }, [toast]);
+
+  // Create a unified list of all transactions sorted by date
+  const allTransactions: RenderableTransaction[] = React.useMemo(() => {
+    const unified: RenderableTransaction[] = [
+      ...transactions,
+      ...refundedTransactions,
+      ...unifiedPixTransactions
+    ];
+
+    // Sort by date
+    return unified.sort((a, b) => {
+      const dateA = 'date' in a ? new Date(a.date) : 
+                   'originalTransaction' in a ? new Date(a.originalTransaction.date) :
+                   new Date(a.pixTransaction.date);
+      const dateB = 'date' in b ? new Date(b.date) : 
+                   'originalTransaction' in b ? new Date(b.originalTransaction.date) :
+                   new Date(b.pixTransaction.date);
+      
+      return dateB.getTime() - dateA.getTime(); // Most recent first
     });
-  }, []);
-
-  const toggleAllSelection = useCallback(() => {
-    const currentPageIds = getCurrentPageData().map(t => t.id);
-    const allSelected = currentPageIds.every(id => selectedRows.has(id));
-    
-    setSelectedRows(prev => {
-      const newSelected = new Set(prev);
-      if (allSelected) {
-        currentPageIds.forEach(id => newSelected.delete(id));
-      } else {
-        currentPageIds.forEach(id => newSelected.add(id));
-      }
-      return newSelected;
-    });
-  }, [selectedRows]);
-
-  const applyBulkCategory = useCallback(() => {
-    if (!bulkCategory) return;
-    
-    selectedRows.forEach(id => {
-      updateTransaction(id, {
-        categoryId: bulkCategory,
-        subcategoryId: bulkSubcategory || undefined
-      });
-    });
-    
-    setBulkCategory('');
-    setBulkSubcategory('');
-    setSelectedRows(new Set());
-  }, [bulkCategory, bulkSubcategory, selectedRows, updateTransaction]);
-
-  const getFilteredSubcategories = useCallback((categoryId: string) => {
-    if (!categoryId) return [];
-    const filtered = subcategories.filter(sub => sub.category_id === categoryId);
-    console.log('🔍 [SUBCATEGORIES] getFilteredSubcategories:', {
-      categoryId,
-      totalSubcategories: subcategories.length,
-      filteredCount: filtered.length,
-      filtered: filtered.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
-    });
-    return filtered;
-  }, [subcategories]);
-
-  const getCurrentPageData = useCallback(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return tableData.slice(startIndex, endIndex);
-  }, [tableData, currentPage, itemsPerPage]);
-
-  // Opções memoizadas para melhor performance - filtradas por tipo de transação
-  const categoryOptions = useMemo(() => {
-    const options = categories.map(cat => ({
-      value: cat.id,
-      label: cat.name,
-      type: cat.type
-    }));
-    console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
-    return options;
-  }, [categories]);
-
-
-  // Enhanced function to check if transaction needs attention
-  const needsAttention = useCallback((transaction: TransactionRow) => {
-    // Missing category or subcategory
-    if (!transaction.categoryId || !transaction.subcategoryId) {
-      return true;
-    }
-    
-    // Low AI confidence (below 50%)
-    if (transaction.aiSuggestion && transaction.aiSuggestion.confidence < 0.5) {
-      return true;
-    }
-    
-    return false;
-  }, []);
-
-  const totalPages = Math.ceil(tableData.length / itemsPerPage);
-  
-  // Calculate totals excluding grouped transactions
-  const totalEntrada = tableData
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-    
-  const totalSaida = tableData
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-    
-  const diferenca = totalEntrada - totalSaida;
-  
-  const calculatePaymentMethodTotal = (keyword: string) => {
-    return tableData
-      .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
-      .reduce((sum, t) => sum + t.amount, 0);
-  };
-  
-  const totalPix = calculatePaymentMethodTotal('pix');
-  const totalCredito = calculatePaymentMethodTotal('crédito') + calculatePaymentMethodTotal('credito');
-  const totalDebito = calculatePaymentMethodTotal('débito') + calculatePaymentMethodTotal('debito');
+  }, [transactions, refundedTransactions, unifiedPixTransactions]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
-      currency: 'BRL'
+      currency: 'BRL',
     }).format(amount);
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR');
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    setAllSelected(checked);
+    const updatedTransactions = transactions.map(transaction => ({
+      ...transaction,
+      selected: checked,
+    }));
+    onTransactionsUpdate(updatedTransactions);
+  };
+
+  const handleSelectTransaction = (id: string) => {
+    const updatedTransactions = transactions.map(transaction => {
+      if (transaction.id === id) {
+        return { ...transaction, selected: !transaction.selected };
+      }
+      return transaction;
+    });
+    onTransactionsUpdate(updatedTransactions);
+  };
+
+  const handleCategoryChange = (id: string, categoryId: string) => {
+    const updatedTransactions = transactions.map(transaction => {
+      if (transaction.id === id) {
+        return { ...transaction, categoryId, subcategoryId: undefined };
+      }
+      return transaction;
+    });
+    onTransactionsUpdate(updatedTransactions);
+  };
+
+  const handleSubcategoryChange = (id: string, subcategoryId: string) => {
+    const updatedTransactions = transactions.map(transaction => {
+      if (transaction.id === id) {
+        return { ...transaction, subcategoryId };
+      }
+      return transaction;
+    });
+    onTransactionsUpdate(updatedTransactions);
+  };
+
+  const handleEditDescription = (id: string, description: string) => {
+    setEditingId(id);
+    setEditingDescription(description);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    const updatedTransactions = transactions.map(transaction => {
+      if (transaction.id === id) {
+        return { ...transaction, editedDescription: editingDescription };
+      }
+      return transaction;
+    });
+    onTransactionsUpdate(updatedTransactions);
+    setEditingId(null);
+    setEditingDescription('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingDescription('');
+  };
+
+  const getStats = () => {
+    const categorized = transactions.filter(t => t.categoryId).length;
+    const uncategorized = transactions.length - categorized;
+    
+    // Calculate totals including unified PIX transactions
+    const transactionValue = transactions.reduce((sum, t) => sum + (t.type === 'expense' ? -t.amount : t.amount), 0);
+    const unifiedPixValue = unifiedPixTransactions.reduce((sum, t) => sum - t.pixTransaction.amount, 0); // Always negative (expense)
+    
+    const totalValue = transactionValue + unifiedPixValue;
+
+    return { categorized, uncategorized, totalValue };
+  };
+
+  const stats = getStats();
+
   return (
-    <div className="space-y-6">
-      {/* Statistics - Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-success">
-              {formatCurrency(totalEntrada)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Entrada</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-destructive">
-              {formatCurrency(totalSaida)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Saída</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {formatCurrency(diferenca)}
-            </div>
-            <div className="text-sm text-muted-foreground">Diferença</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Grouped Transactions Summary */}
-      {(refundedTransactions.length > 0 || unifiedPixTransactions.length > 0) && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="flex items-center gap-4 flex-wrap">
-              <span>Transações agrupadas encontradas:</span>
-              {refundedTransactions.length > 0 && (
-                <Badge variant="secondary">
-                  {refundedTransactions.length} estornos
-                </Badge>
-              )}
-              {unifiedPixTransactions.length > 0 && (
-                <Badge variant="outline">
-                  {unifiedPixTransactions.length} PIX via crédito
-                </Badge>
-              )}
-              <span className="text-sm text-muted-foreground">
-                (não contabilizadas nos totais)
-              </span>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Bulk Actions */}
-      {selectedRows.size > 0 && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="flex items-center gap-4 flex-wrap">
-              <span>{selectedRows.size} item(s) selecionado(s)</span>
-              
-              <Combobox
-                value={bulkCategory}
-                onValueChange={setBulkCategory}
-                options={categoryOptions}
-                placeholder="Selecionar categoria"
-                searchPlaceholder="Buscar categoria..."
-                emptyText="Nenhuma categoria encontrada"
-                width="w-60"
-              />
-
-              <Combobox
-                value={bulkSubcategory}
-                onValueChange={setBulkSubcategory}
-                options={getFilteredSubcategories(bulkCategory).map(sub => ({
-                  value: sub.id,
-                  label: sub.name
-                }))}
-                placeholder="Selecionar subcategoria"
-                disabled={!bulkCategory}
-                searchPlaceholder="Buscar subcategoria..."
-                emptyText="Nenhuma subcategoria encontrada"
-                width="w-60"
-              />
-
-              <Button onClick={applyBulkCategory} disabled={!bulkCategory}>
-                Aplicar Categoria
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                onClick={() => setSelectedRows(new Set())}
-              >
-                Limpar Seleção
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Table */}
+    <div className="space-y-4">
+      {/* Stats Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Transações para Importar</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={getCurrentPageData().length > 0 && getCurrentPageData().every(t => selectedRows.has(t.id))}
-                      onCheckedChange={toggleAllSelection}
-                    />
-                  </TableHead>
-                  <TableHead 
-                    className="cursor-pointer w-24"
-                    onClick={() => {
-                      if (sortBy === 'date') {
-                        setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortBy('date');
-                        setSortOrder('desc');
-                      }
-                    }}
-                  >
-                    Data {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
-                  </TableHead>
-                  <TableHead 
-                    className="cursor-pointer w-32"
-                    onClick={() => {
-                      if (sortBy === 'amount') {
-                        setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortBy('amount');
-                        setSortOrder('desc');
-                      }
-                    }}
-                  >
-                    Valor {sortBy === 'amount' && (sortOrder === 'asc' ? '↑' : '↓')}
-                  </TableHead>
-                  <TableHead className="w-80">Descrição</TableHead>
-                  <TableHead className="w-40">Indicadores</TableHead>
-                  <TableHead className="w-64">Categoria</TableHead>
-                  <TableHead className="w-64">Subcategoria</TableHead>
-                  <TableHead className="w-16">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Render grouped transactions first */}
-                {refundedTransactions.map(refund => (
-                  <GroupedTransactionRow
-                    key={refund.id}
-                    transaction={refund}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
-                {unifiedPixTransactions.map(unified => (
-                  <GroupedTransactionRow
-                    key={unified.id}
-                    transaction={unified}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
-                
-                {/* Render normal transactions */}
-                {getCurrentPageData().map(transaction => (
-                  <TransactionRow
-                    key={generateStableKey(transaction, 'transaction-')}
-                    transaction={transaction}
-                    categories={categories}
-                    subcategories={subcategories}
-                    selectedRows={selectedRows}
-                    loadingCategories={loadingCategories}
-                    loadingSubcategories={loadingSubcategories}
-                    categoryOptions={categoryOptions}
-                    onUpdateTransaction={updateTransaction}
-                    onToggleSelection={toggleRowSelection}
-                    needsAttention={needsAttention}
-                    getFilteredSubcategories={getFilteredSubcategories}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">
-                Página {currentPage} de {totalPages} 
-                ({tableData.length} transações ativas, {refundedTransactions.length + unifiedPixTransactions.length} agrupadas)
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Próxima
-                </Button>
-              </div>
+          <CardTitle className="flex items-center justify-between">
+            <span>Transações para Importar</span>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-green-600">
+                Total: {formatCurrency(stats.totalValue)}
+              </span>
+              <span className="text-blue-600">
+                Categorizadas: {stats.categorized}
+              </span>
+              <span className="text-orange-600">
+                Pendentes: {stats.uncategorized}
+              </span>
             </div>
-          )}
+          </CardTitle>
+          <CardDescription>
+            Revise as transações abaixo e categorize antes de importar. 
+            Transações em cinza são agrupamentos automáticos que não afetam os totais.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      {/* Transactions Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={handleSelectAll}
+                    disabled={transactions.length === 0}
+                  />
+                </TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Valor</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead>Categoria</TableHead>
+                <TableHead>Subcategoria</TableHead>
+                <TableHead>IA</TableHead>
+                <TableHead>Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allTransactions.map((transaction) => {
+                // Check if this is a grouped transaction
+                if ('status' in transaction && (transaction.status === 'refunded' || transaction.status === 'unified-pix')) {
+                  return (
+                    <GroupedTransactionRow
+                      key={transaction.id}
+                      transaction={transaction}
+                      formatCurrency={formatCurrency}
+                      formatDate={formatDate}
+                    />
+                  );
+                }
+
+                // Regular transaction row
+                const regularTransaction = transaction as TransactionRow;
+                return (
+                  <TableRow key={regularTransaction.id} className={regularTransaction.selected ? 'bg-blue-50' : ''}>
+                    <TableCell>
+                      <Checkbox
+                        checked={regularTransaction.selected}
+                        onCheckedChange={() => handleSelectTransaction(regularTransaction.id)}
+                      />
+                    </TableCell>
+                    
+                    <TableCell className="font-mono text-sm">
+                      {formatDate(regularTransaction.date)}
+                    </TableCell>
+                    
+                    <TableCell>
+                      <span className={`font-semibold ${regularTransaction.type === 'expense' ? 'text-red-600' : 'text-green-600'}`}>
+                        {regularTransaction.type === 'expense' ? '-' : '+'}
+                        {formatCurrency(regularTransaction.amount)}
+                      </span>
+                    </TableCell>
+                    
+                    <TableCell>
+                      {editingId === regularTransaction.id ? (
+                        <div className="flex gap-2">
+                          <Input
+                            value={editingDescription}
+                            onChange={(e) => setEditingDescription(e.target.value)}
+                            className="w-full"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleSaveEdit(regularTransaction.id)}
+                            className="px-2"
+                          >
+                            <Save className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCancelEdit}
+                            className="px-2"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="max-w-xs truncate">
+                            {regularTransaction.editedDescription || regularTransaction.description}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditDescription(regularTransaction.id, regularTransaction.editedDescription || regularTransaction.description)}
+                            className="px-2"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Select
+                        value={regularTransaction.categoryId || ''}
+                        onValueChange={(value) => handleCategoryChange(regularTransaction.id, value)}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Selecionar categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories
+                            .filter(cat => cat.type === regularTransaction.type)
+                            .map(category => (
+                              <SelectItem key={category.id} value={category.id}>
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: category.color }}
+                                  />
+                                  {category.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell>
+                      <Select
+                        value={regularTransaction.subcategoryId || ''}
+                        onValueChange={(value) => handleSubcategoryChange(regularTransaction.id, value)}
+                        disabled={!regularTransaction.categoryId}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Subcategoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {subcategories
+                            .filter(sub => sub.category_id === regularTransaction.categoryId)
+                            .map(subcategory => (
+                              <SelectItem key={subcategory.id} value={subcategory.id}>
+                                {subcategory.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell>
+                      {regularTransaction.aiSuggestion && (
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className="text-xs">
+                            {regularTransaction.aiSuggestion.usedFallback ? (
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Bot className="h-3 w-3 mr-1" />
+                            )}
+                            {Math.round(regularTransaction.aiSuggestion.confidence * 100)}%
+                          </Badge>
+                          {regularTransaction.aiSuggestion.confidence > 0.7 && (
+                            <Sparkles className="h-3 w-3 text-yellow-500" />
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                    
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditDescription(regularTransaction.id, regularTransaction.editedDescription || regularTransaction.description)}
+                          className="px-2"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

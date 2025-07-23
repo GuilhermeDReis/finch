@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
@@ -81,6 +80,24 @@ export const checkForDuplicates = async (
   return results;
 };
 
+// Helper function to find PIX category
+const findPixCategory = async (): Promise<string | null> => {
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('type', 'expense')
+    .or('name.ilike.%pix%,name.ilike.%transferência%');
+  
+  // Look for PIX category first, then Transferência
+  const pixCategory = categories?.find(c => c.name.toLowerCase().includes('pix'));
+  if (pixCategory) return pixCategory.id;
+  
+  const transferCategory = categories?.find(c => c.name.toLowerCase().includes('transferência'));
+  if (transferCategory) return transferCategory.id;
+  
+  return null;
+};
+
 // Detect refunded transactions (same external_id with "Estorno" in description)
 export const detectRefundedTransactions = (transactions: TransactionRow[]): RefundedTransaction[] => {
   const refundedTransactions: RefundedTransaction[] = [];
@@ -123,7 +140,7 @@ export const detectRefundedTransactions = (transactions: TransactionRow[]): Refu
 };
 
 // Detect PIX via credit transactions (same external_id with "Valor adicionado para Pix no Crédito")
-export const detectUnifiedPixTransactions = (transactions: TransactionRow[]): UnifiedPixTransaction[] => {
+export const detectUnifiedPixTransactions = async (transactions: TransactionRow[]): Promise<UnifiedPixTransaction[]> => {
   const unifiedPixTransactions: UnifiedPixTransaction[] = [];
   const transactionMap = new Map<string, TransactionRow[]>();
 
@@ -133,6 +150,9 @@ export const detectUnifiedPixTransactions = (transactions: TransactionRow[]): Un
     existing.push(transaction);
     transactionMap.set(transaction.id, existing);
   });
+
+  // Find PIX category for auto-categorization
+  const pixCategoryId = await findPixCategory();
 
   // Find PIX via credit pairs
   transactionMap.forEach((transactionGroup, externalId) => {
@@ -154,7 +174,9 @@ export const detectUnifiedPixTransactions = (transactions: TransactionRow[]): Un
           id: `pix-unified-${externalId}`,
           creditTransaction: pixCreditTransaction,
           pixTransaction,
-          status: 'unified-pix'
+          status: 'unified-pix',
+          categoryId: pixCategoryId || undefined,
+          type: 'expense'
         });
       }
     }
@@ -170,7 +192,7 @@ export const analyzeDuplicates = async (
   
   // Detect special transaction groups
   const refundedTransactions = detectRefundedTransactions(transactions);
-  const unifiedPixTransactions = detectUnifiedPixTransactions(transactions);
+  const unifiedPixTransactions = await detectUnifiedPixTransactions(transactions);
 
   // Create sets of transaction IDs that are part of special groups
   const refundedIds = new Set<string>();
