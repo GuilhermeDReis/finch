@@ -281,6 +281,86 @@ function createEnhancedFallbackSuggestions(
   });
 }
 
+// Enhanced prompt building with subcategories
+function buildEnhancedPrompt(
+  transactions: Transaction[], 
+  categories: Category[], 
+  subcategories: Subcategory[]
+): string {
+  const incomeCategories = categories.filter(cat => cat.type === 'income');
+  const expenseCategories = categories.filter(cat => cat.type === 'expense');
+  
+  // Build categorias with subcategories
+  const incomeCategoriesWithSubs = incomeCategories.map(cat => {
+    const subs = subcategories.filter(sub => sub.category_id === cat.id);
+    let categoryLine = `${cat.id}:${cat.name}`;
+    if (subs.length > 0) {
+      categoryLine += ` [Subcategorias: ${subs.map(sub => `${sub.id}:${sub.name}`).join(', ')}]`;
+    }
+    return categoryLine;
+  });
+  
+  const expenseCategoriesWithSubs = expenseCategories.map(cat => {
+    const subs = subcategories.filter(sub => sub.category_id === cat.id);
+    let categoryLine = `${cat.id}:${cat.name}`;
+    if (subs.length > 0) {
+      categoryLine += ` [Subcategorias: ${subs.map(sub => `${sub.id}:${sub.name}`).join(', ')}]`;
+    }
+    return categoryLine;
+  });
+  
+  // Build transactions with type detection
+  const transactionsWithType = transactions.map((transaction, index) => ({
+    ...transaction,
+    detectedType: detectTransactionType(transaction)
+  }));
+  
+  const prompt = `Categorize estas ${transactions.length} transações bancárias brasileiras. Retorne APENAS um array JSON válido.
+
+CATEGORIAS DE RECEITA:
+${incomeCategoriesWithSubs.join('\n')}
+
+CATEGORIAS DE DESPESA:
+${expenseCategoriesWithSubs.join('\n')}
+
+REGRAS IMPORTANTES:
+- Para iFood/Uber/99/D Market → sempre despesa
+- PIX "enviada" → despesa, PIX "recebida" → receita
+- Estorno/devolução → sempre receita
+- SEMPRE tente sugerir uma subcategoria quando apropriado
+- Se o tipo detectado parecer errado, corrija-o
+- Seja específico nas subcategorias (ex: iFood → Alimentação/Delivery)
+
+TRANSAÇÕES:
+${transactionsWithType.map((t, index) => 
+  `${index}. "${t.description}" R$${t.amount} TIPO_DETECTADO:${t.detectedType}`
+).join('\n')}
+
+Retorne APENAS este formato JSON:
+[{"transaction_index":0,"category_id":"uuid","subcategory_id":"uuid_ou_null","confidence":0.8,"reasoning":"explicação"}]`;
+
+  return prompt;
+}
+
+// Log the complete prompt in parts to avoid truncation
+function logCompletePrompt(prompt: string) {
+  const MAX_LOG_SIZE = 2000;
+  const promptParts = [];
+  
+  for (let i = 0; i < prompt.length; i += MAX_LOG_SIZE) {
+    promptParts.push(prompt.slice(i, i + MAX_LOG_SIZE));
+  }
+  
+  console.log(`📝 [PROMPT_LOG] Complete prompt being sent to Gemini (${promptParts.length} parts):`);
+  console.log(`📊 [PROMPT_STATS] Total length: ${prompt.length} characters`);
+  
+  promptParts.forEach((part, index) => {
+    console.log(`📄 [PROMPT_PART_${index + 1}/${promptParts.length}] ${part}`);
+  });
+  
+  console.log(`🔚 [PROMPT_LOG] End of complete prompt`);
+}
+
 // Intelligent validation that allows AI to correct type detection
 function validateWithTypeCorrection(
   suggestion: AIResponse,
@@ -399,36 +479,11 @@ serve(async (req) => {
     let usedFallback = false;
 
     try {
-      // Build enhanced prompt with intelligent type correction
-      const incomeCategories = categories.filter((cat: Category) => cat.type === 'income');
-      const expenseCategories = categories.filter((cat: Category) => cat.type === 'expense');
-
-      // Optimized prompt - shorter and clearer
-      const prompt = `Categorize these ${transactions.length} Brazilian transactions. Return ONLY valid JSON array.
-
-INCOME CATEGORIES:
-${incomeCategories.map((cat: Category) => `${cat.id}:${cat.name}`).join('\n')}
-
-EXPENSE CATEGORIES:
-${expenseCategories.map((cat: Category) => `${cat.id}:${cat.name}`).join('\n')}
-
-KEY RULES:
-- iFood/Uber/99/D Market = expense
-- PIX "enviada" = expense, "recebida" = income
-- If type seems wrong, correct it
-
-TRANSACTIONS:
-${transactionsWithType.map((t: any, index: number) => 
-  `${index}. "${t.description}" R$${t.amount} TYPE:${t.detectedType}`
-).join('\n')}
-
-Return ONLY this JSON format:
-[{"transaction_index":0,"category_id":"uuid","subcategory_id":null,"confidence":0.8,"reasoning":"explanation"}]`;
-
-      // Log the prompt for analysis
-      console.log('🔍 [GEMINI_PROMPT] Sending prompt to Gemini:');
-      console.log('📝 [PROMPT_CONTENT]:', prompt);
-      console.log('📊 [PROMPT_STATS] Length:', prompt.length, 'chars, Transactions:', transactions.length);
+      // Build enhanced prompt with subcategories
+      const prompt = buildEnhancedPrompt(transactions, categories, subcategories);
+      
+      // Log the complete prompt in parts
+      logCompletePrompt(prompt);
 
       console.log('🤖 [AI] Sending enhanced request to Gemini...');
       
@@ -459,6 +514,10 @@ Return ONLY this JSON format:
           // Parse the JSON
           aiSuggestions = JSON.parse(jsonText);
           console.log(`✅ [AI] Successfully parsed ${aiSuggestions.length} suggestions`);
+          
+          // Log subcategory suggestions
+          const withSubcategories = aiSuggestions.filter(s => s.subcategory_id);
+          console.log(`📊 [SUBCATEGORIES] ${withSubcategories.length}/${aiSuggestions.length} suggestions include subcategories`);
           
           // Validate the structure
           if (!Array.isArray(aiSuggestions)) {
@@ -505,9 +564,13 @@ Return ONLY this JSON format:
     console.log(`📊 [STATS] Average confidence: ${(validatedSuggestions.reduce((sum, s) => sum + s.confidence, 0) / validatedSuggestions.length).toFixed(2)}`);
     
     const typeCorrections = validatedSuggestions.filter(s => s.suggested_type).length;
+    const withSubcategories = validatedSuggestions.filter(s => s.subcategory_id).length;
+    
     if (typeCorrections > 0) {
       console.log(`🔄 [STATS] Type corrections made: ${typeCorrections}`);
     }
+    
+    console.log(`📋 [STATS] Final suggestions with subcategories: ${withSubcategories}/${validatedSuggestions.length}`);
     
     if (usedFallback) {
       console.log('⚠️ [FALLBACK] Enhanced fallback system was used');
@@ -518,9 +581,10 @@ Return ONLY this JSON format:
         suggestions: validatedSuggestions,
         usedFallback: usedFallback,
         typeCorrections: typeCorrections,
+        subcategorySuggestions: withSubcategories,
         message: usedFallback ? 
           'Sistema de fallback inteligente aplicado' : 
-          `Categorização por IA concluída${typeCorrections > 0 ? ` (${typeCorrections} correções de tipo)` : ''}`
+          `Categorização por IA concluída${typeCorrections > 0 ? ` (${typeCorrections} correções de tipo)` : ''}${withSubcategories > 0 ? ` (${withSubcategories} subcategorias sugeridas)` : ''}`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
