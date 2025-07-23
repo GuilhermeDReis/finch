@@ -92,8 +92,14 @@ export function detectDuplicates(
           
           refundedTransactions.push({
             id: `refund-${id}`,
-            originalTransaction,
-            refundTransaction,
+            originalTransaction: {
+              ...originalTransaction,
+              status: 'refunded'
+            },
+            refundTransaction: {
+              ...refundTransaction,
+              status: 'hidden'
+            },
             status: 'refunded'
           });
           
@@ -151,8 +157,15 @@ export function detectDuplicates(
       
       unifiedPixTransactions.push({
         id: `unified-pix-${pixTx.id}`,
-        creditTransaction: matchingCredit,
-        pixTransaction: pixTx,
+        creditTransaction: {
+          ...matchingCredit,
+          status: 'hidden'
+        },
+        pixTransaction: {
+          ...pixTx,
+          status: 'unified-pix',
+          description: `PIX via Crédito: ${pixTx.description}`
+        },
         status: 'unified-pix'
       });
       

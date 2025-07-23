@@ -10,7 +10,6 @@ import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import TransactionIndicators from './TransactionIndicators';
-import GroupedTransactionRow from './GroupedTransactionRow';
 import TransactionFilters from './TransactionFilters';
 import { supabase } from '@/integrations/supabase/client';
 import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
@@ -364,21 +363,21 @@ export default function TransactionImportTable({
 
   // Create merged data including grouped transactions
   const mergedData = useMemo(() => {
-    // Create unified list with all transactions
-    const allTransactions: (TransactionRow & { isGrouped?: boolean })[] = [...tableData];
+    // Start with normal transactions
+    const allTransactions: TransactionRow[] = [...tableData];
     
-    // Add refunded transactions with grouped flag
+    // Add refunded transactions (showing only the original with refunded status)
     refundedTransactions.forEach(refund => {
       allTransactions.push({
         ...refund.originalTransaction,
-        isGrouped: true,
+        description: `${refund.originalTransaction.description} (Estornado)`,
         status: 'refunded'
       });
     });
     
-    // Add unified PIX transactions with grouped flag and auto-categorization
+    // Add unified PIX transactions (showing only the PIX with unified status)
     unifiedPixTransactions.forEach(unified => {
-      // Find PIX category
+      // Find PIX category for auto-categorization
       const pixCategory = categories.find(cat => 
         cat.name.toLowerCase().includes('pix') || 
         cat.name.toLowerCase().includes('transferência')
@@ -386,15 +385,21 @@ export default function TransactionImportTable({
       
       allTransactions.push({
         ...unified.pixTransaction,
-        isGrouped: true,
-        status: 'unified-pix',
         categoryId: pixCategory?.id || unified.pixTransaction.categoryId,
-        description: `PIX Crédito: ${unified.pixTransaction.description}`
+        status: 'unified-pix'
       });
     });
     
+    // Filter out hidden transactions (credit transactions from unified PIX and refund transactions)
+    const hiddenTransactionIds = new Set([
+      ...refundedTransactions.map(r => r.refundTransaction.id),
+      ...unifiedPixTransactions.map(u => u.creditTransaction.id)
+    ]);
+    
+    const visibleTransactions = allTransactions.filter(t => !hiddenTransactionIds.has(t.id));
+    
     // Apply filters
-    const filteredTransactions = applyFilters(allTransactions);
+    const filteredTransactions = applyFilters(visibleTransactions);
     
     // Sort by date
     return filteredTransactions.sort((a, b) => {
@@ -696,35 +701,25 @@ export default function TransactionImportTable({
   }, []);
 
   const totalPages = Math.ceil(mergedData.length / itemsPerPage);
-  
-  // Calculate totals including grouped transactions - use all tableData (not filtered)
-  const totalEntrada = tableData
+
+  // Calculate totals correctly - use only visible transactions
+  const totalEntrada = mergedData
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
     
-  const totalSaida = tableData
+  const totalSaida = mergedData
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
     
   const diferenca = totalEntrada - totalSaida;
-  
-  // Calculate payment method totals - use all tableData (not filtered)
+
+  // Calculate payment method totals from visible transactions
   const calculatePaymentMethodTotal = (keyword: string) => {
-    let total = 0;
-    
-    // Regular transactions
-    total += tableData
+    return mergedData
       .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
       .reduce((sum, t) => sum + t.amount, 0);
-    
-    // Add unified PIX as credit
-    if (keyword === 'crédito' || keyword === 'credito') {
-      total += unifiedPixTransactions.reduce((sum, unified) => sum + unified.pixTransaction.amount, 0);
-    }
-    
-    return total;
   };
-  
+
   const totalPix = calculatePaymentMethodTotal('pix');
   const totalCredito = calculatePaymentMethodTotal('crédito') + calculatePaymentMethodTotal('credito');
   const totalDebito = calculatePaymentMethodTotal('débito') + calculatePaymentMethodTotal('debito');
@@ -804,7 +799,7 @@ export default function TransactionImportTable({
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="flex items-center gap-4 flex-wrap">
-              <span>Transações agrupadas encontradas:</span>
+              <span>Transações processadas automaticamente:</span>
               {refundedTransactions.length > 0 && (
                 <Badge variant="secondary" size="sm">
                   {refundedTransactions.length} estornos
@@ -826,7 +821,7 @@ export default function TransactionImportTable({
         onFilterChange={handleFilterChange}
         onClearFilters={handleClearFilters}
         totalFiltered={mergedData.length}
-        totalAll={tableData.length + refundedTransactions.length + unifiedPixTransactions.length}
+        totalAll={tableData.length}
       />
 
       {/* Bulk Actions */}
@@ -927,85 +922,121 @@ export default function TransactionImportTable({
               </TableHeader>
               <TableBody>
                 {getCurrentPageData().map(transaction => {
-                  if (transaction.isGrouped) {
-                    if (transaction.status === 'refunded') {
-                      return (
-                        <TableRow key={transaction.id} className="bg-gray-50 text-gray-600">
-                          <TableCell></TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {formatDate(transaction.date)}
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-semibold text-gray-500 line-through">
-                              {formatCurrency(transaction.amount)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="max-w-xs truncate">
-                                {transaction.description} (Estornado)
-                              </span>
+                  const requiresAttention = needsAttention(transaction);
+                  const isRefunded = transaction.status === 'refunded';
+                  const isUnifiedPix = transaction.status === 'unified-pix';
+                  
+                  return (
+                    <TableRow 
+                      key={generateStableKey(transaction, 'transaction-')}
+                      className={`
+                        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
+                        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
+                        ${isRefunded ? 'bg-gray-50 text-gray-600' : ''}
+                        ${isUnifiedPix ? 'bg-blue-50 text-blue-800' : ''}
+                        transition-colors duration-200
+                      `}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedRows.has(transaction.id)}
+                          onCheckedChange={() => toggleRowSelection(transaction.id)}
+                        />
+                      </TableCell>
+                      
+                      <TableCell className="font-mono text-sm">
+                        {formatDate(transaction.date)}
+                      </TableCell>
+                      
+                      <TableCell>
+                        <span className={`font-semibold ${
+                          transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                        } ${isRefunded ? 'line-through text-gray-500' : ''}`}>
+                          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                        </span>
+                      </TableCell>
+                      
+                      <TableCell>
+                        <div className="max-w-xs" title={transaction.description}>
+                          <span className="block truncate">{transaction.description}</span>
+                          {requiresAttention && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <AlertCircle className="h-3 w-3 text-yellow-600" />
+                              <span className="text-xs text-yellow-600">Requer atenção</span>
                             </div>
-                          </TableCell>
-                          <TableCell>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TransactionIndicators transaction={transaction} />
+                          {isRefunded && (
                             <Badge variant="secondary" size="sm">
                               Estorno
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                        </TableRow>
-                      );
-                    } else if (transaction.status === 'unified-pix') {
-                      return (
-                        <TableRow key={transaction.id} className="bg-blue-50 text-blue-800">
-                          <TableCell></TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {formatDate(transaction.date)}
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-semibold">
-                              -{formatCurrency(transaction.amount)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="max-w-xs truncate">
-                                {transaction.description}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
+                          )}
+                          {isUnifiedPix && (
                             <Badge variant="outline" size="sm">
                               PIX Crédito
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                          <TableCell className="text-gray-400">—</TableCell>
-                        </TableRow>
-                      );
-                    }
-                  }
-                  
-                  return (
-                    <TransactionRow
-                      key={generateStableKey(transaction, 'transaction-')}
-                      transaction={transaction}
-                      categories={categories}
-                      subcategories={subcategories}
-                      selectedRows={selectedRows}
-                      loadingCategories={loadingCategories}
-                      loadingSubcategories={loadingSubcategories}
-                      categoryOptions={categoryOptions}
-                      onUpdateTransaction={updateTransaction}
-                      onToggleSelection={toggleRowSelection}
-                      needsAttention={needsAttention}
-                      getFilteredSubcategories={getFilteredSubcategories}
-                      formatCurrency={formatCurrency}
-                      formatDate={formatDate}
-                    />
+                          )}
+                        </div>
+                      </TableCell>
+                      
+                      <TableCell>
+                        <Combobox
+                          key={generateStableKey(transaction, 'category-')}
+                          value={transaction.categoryId || ''}
+                          onValueChange={(value) => updateTransaction(transaction.id, {
+                            categoryId: value,
+                            subcategoryId: undefined,
+                            aiSuggestion: transaction.aiSuggestion ? {
+                              ...transaction.aiSuggestion,
+                              isAISuggested: false
+                            } : undefined
+                          })}
+                          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
+                          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+                          searchPlaceholder="Buscar categoria..."
+                          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+                          width="w-60"
+                          disabled={loadingCategories}
+                        />
+                      </TableCell>
+                      
+                      <TableCell>
+                        <Combobox
+                          key={generateStableKey(transaction, 'subcategory-')}
+                          value={transaction.subcategoryId || ''}
+                          onValueChange={(value) => updateTransaction(transaction.id, {
+                            subcategoryId: value
+                          })}
+                          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+                            value: sub.id,
+                            label: sub.name
+                          }))}
+                          placeholder="Selecionar subcategoria"
+                          disabled={!transaction.categoryId || loadingSubcategories}
+                          searchPlaceholder="Buscar subcategoria..."
+                          emptyText="Nenhuma subcategoria encontrada"
+                          width="w-60"
+                        />
+                      </TableCell>
+                      
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => updateTransaction(transaction.id, {
+                            isEditing: !transaction.isEditing,
+                            editedDescription: transaction.description
+                          })}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
@@ -1017,7 +1048,7 @@ export default function TransactionImportTable({
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
                 Página {currentPage} de {totalPages} 
-                ({mergedData.length} transações filtradas de {tableData.length + refundedTransactions.length + unifiedPixTransactions.length} totais)
+                ({mergedData.length} transações filtradas de {tableData.length} totais)
               </div>
               <div className="flex gap-2">
                 <Button
