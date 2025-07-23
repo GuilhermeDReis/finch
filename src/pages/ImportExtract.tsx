@@ -51,10 +51,44 @@ export default function ImportExtract() {
   const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
   const { toast } = useToast();
 
+  // Check authentication status
+  const checkAuthentication = async () => {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      console.error('❌ [AUTH] Error checking authentication:', error);
+      toast({
+        title: "Erro de autenticação",
+        description: "Não foi possível verificar a autenticação. Por favor, faça login novamente.",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (!user) {
+      console.warn('⚠️ [AUTH] User not authenticated');
+      toast({
+        title: "Não autenticado",
+        description: "Por favor, faça login para importar transações.",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    console.log('✅ [AUTH] User authenticated:', user.id);
+    return true;
+  };
+
   const handleDataParsed = async (parsedTransactions: TransactionRow[]) => {
     console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions');
     
     try {
+      // Check authentication first
+      const isAuthenticated = await checkAuthentication();
+      if (!isAuthenticated) {
+        return;
+      }
+
       // Load existing transactions for duplicate detection
       const { data: existingData, error } = await supabase
         .from('transactions')
@@ -87,20 +121,25 @@ export default function ImportExtract() {
       setUnifiedPixTransactions(duplicateResults.unifiedPixTransactions);
       setDuplicateAnalysis(duplicateResults);
 
-      // Check if we have any issues that require user attention
-      const hasIssues = duplicateResults.duplicates.length > 0 || 
-                       duplicateResults.refundedTransactions.length > 0 || 
-                       duplicateResults.unifiedPixTransactions.length > 0;
+      // Check if we have duplicates that require user attention
+      const hasDuplicates = duplicateResults.duplicates.length > 0;
 
-      if (hasIssues) {
-        console.log('⚠️ [IMPORT] Issues detected, showing duplicate analysis screen');
+      if (hasDuplicates) {
+        console.log('⚠️ [IMPORT] Duplicates detected, showing analysis screen');
         setCurrentStep('duplicate-analysis');
       } else {
-        console.log('✅ [IMPORT] No issues detected, proceeding to AI categorization');
-        setTransactions(duplicateResults.newTransactions);
+        console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
         
-        // Proceed directly to AI categorization
-        await handleAICategorization(duplicateResults.newTransactions);
+        // Automatically select "import-all" and proceed with all transactions
+        const allTransactions = [
+          ...duplicateResults.newTransactions,
+          ...duplicateResults.refundedTransactions.map(r => r.originalTransaction),
+          ...duplicateResults.refundedTransactions.map(r => r.refundTransaction),
+          ...duplicateResults.unifiedPixTransactions.map(u => u.creditTransaction),
+          ...duplicateResults.unifiedPixTransactions.map(u => u.pixTransaction)
+        ];
+
+        await handleAICategorization(allTransactions);
       }
 
     } catch (error) {
@@ -116,18 +155,34 @@ export default function ImportExtract() {
   const handleAICategorization = async (transactionsToProcess: TransactionRow[]) => {
     console.log('🤖 [AI] Starting AI categorization for', transactionsToProcess.length, 'transactions');
     
+    // Check authentication again before proceeding
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingProgress(0);
     setCurrentStep('processing');
 
     try {
-      // Create session
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('👤 [AI] Creating session for user:', user.id);
+
+      // Create session with user_id
       const { data: session, error: sessionError } = await supabase
         .from('import_sessions')
         .insert({
           filename: 'import_' + Date.now(),
           total_records: transactionsToProcess.length,
-          status: 'processing'
+          status: 'processing',
+          user_id: user.id
         })
         .select()
         .single();
@@ -137,9 +192,14 @@ export default function ImportExtract() {
         throw sessionError;
       }
 
+      console.log('✅ [AI] Import session created:', session.id);
       setImportSession(session as ImportSession);
 
+      // Update progress
+      setProcessingProgress(25);
+
       // Process with AI categorization
+      console.log('🤖 [AI] Calling gemini-categorize-transactions function');
       const { data: categorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
         body: { transactions: transactionsToProcess }
       });
@@ -150,6 +210,7 @@ export default function ImportExtract() {
       }
 
       console.log('✅ [AI] AI categorization completed successfully');
+      setProcessingProgress(75);
       
       // Update transactions with AI suggestions
       const updatedTransactions = transactionsToProcess.map(transaction => {
@@ -187,9 +248,12 @@ export default function ImportExtract() {
 
       toast({
         title: "Erro na categorização",
-        description: "Ocorreu um erro ao categorizar as transações com IA",
+        description: error instanceof Error ? error.message : "Ocorreu um erro ao categorizar as transações com IA",
         variant: "destructive"
       });
+
+      // Reset to upload step
+      setCurrentStep('upload');
     } finally {
       setIsProcessing(false);
     }
@@ -227,6 +291,12 @@ export default function ImportExtract() {
         description: "Sessão de importação não encontrada",
         variant: "destructive"
       });
+      return;
+    }
+
+    // Check authentication one more time
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
       return;
     }
 
@@ -313,6 +383,9 @@ export default function ImportExtract() {
     setDuplicateAnalysis(null);
   };
 
+  // Determine if duplicate analysis step should be shown
+  const shouldShowDuplicateStep = duplicateAnalysis && duplicateAnalysis.duplicates.length > 0;
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -325,7 +398,7 @@ export default function ImportExtract() {
         )}
       </div>
 
-      {/* Progress Steps */}
+      {/* Progress Steps - Only show analysis step if there are duplicates */}
       <div className="flex items-center space-x-4 mb-6">
         <div className={`flex items-center ${currentStep === 'upload' ? 'text-primary' : 'text-muted-foreground'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -336,16 +409,19 @@ export default function ImportExtract() {
           <span className="ml-2">Upload</span>
         </div>
         
-        <div className="flex-1 h-px bg-border" />
-        
-        <div className={`flex items-center ${currentStep === 'duplicate-analysis' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'duplicate-analysis' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            2
-          </div>
-          <span className="ml-2">Análise</span>
-        </div>
+        {shouldShowDuplicateStep && (
+          <>
+            <div className="flex-1 h-px bg-border" />
+            <div className={`flex items-center ${currentStep === 'duplicate-analysis' ? 'text-primary' : 'text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                currentStep === 'duplicate-analysis' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+              }`}>
+                2
+              </div>
+              <span className="ml-2">Análise</span>
+            </div>
+          </>
+        )}
         
         <div className="flex-1 h-px bg-border" />
         
@@ -353,7 +429,7 @@ export default function ImportExtract() {
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
             currentStep === 'processing' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
-            3
+            {shouldShowDuplicateStep ? '3' : '2'}
           </div>
           <span className="ml-2">Processamento</span>
         </div>
@@ -364,7 +440,7 @@ export default function ImportExtract() {
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
             currentStep === 'review' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
-            4
+            {shouldShowDuplicateStep ? '4' : '3'}
           </div>
           <span className="ml-2">Revisão</span>
         </div>
@@ -375,7 +451,7 @@ export default function ImportExtract() {
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
             currentStep === 'results' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
-            5
+            {shouldShowDuplicateStep ? '5' : '4'}
           </div>
           <span className="ml-2">Resultados</span>
         </div>
