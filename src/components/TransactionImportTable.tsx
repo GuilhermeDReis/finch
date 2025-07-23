@@ -87,6 +87,11 @@ const normalizeAndValidateTransaction = (transaction: TransactionRow): Transacti
   return normalized;
 };
 
+// Component-level functions that will be used by TransactionRow
+const getFilteredCategoriesByType = (categoryOptions: Array<{value: string; label: string; type: string}>, transactionType: 'income' | 'expense') => {
+  return categoryOptions.filter(cat => cat.type === transactionType);
+};
+
 // Enhanced TransactionRow component with stable keys
 const TransactionRow = React.memo(({
   transaction,
@@ -114,7 +119,6 @@ const TransactionRow = React.memo(({
   onToggleSelection: (id: string) => void;
   needsAttention: (transaction: TransactionRow) => boolean;
   getFilteredSubcategories: (categoryId: string) => Subcategory[];
-  getFilteredCategoriesByType: (transactionType: 'income' | 'expense') => Array<{value: string; label: string; type: string}>;
   formatCurrency: (amount: number) => string;
   formatDate: (dateStr: string) => string;
 }) => {
@@ -248,7 +252,7 @@ const TransactionRow = React.memo(({
           key={categoryKey}
           value={transaction.categoryId || ''}
           onValueChange={handleCategoryChange}
-          options={getFilteredCategoriesByType(transaction.type)}
+          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
           placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
           searchPlaceholder="Buscar categoria..."
           emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
@@ -587,10 +591,6 @@ export default function TransactionImportTable({
     return options;
   }, [categories]);
 
-  // Função para obter categorias filtradas por tipo de transação
-  const getFilteredCategoriesByType = useCallback((transactionType: 'income' | 'expense') => {
-    return categoryOptions.filter(cat => cat.type === transactionType);
-  }, [categoryOptions]);
 
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
@@ -809,7 +809,6 @@ export default function TransactionImportTable({
                     onToggleSelection={toggleRowSelection}
                     needsAttention={needsAttention}
                     getFilteredSubcategories={getFilteredSubcategories}
-                    getFilteredCategoriesByType={getFilteredCategoriesByType}
                     formatCurrency={formatCurrency}
                     formatDate={formatDate}
                   />
