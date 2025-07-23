@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Upload, FileText, Save, X, Trash2, Bot, Loader2, Building2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -9,16 +10,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
+import DuplicateAnalysisCard, { ImportMode } from '@/components/DuplicateAnalysisCard';
+import ImportResultsCard from '@/components/ImportResultsCard';
 import { BelvoConnectWidget } from '@/components/BelvoConnectWidget';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
+import { analyzeDuplicates, type DuplicateAnalysis } from '@/services/duplicateDetection';
 import type { TransactionRow } from '@/types/transaction';
+
+type ImportStep = 'upload' | 'duplicate-analysis' | 'categorization' | 'results';
 
 export default function ImportExtract() {
   const [importedData, setImportedData] = useState<TransactionRow[]>([]);
   const [processedData, setProcessedData] = useState<TransactionRow[]>([]);
+  const [duplicateAnalysis, setDuplicateAnalysis] = useState<DuplicateAnalysis | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>('new-only');
+  const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
+  const [importResults, setImportResults] = useState<any>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [isAnalyzingDuplicates, setIsAnalyzingDuplicates] = useState(false);
   const [filename, setFilename] = useState('');
   const { toast } = useToast();
 
@@ -30,14 +41,32 @@ export default function ImportExtract() {
     });
     
     setImportedData(data);
-    setProcessedData(data.map(t => ({ ...t, selected: false })));
-    toast({
-      title: "Arquivo processado",
-      description: `${data.length} transações carregadas com sucesso`,
-    });
-
-    // Processar automaticamente com IA
-    await processWithAI(data);
+    setIsAnalyzingDuplicates(true);
+    
+    try {
+      // Analyze duplicates
+      const analysis = await analyzeDuplicates(data);
+      setDuplicateAnalysis(analysis);
+      setCurrentStep('duplicate-analysis');
+      
+      toast({
+        title: "Arquivo processado",
+        description: `${data.length} transações analisadas - ${analysis.totalNew} novas, ${analysis.totalDuplicates} duplicatas`,
+      });
+    } catch (error) {
+      console.error('Error analyzing duplicates:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro na análise",
+        description: "Falha ao analisar duplicatas, prosseguindo com importação normal",
+      });
+      // Fallback to normal flow
+      setProcessedData(data.map(t => ({ ...t, selected: false })));
+      setCurrentStep('categorization');
+      await processWithAI(data);
+    } finally {
+      setIsAnalyzingDuplicates(false);
+    }
   };
 
   const handleError = (error: string) => {
@@ -46,6 +75,35 @@ export default function ImportExtract() {
       title: "Erro no processamento",
       description: error,
     });
+  };
+
+  const handleDuplicateAnalysisProceed = async () => {
+    if (!duplicateAnalysis) return;
+
+    let dataToProcess: TransactionRow[] = [];
+    
+    switch (importMode) {
+      case 'new-only':
+        dataToProcess = duplicateAnalysis.newTransactions;
+        break;
+      case 'update-existing':
+        dataToProcess = [...duplicateAnalysis.newTransactions, ...duplicateAnalysis.duplicateTransactions];
+        break;
+      case 'import-all':
+        dataToProcess = importedData;
+        break;
+    }
+
+    setProcessedData(dataToProcess.map(t => ({ ...t, selected: false })));
+    setCurrentStep('categorization');
+    
+    // Process with AI
+    await processWithAI(dataToProcess);
+  };
+
+  const handleDuplicateAnalysisCancel = () => {
+    clearData();
+    setCurrentStep('upload');
   };
 
   const handleTransactionsUpdate = (transactions: TransactionRow[]) => {
@@ -89,7 +147,6 @@ export default function ImportExtract() {
         subcategoryCount: subcategories.length 
       });
 
-      // Chamar Edge Function para processamento com Gemini
       const response = await supabase.functions.invoke('gemini-categorize-transactions', {
         body: {
           transactions: transactions.map(t => ({
@@ -122,7 +179,6 @@ export default function ImportExtract() {
         allSuggestions: aiSuggestions
       });
 
-      // Aplicar sugestões da IA aos dados processados
       const updatedData = transactions.map((transaction, index) => {
         const suggestion = aiSuggestions?.[index];
         console.log(`🔍 [DEBUG] Processando transação ${index}:`, {
@@ -171,12 +227,10 @@ export default function ImportExtract() {
         }))
       });
 
-      // Atualizar processedData com as sugestões da IA
       setProcessedData(updatedData);
       
       const suggestedCount = aiSuggestions?.filter((s: any) => s.confidence > 0.3).length || 0;
       
-      // Mostrar mensagem diferente dependendo se foi usado fallback
       if (usedFallback) {
         toast({
           title: "IA temporariamente indisponível",
@@ -205,6 +259,9 @@ export default function ImportExtract() {
   const clearData = () => {
     setImportedData([]);
     setProcessedData([]);
+    setDuplicateAnalysis(null);
+    setImportResults(null);
+    setCurrentStep('upload');
     setFilename('');
   };
 
@@ -247,13 +304,11 @@ export default function ImportExtract() {
     setIsImporting(true);
 
     try {
-      // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('Usuário não autenticado');
       }
 
-      // Create import session
       const { data: session, error: sessionError } = await supabase
         .from('import_sessions')
         .insert({
@@ -267,70 +322,86 @@ export default function ImportExtract() {
 
       if (sessionError) throw sessionError;
 
-      // Prepare transactions for insert
-      const transactionsToInsert = processedData.map(transaction => ({
-        user_id: user.id,
-        external_id: transaction.id,
-        date: transaction.date,
-        amount: transaction.amount,
-        description: transaction.editedDescription || transaction.description,
-        original_description: transaction.originalDescription,
-        category_id: transaction.categoryId,
-        subcategory_id: transaction.subcategoryId,
-        type: transaction.type,
-        import_session_id: session.id,
-        payment_method: transaction.type === 'income' ? 'Transferência' : 'Cartão de Débito'
-      }));
+      let successful = 0;
+      let failed = 0;
+      let updated = 0;
+      let skipped = 0;
+      const errors: string[] = [];
 
-      // Insert transactions in batches
-      const batchSize = 100;
-      let processedCount = 0;
+      // Process transactions based on import mode
+      for (const transaction of processedData) {
+        try {
+          const transactionData = {
+            user_id: user.id,
+            external_id: transaction.id,
+            date: transaction.date,
+            amount: transaction.amount,
+            description: transaction.editedDescription || transaction.description,
+            original_description: transaction.originalDescription,
+            category_id: transaction.categoryId,
+            subcategory_id: transaction.subcategoryId,
+            type: transaction.type,
+            import_session_id: session.id,
+            payment_method: transaction.type === 'income' ? 'Transferência' : 'Cartão de Débito'
+          };
 
-      for (let i = 0; i < transactionsToInsert.length; i += batchSize) {
-        const batch = transactionsToInsert.slice(i, i + batchSize);
-        
-        const { error: insertError } = await supabase
-          .from('transactions')
-          .insert(batch);
+          if (importMode === 'update-existing' && duplicateAnalysis?.duplicateTransactions.find(d => d.id === transaction.id)) {
+            // Update existing transaction
+            const { error: updateError } = await supabase
+              .from('transactions')
+              .update(transactionData)
+              .eq('external_id', transaction.id)
+              .eq('user_id', user.id);
 
-        if (insertError) {
-          // Handle duplicate external_id error
-          if (insertError.code === '23505') {
-            toast({
-              variant: "destructive",
-              title: "Transações duplicadas",
-              description: "Algumas transações já foram importadas anteriormente",
-            });
+            if (updateError) {
+              failed++;
+              errors.push(`Erro ao atualizar transação ${transaction.description}: ${updateError.message}`);
+            } else {
+              updated++;
+            }
           } else {
-            throw insertError;
+            // Insert new transaction
+            const { error: insertError } = await supabase
+              .from('transactions')
+              .insert(transactionData);
+
+            if (insertError) {
+              if (insertError.code === '23505') {
+                skipped++;
+              } else {
+                failed++;
+                errors.push(`Erro ao inserir transação ${transaction.description}: ${insertError.message}`);
+              }
+            } else {
+              successful++;
+            }
           }
+        } catch (error) {
+          failed++;
+          errors.push(`Erro inesperado para transação ${transaction.description}: ${error.message}`);
         }
-
-        processedCount += batch.length;
-
-        // Update session progress
-        await supabase
-          .from('import_sessions')
-          .update({ processed_records: processedCount })
-          .eq('id', session.id);
       }
 
-      // Mark session as completed
       await supabase
         .from('import_sessions')
         .update({ 
           status: 'completed',
           completed_at: new Date().toISOString(),
-          processed_records: processedCount
+          processed_records: successful + updated
         })
         .eq('id', session.id);
 
-      toast({
-        title: "Importação concluída",
-        description: `${processedCount} transações importadas com sucesso`,
+      // Set results and show results screen
+      setImportResults({
+        successful,
+        failed,
+        skipped,
+        updated,
+        total: processedData.length,
+        errors
       });
-
-      clearData();
+      
+      setCurrentStep('results');
 
     } catch (error) {
       console.error('Import error:', error);
@@ -357,8 +428,8 @@ export default function ImportExtract() {
   return (
     <>
       <LoadingOverlay 
-        isVisible={isProcessingAI} 
-        message="Processando transações com IA"
+        isVisible={isProcessingAI || isAnalyzingDuplicates} 
+        message={isProcessingAI ? "Processando transações com IA" : "Analisando duplicatas"}
       />
       
       <div className="space-y-6 p-6">
@@ -372,7 +443,7 @@ export default function ImportExtract() {
               </p>
             </div>
             
-            {importedData.length > 0 && (
+            {(currentStep === 'categorization' || currentStep === 'duplicate-analysis') && (
               <div className="flex gap-2">
                 {isProcessingAI && (
                   <div className="flex items-center gap-2 text-primary">
@@ -386,43 +457,47 @@ export default function ImportExtract() {
                   disabled={isImporting || isProcessingAI}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Limpar Dados
+                  Cancelar Importação
                 </Button>
-                <Button
-                  onClick={() => processWithAI(importedData)}
-                  disabled={isImporting || isProcessingAI || importedData.length === 0}
-                  variant="outline"
-                >
-                  <Bot className="h-4 w-4 mr-2" />
-                  Processar com IA
-                </Button>
-                <Button
-                  onClick={importTransactions}
-                  disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
-                  className="min-w-[140px]"
-                >
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Importando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Importar ({stats.categorized})
-                    </>
-                  )}
-                </Button>
+                
+                {currentStep === 'categorization' && (
+                  <>
+                    <Button
+                      onClick={() => processWithAI(processedData)}
+                      disabled={isImporting || isProcessingAI || processedData.length === 0}
+                      variant="outline"
+                    >
+                      <Bot className="h-4 w-4 mr-2" />
+                      Processar com IA
+                    </Button>
+                    <Button
+                      onClick={importTransactions}
+                      disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
+                      className="min-w-[140px]"
+                    >
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Importando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Importar ({stats.categorized})
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
-
         </div>
 
         <Separator />
 
-        {/* Tabs for import methods */}
-        {importedData.length === 0 && (
+        {/* Step-based content */}
+        {currentStep === 'upload' && (
           <Tabs defaultValue="csv" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="csv" className="flex items-center gap-2">
@@ -489,8 +564,20 @@ export default function ImportExtract() {
           </Tabs>
         )}
 
-        {/* Import table - Agora usando processedData que contém as sugestões da IA */}
-        {processedData.length > 0 && (
+        {/* Duplicate Analysis Step */}
+        {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
+          <DuplicateAnalysisCard
+            analysis={duplicateAnalysis}
+            selectedMode={importMode}
+            onModeChange={setImportMode}
+            onProceed={handleDuplicateAnalysisProceed}
+            onCancel={handleDuplicateAnalysisCancel}
+            isLoading={isProcessingAI}
+          />
+        )}
+
+        {/* Categorization Step */}
+        {currentStep === 'categorization' && processedData.length > 0 && (
           <div className="space-y-4">
             {stats.uncategorized > 0 && (
               <Alert>
@@ -507,6 +594,14 @@ export default function ImportExtract() {
               onTransactionsUpdate={handleTransactionsUpdate}
             />
           </div>
+        )}
+
+        {/* Results Step */}
+        {currentStep === 'results' && importResults && (
+          <ImportResultsCard
+            result={importResults}
+            onClose={clearData}
+          />
         )}
       </div>
     </>
