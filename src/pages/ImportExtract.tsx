@@ -438,9 +438,20 @@ export default function ImportExtract() {
     try {
       // Prepare transactions for final import
       const transactionsToImport = transactions.map(transaction => ({
-        ...transaction,
-        import_session_id: importSession.id,
-        user_id: undefined // Will be set by RLS
+        external_id: transaction.id,
+        date: transaction.date,
+        amount: transaction.amount,
+        description: transaction.editedDescription || transaction.description,
+        original_description: transaction.originalDescription,
+        type: transaction.type,
+        category_id: transaction.categoryId || null,
+        subcategory_id: transaction.subcategoryId || null,
+        payment_method: null,
+        tags: null,
+        notes: null,
+        is_recurring: false,
+        recurring_frequency: null,
+        import_session_id: importSession.id
       }));
 
       console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
