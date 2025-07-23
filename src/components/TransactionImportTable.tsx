@@ -652,6 +652,11 @@ export default function TransactionImportTable({
 
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
+    // Estornos não precisam de atenção - são estáticos
+    if (transaction.status === 'refunded') {
+      return false;
+    }
+    
     // Missing category or subcategory
     if (!transaction.categoryId || !transaction.subcategoryId) {
       return true;
@@ -684,21 +689,21 @@ export default function TransactionImportTable({
 
   const totalPages = Math.ceil(mergedData.length / itemsPerPage);
 
-  // Calculate totals correctly - use only visible transactions
+  // Calculate totals correctly - exclude refunds from totals
   const totalEntrada = mergedData
-    .filter(t => t.type === 'income')
+    .filter(t => t.type === 'income' && t.status !== 'refunded')
     .reduce((sum, t) => sum + t.amount, 0);
     
   const totalSaida = mergedData
-    .filter(t => t.type === 'expense')
+    .filter(t => t.type === 'expense' && t.status !== 'refunded')
     .reduce((sum, t) => sum + t.amount, 0);
     
   const diferenca = totalEntrada - totalSaida;
 
-  // Calculate payment method totals from visible transactions
+  // Calculate payment method totals from visible transactions (excluding refunds)
   const calculatePaymentMethodTotal = (keyword: string) => {
     return mergedData
-      .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
+      .filter(t => t.type === 'expense' && t.status !== 'refunded' && t.description.toLowerCase().includes(keyword.toLowerCase()))
       .reduce((sum, t) => sum + t.amount, 0);
   };
 
@@ -931,11 +936,17 @@ export default function TransactionImportTable({
                       </TableCell>
                       
                       <TableCell>
-                        <span className={`font-semibold ${
-                          transaction.type === 'income' ? 'text-success' : 'text-destructive'
-                        } ${isRefunded ? 'line-through text-gray-500' : ''}`}>
-                          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className={`font-semibold ${
+                            isRefunded ? 'text-muted-foreground' :
+                            transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                          }`}>
+                            {isRefunded ? 
+                              `${formatCurrency(transaction.amount)} (Estornado)` :
+                              `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
+                            }
+                          </span>
+                        </div>
                       </TableCell>
                       
                       <TableCell>
@@ -952,58 +963,58 @@ export default function TransactionImportTable({
 
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <TransactionIndicators transaction={transaction} />
-                          {isRefunded && (
-                            <Badge variant="secondary" size="sm">
-                              Estorno
-                            </Badge>
-                          )}
-                          {isUnifiedPix && (
-                            <Badge variant="outline" size="sm">
-                              PIX Crédito
-                            </Badge>
-                          )}
+                          {/* Não mostrar indicadores para estornos */}
+                          {!isRefunded && <TransactionIndicators transaction={transaction} />}
+                          <UnifiedTransactionBadge status={transaction.status} />
                         </div>
                       </TableCell>
                       
                       <TableCell>
-                        <Combobox
-                          key={generateStableKey(transaction, 'category-')}
-                          value={transaction.categoryId || ''}
-                          onValueChange={(value) => updateTransaction(transaction.id, {
-                            categoryId: value,
-                            subcategoryId: undefined,
-                            aiSuggestion: transaction.aiSuggestion ? {
-                              ...transaction.aiSuggestion,
-                              isAISuggested: false
-                            } : undefined
-                          })}
-                          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-                          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-                          searchPlaceholder="Buscar categoria..."
-                          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                          width="w-60"
-                          disabled={loadingCategories}
-                        />
+                        {isRefunded ? (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        ) : (
+                          <Combobox
+                            key={generateStableKey(transaction, 'category-')}
+                            value={transaction.categoryId || ''}
+                            onValueChange={(value) => updateTransaction(transaction.id, {
+                              categoryId: value,
+                              subcategoryId: undefined,
+                              aiSuggestion: transaction.aiSuggestion ? {
+                                ...transaction.aiSuggestion,
+                                isAISuggested: false
+                              } : undefined
+                            })}
+                            options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
+                            placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+                            searchPlaceholder="Buscar categoria..."
+                            emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+                            width="w-60"
+                            disabled={loadingCategories}
+                          />
+                        )}
                       </TableCell>
                       
                       <TableCell>
-                        <Combobox
-                          key={generateStableKey(transaction, 'subcategory-')}
-                          value={transaction.subcategoryId || ''}
-                          onValueChange={(value) => updateTransaction(transaction.id, {
-                            subcategoryId: value
-                          })}
-                          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-                            value: sub.id,
-                            label: sub.name
-                          }))}
-                          placeholder="Selecionar subcategoria"
-                          disabled={!transaction.categoryId || loadingSubcategories}
-                          searchPlaceholder="Buscar subcategoria..."
-                          emptyText="Nenhuma subcategoria encontrada"
-                          width="w-60"
-                        />
+                        {isRefunded ? (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        ) : (
+                          <Combobox
+                            key={generateStableKey(transaction, 'subcategory-')}
+                            value={transaction.subcategoryId || ''}
+                            onValueChange={(value) => updateTransaction(transaction.id, {
+                              subcategoryId: value
+                            })}
+                            options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+                              value: sub.id,
+                              label: sub.name
+                            }))}
+                            placeholder="Selecionar subcategoria"
+                            disabled={!transaction.categoryId || loadingSubcategories}
+                            searchPlaceholder="Buscar subcategoria..."
+                            emptyText="Nenhuma subcategoria encontrada"
+                            width="w-60"
+                          />
+                        )}
                       </TableCell>
                       
                       <TableCell>

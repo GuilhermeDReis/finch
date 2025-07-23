@@ -113,6 +113,33 @@ export default function ImportExtract() {
         hidden: duplicateResults.hiddenTransactionIds.size
       });
 
+      // Validation: Log details of unification
+      if (duplicateResults.refundPairs.length > 0) {
+        console.log('✅ [VALIDATION] Refund pairs found:');
+        duplicateResults.refundPairs.forEach((pair, index) => {
+          console.log(`  Refund ${index + 1}:`, {
+            pairId: pair.id,
+            originalAmount: pair.originalTransaction.amount,
+            originalDescription: pair.originalTransaction.description,
+            refundAmount: pair.refundTransaction.amount,
+            refundDescription: pair.refundTransaction.description
+          });
+        });
+      }
+
+      if (duplicateResults.pixPairs.length > 0) {
+        console.log('✅ [VALIDATION] PIX pairs found:');
+        duplicateResults.pixPairs.forEach((pair, index) => {
+          console.log(`  PIX ${index + 1}:`, {
+            pairId: pair.id,
+            creditAmount: pair.creditTransaction.amount,
+            creditDescription: pair.creditTransaction.description,
+            pixAmount: pair.pixTransaction.amount,
+            pixDescription: pair.pixTransaction.description
+          });
+        });
+      }
+
       setDuplicateAnalysis({
         duplicates: duplicateResults.duplicates,
         newTransactions: duplicateResults.newTransactions
@@ -130,19 +157,28 @@ export default function ImportExtract() {
         // Create unified transactions - ONE transaction per group
         const unifiedTransactions = [
           ...duplicateResults.newTransactions,
-          // Add refund representative transactions (valor ZERO, sem categoria)
-          ...duplicateResults.refundPairs.map(pair => ({
-            id: pair.id,
-            date: pair.originalTransaction.date,
-            amount: 0, // ZERO - representa estorno total
-            description: `Estorno Total: ${pair.originalTransaction.description}`,
-            originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-            type: pair.originalTransaction.type,
-            status: 'refunded' as const,
-            selected: true,
-            categoryId: undefined, // Sem categoria
-            subcategoryId: undefined
-          })),
+          // Add refund representative transactions (valor original, sem categoria)
+          ...duplicateResults.refundPairs.map(pair => {
+            console.log('🔄 [REFUND] Creating refund transaction:', {
+              originalAmount: pair.originalTransaction.amount,
+              originalDescription: pair.originalTransaction.description,
+              pairId: pair.id
+            });
+            return {
+              id: pair.id,
+              date: pair.originalTransaction.date,
+              amount: pair.originalTransaction.amount, // Valor original (não zero)
+              description: `Estorno Total: ${pair.originalTransaction.description}`,
+              originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+              type: pair.originalTransaction.type,
+              status: 'refunded' as const,
+              selected: true,
+              categoryId: undefined, // Sem categoria
+              subcategoryId: undefined,
+              // Sem sugestão de IA para estornos
+              aiSuggestion: undefined
+            };
+          }),
           // Add PIX Crédito representative transactions
           ...duplicateResults.pixPairs.map(pair => ({
             id: pair.id,
@@ -157,6 +193,24 @@ export default function ImportExtract() {
             subcategoryId: pair.pixTransaction.subcategoryId
           }))
         ];
+
+        // Validation: Verify unification integrity
+        console.log('🔍 [VALIDATION] Final unified transactions:', {
+          totalOriginal: parsedTransactions.length,
+          totalUnified: unifiedTransactions.length,
+          newTransactions: duplicateResults.newTransactions.length,
+          refundTransactions: duplicateResults.refundPairs.length,
+          pixTransactions: duplicateResults.pixPairs.length,
+          hiddenTransactions: duplicateResults.hiddenTransactionIds.size
+        });
+
+        // Verify that no refunds have categories
+        const refundsWithCategories = unifiedTransactions.filter(t => 
+          t.status === 'refunded' && (t.categoryId || t.subcategoryId)
+        );
+        if (refundsWithCategories.length > 0) {
+          console.error('🚨 [VALIDATION] ERROR: Refunds should not have categories!', refundsWithCategories);
+        }
 
         await handleAICategorization(unifiedTransactions);
       }
@@ -231,8 +285,19 @@ export default function ImportExtract() {
       console.log('✅ [AI] AI categorization completed successfully');
       setProcessingProgress(75);
       
-      // Update transactions with AI suggestions
+      // Update transactions with AI suggestions (excluding refunds)
       const updatedTransactions = transactionsToProcess.map(transaction => {
+        // Estornos não devem receber sugestões de IA
+        if (transaction.status === 'refunded') {
+          console.log('🚫 [AI] Skipping AI suggestion for refund transaction:', transaction.id);
+          return {
+            ...transaction,
+            categoryId: undefined, // Garantir que não tem categoria
+            subcategoryId: undefined,
+            aiSuggestion: undefined // Sem sugestão de IA
+          };
+        }
+        
         const aiSuggestion = categorizedTransactions?.find((cat: any) => cat.id === transaction.id);
         return {
           ...transaction,
@@ -298,19 +363,28 @@ export default function ImportExtract() {
     // Create unified transactions list based on selected mode
     const unifiedTransactions = [
       ...duplicateResults.newTransactions,
-      // Add refund representative transactions (valor ZERO, sem categoria)
-      ...duplicateResults.refundPairs.map(pair => ({
-        id: pair.id,
-        date: pair.originalTransaction.date,
-        amount: 0, // ZERO - representa estorno total
-        description: `Estorno Total: ${pair.originalTransaction.description}`,
-        originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-        type: pair.originalTransaction.type,
-        status: 'refunded' as const,
-        selected: true,
-        categoryId: undefined, // Sem categoria
-        subcategoryId: undefined
-      })),
+      // Add refund representative transactions (valor original, sem categoria)
+      ...duplicateResults.refundPairs.map(pair => {
+        console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
+          originalAmount: pair.originalTransaction.amount,
+          originalDescription: pair.originalTransaction.description,
+          pairId: pair.id
+        });
+        return {
+          id: pair.id,
+          date: pair.originalTransaction.date,
+          amount: pair.originalTransaction.amount, // Valor original (não zero)
+          description: `Estorno Total: ${pair.originalTransaction.description}`,
+          originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+          type: pair.originalTransaction.type,
+          status: 'refunded' as const,
+          selected: true,
+          categoryId: undefined, // Sem categoria
+          subcategoryId: undefined,
+          // Sem sugestão de IA para estornos
+          aiSuggestion: undefined
+        };
+      }),
       // Add PIX Crédito representative transactions
       ...duplicateResults.pixPairs.map(pair => ({
         id: pair.id,
