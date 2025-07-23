@@ -1,690 +1,468 @@
 
-import React, { useState } from 'react';
-import { Upload, FileText, Save, X, Trash2, Bot, Loader2, Building2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import React, { useState, useEffect } from 'react';
+import { Upload, FileText, AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import CSVUploader from '@/components/CSVUploader';
 import TransactionImportTable from '@/components/TransactionImportTable';
-import DuplicateAnalysisCard, { ImportMode } from '@/components/DuplicateAnalysisCard';
+import DuplicateAnalysisCard from '@/components/DuplicateAnalysisCard';
 import ImportResultsCard from '@/components/ImportResultsCard';
-import { BelvoConnectWidget } from '@/components/BelvoConnectWidget';
-import { LoadingOverlay } from '@/components/LoadingOverlay';
+import LoadingOverlay from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
-import { analyzeDuplicates, type DuplicateAnalysis } from '@/services/duplicateDetection';
+import { detectDuplicates } from '@/services/duplicateDetection';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
-type ImportStep = 'upload' | 'duplicate-analysis' | 'categorization' | 'results';
+interface ImportSession {
+  id: string;
+  filename: string;
+  total_records: number;
+  processed_records: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+}
 
 export default function ImportExtract() {
-  const [importedData, setImportedData] = useState<TransactionRow[]>([]);
-  const [processedData, setProcessedData] = useState<TransactionRow[]>([]);
-  const [duplicateAnalysis, setDuplicateAnalysis] = useState<DuplicateAnalysis | null>(null);
-  const [importMode, setImportMode] = useState<ImportMode>('new-only');
-  const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
-  const [importResults, setImportResults] = useState<any>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [isAnalyzingDuplicates, setIsAnalyzingDuplicates] = useState(false);
-  const [filename, setFilename] = useState('');
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [refundedTransactions, setRefundedTransactions] = useState<RefundedTransaction[]>([]);
+  const [unifiedPixTransactions, setUnifiedPixTransactions] = useState<UnifiedPixTransaction[]>([]);
+  const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
+  const [importSession, setImportSession] = useState<ImportSession | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [importResults, setImportResults] = useState<{
+    imported: number;
+    skipped: number;
+    errors: string[];
+  } | null>(null);
+  const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
+  const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
+    duplicates: any[];
+    newTransactions: TransactionRow[];
+  } | null>(null);
   const { toast } = useToast();
 
-  const handleDataParsed = async (data: TransactionRow[]) => {
-    console.log('🔍 [DEBUG] handleDataParsed called with data:', {
-      length: data.length,
-      firstTransaction: data[0],
-      allTransactions: data
-    });
-    
-    setImportedData(data);
-    setIsAnalyzingDuplicates(true);
+  const handleDataParsed = async (parsedTransactions: TransactionRow[]) => {
+    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions');
     
     try {
-      // Analyze duplicates with new grouping logic
-      const analysis = await analyzeDuplicates(data);
-      setDuplicateAnalysis(analysis);
-      setCurrentStep('duplicate-analysis');
-      
-      const totalGrouped = analysis.totalRefunded + analysis.totalUnifiedPix;
-      
-      toast({
-        title: "Arquivo processado",
-        description: `${data.length} transações analisadas - ${analysis.totalNew} novas, ${analysis.totalDuplicates} duplicatas, ${totalGrouped} agrupadas`,
-      });
-    } catch (error) {
-      console.error('Error analyzing duplicates:', error);
-      toast({
-        variant: "destructive",
-        title: "Erro na análise",
-        description: "Falha ao analisar duplicatas, prosseguindo com importação normal",
-      });
-      // Fallback to normal flow
-      setProcessedData(data.map(t => ({ ...t, selected: false })));
-      setCurrentStep('categorization');
-      await processWithAI(data);
-    } finally {
-      setIsAnalyzingDuplicates(false);
-    }
-  };
+      // Load existing transactions for duplicate detection
+      const { data: existingData, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
 
-  const handleError = (error: string) => {
-    toast({
-      variant: "destructive",
-      title: "Erro no processamento",
-      description: error,
-    });
-  };
-
-  const handleDuplicateAnalysisProceed = async () => {
-    if (!duplicateAnalysis) return;
-
-    let dataToProcess: TransactionRow[] = [];
-    
-    switch (importMode) {
-      case 'new-only':
-        dataToProcess = duplicateAnalysis.newTransactions;
-        break;
-      case 'update-existing':
-        dataToProcess = [...duplicateAnalysis.newTransactions, ...duplicateAnalysis.duplicateTransactions];
-        break;
-      case 'import-all':
-        dataToProcess = importedData;
-        break;
-    }
-
-    setProcessedData(dataToProcess.map(t => ({ ...t, selected: false })));
-    setCurrentStep('categorization');
-    
-    // Process with AI
-    await processWithAI(dataToProcess);
-  };
-
-  const handleDuplicateAnalysisCancel = () => {
-    clearData();
-    setCurrentStep('upload');
-  };
-
-  const handleTransactionsUpdate = (transactions: TransactionRow[]) => {
-    console.log('🔍 [DEBUG] handleTransactionsUpdate called with:', {
-      length: transactions.length,
-      firstTransactionWithAI: transactions.find(t => t.aiSuggestion),
-      transactionsWithAI: transactions.filter(t => t.aiSuggestion).length
-    });
-    setProcessedData(transactions);
-  };
-
-  const processWithAI = async (transactions: TransactionRow[]) => {
-    setIsProcessingAI(true);
-    
-    try {
-      console.log('🤖 [DEBUG] Iniciando processamento com IA...', {
-        transactionCount: transactions.length,
-        firstTransaction: transactions[0]
-      });
-      
-      // Carregar categorias e subcategorias
-      const [categoriesResult, subcategoriesResult] = await Promise.all([
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('subcategories').select('*').order('name')
-      ]);
-
-      if (categoriesResult.error) {
-        throw new Error(`Erro ao carregar categorias: ${categoriesResult.error.message}`);
-      }
-
-      if (subcategoriesResult.error) {
-        throw new Error(`Erro ao carregar subcategorias: ${subcategoriesResult.error.message}`);
-      }
-
-      const categories = categoriesResult.data || [];
-      const subcategories = subcategoriesResult.data || [];
-
-      console.log('📊 [DEBUG] Dados carregados:', { 
-        transactionCount: transactions.length,
-        categoryCount: categories.length,
-        subcategoryCount: subcategories.length 
-      });
-
-      const response = await supabase.functions.invoke('gemini-categorize-transactions', {
-        body: {
-          transactions: transactions.map(t => ({
-            date: t.date,
-            description: t.description,
-            amount: t.amount,
-            payment_method: t.type === 'income' ? 'Entrada' : 'Saída'
-          })),
-          categories,
-          subcategories
-        }
-      });
-
-      console.log('🎯 [DEBUG] Response da Edge Function:', {
-        error: response.error,
-        data: response.data,
-        rawResponse: response
-      });
-
-      if (response.error) {
-        throw new Error(`Erro na IA: ${response.error.message}`);
-      }
-
-      const { suggestions: aiSuggestions, usedFallback, message } = response.data || {};
-      console.log('🎯 [DEBUG] Resposta da IA detalhada:', { 
-        suggestions: aiSuggestions?.length || 0, 
-        usedFallback,
-        message,
-        firstSuggestion: aiSuggestions?.[0],
-        allSuggestions: aiSuggestions
-      });
-
-      const updatedData = transactions.map((transaction, index) => {
-        const suggestion = aiSuggestions?.[index];
-        console.log(`🔍 [DEBUG] Processando transação ${index}:`, {
-          transaction: transaction.description,
-          suggestion,
-          hasAISuggestion: !!suggestion,
-          categoryId: suggestion?.category_id,
-          subcategoryId: suggestion?.subcategory_id
-        });
-        
-        const result = {
-          ...transaction,
-          selected: false,
-          categoryId: suggestion?.category_id || undefined,
-          subcategoryId: suggestion?.subcategory_id || undefined,
-          aiSuggestion: suggestion ? {
-            categoryId: suggestion.category_id || '',
-            confidence: suggestion.confidence || 0,
-            reasoning: suggestion.reasoning || 'Categoria sugerida pela IA',
-            isAISuggested: true,
-            usedFallback: usedFallback || false
-          } : undefined
-        };
-        
-        console.log(`🔍 [DEBUG] Resultado final transação ${index}:`, {
-          id: result.id,
-          description: result.description,
-          categoryId: result.categoryId,
-          subcategoryId: result.subcategoryId,
-          hasAiSuggestion: !!result.aiSuggestion,
-          aiSuggestion: result.aiSuggestion
-        });
-        return result;
-      });
-
-      console.log('🔍 [DEBUG] updatedData final:', {
-        length: updatedData.length,
-        transactionsWithAI: updatedData.filter(t => t.aiSuggestion).length,
-        firstTransactionWithAI: updatedData.find(t => t.aiSuggestion),
-        sampleTransactions: updatedData.slice(0, 3).map(t => ({
-          id: t.id,
-          description: t.description,
-          categoryId: t.categoryId,
-          subcategoryId: t.subcategoryId,
-          hasAiSuggestion: !!t.aiSuggestion
-        }))
-      });
-
-      setProcessedData(updatedData);
-      
-      const suggestedCount = aiSuggestions?.filter((s: any) => s.confidence > 0.3).length || 0;
-      
-      if (usedFallback) {
+      if (error) {
+        console.error('❌ [IMPORT] Error loading existing transactions:', error);
         toast({
-          title: "IA temporariamente indisponível",
-          description: `Categorização básica aplicada em ${suggestedCount} de ${transactions.length} transações. Revise as sugestões antes de importar.`,
+          title: "Erro ao carregar transações",
+          description: error.message,
           variant: "destructive"
         });
+        return;
+      }
+
+      setExistingTransactions(existingData || []);
+      
+      // Detect duplicates, refunds, and unified PIX
+      const duplicateResults = detectDuplicates(parsedTransactions, existingData || []);
+      
+      console.log('🔍 [IMPORT] Duplicate detection results:', {
+        duplicates: duplicateResults.duplicates.length,
+        refunds: duplicateResults.refundedTransactions.length,
+        unifiedPix: duplicateResults.unifiedPixTransactions.length,
+        newTransactions: duplicateResults.newTransactions.length
+      });
+
+      setRefundedTransactions(duplicateResults.refundedTransactions);
+      setUnifiedPixTransactions(duplicateResults.unifiedPixTransactions);
+      setDuplicateAnalysis(duplicateResults);
+
+      // Check if we have any issues that require user attention
+      const hasIssues = duplicateResults.duplicates.length > 0 || 
+                       duplicateResults.refundedTransactions.length > 0 || 
+                       duplicateResults.unifiedPixTransactions.length > 0;
+
+      if (hasIssues) {
+        console.log('⚠️ [IMPORT] Issues detected, showing duplicate analysis screen');
+        setCurrentStep('duplicate-analysis');
       } else {
-        toast({
-          title: "IA processou as transações",
-          description: `${suggestedCount} de ${transactions.length} transações categorizadas automaticamente`,
-        });
+        console.log('✅ [IMPORT] No issues detected, proceeding to AI categorization');
+        setTransactions(duplicateResults.newTransactions);
+        
+        // Proceed directly to AI categorization
+        await handleAICategorization(duplicateResults.newTransactions);
       }
 
     } catch (error) {
-      console.error('⚠️ [DEBUG] Erro no processamento da IA:', error);
+      console.error('💥 [IMPORT] Exception in handleDataParsed:', error);
       toast({
-        variant: "destructive",
-        title: "Erro na IA",
-        description: error.message || "Falha ao processar com IA, continue manualmente",
+        title: "Erro no processamento",
+        description: "Ocorreu um erro ao processar as transações",
+        variant: "destructive"
       });
-    } finally {
-      setIsProcessingAI(false);
     }
   };
 
-  const clearData = () => {
-    setImportedData([]);
-    setProcessedData([]);
-    setDuplicateAnalysis(null);
-    setImportResults(null);
-    setCurrentStep('upload');
-    setFilename('');
-  };
-
-  const validateTransactions = () => {
-    const errors: string[] = [];
-    let validCount = 0;
+  const handleAICategorization = async (transactionsToProcess: TransactionRow[]) => {
+    console.log('🤖 [AI] Starting AI categorization for', transactionsToProcess.length, 'transactions');
     
-    processedData.forEach((transaction, index) => {
-      if (!transaction.categoryId) {
-        errors.push(`Linha ${index + 1}: Categoria não selecionada`);
-      } else {
-        validCount++;
-      }
-    });
-
-    return { errors, validCount };
-  };
-
-  const importTransactions = async () => {
-    if (processedData.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Erro",
-        description: "Nenhuma transação para importar",
-      });
-      return;
-    }
-
-    const { errors, validCount } = validateTransactions();
-    
-    if (errors.length > 0) {
-      toast({
-        variant: "destructive",
-        title: "Validação falhada",
-        description: `${errors.length} transações com problemas. Categorize todas as transações antes de importar.`,
-      });
-      return;
-    }
-
-    setIsImporting(true);
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    setCurrentStep('processing');
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Usuário não autenticado');
-      }
-
+      // Create session
       const { data: session, error: sessionError } = await supabase
         .from('import_sessions')
         .insert({
-          user_id: user.id,
-          filename: filename || 'extrato_bancario.csv',
-          total_records: processedData.length,
+          filename: 'import_' + Date.now(),
+          total_records: transactionsToProcess.length,
           status: 'processing'
         })
         .select()
         .single();
 
-      if (sessionError) throw sessionError;
-
-      let successful = 0;
-      let failed = 0;
-      let updated = 0;
-      let skipped = 0;
-      let groupedCount = 0;
-      const errors: string[] = [];
-
-      // Process regular transactions
-      for (const transaction of processedData) {
-        try {
-          const transactionData = {
-            user_id: user.id,
-            external_id: transaction.id,
-            date: transaction.date,
-            amount: transaction.amount,
-            description: transaction.editedDescription || transaction.description,
-            original_description: transaction.originalDescription,
-            category_id: transaction.categoryId,
-            subcategory_id: transaction.subcategoryId,
-            type: transaction.type,
-            import_session_id: session.id,
-            payment_method: transaction.type === 'income' ? 'Transferência' : 'Cartão de Débito'
-          };
-
-          if (importMode === 'update-existing' && duplicateAnalysis?.duplicateTransactions.find(d => d.id === transaction.id)) {
-            // Update existing transaction
-            const { error: updateError } = await supabase
-              .from('transactions')
-              .update(transactionData)
-              .eq('external_id', transaction.id)
-              .eq('user_id', user.id);
-
-            if (updateError) {
-              failed++;
-              errors.push(`Erro ao atualizar transação ${transaction.description}: ${updateError.message}`);
-            } else {
-              updated++;
-            }
-          } else {
-            // Insert new transaction
-            const { error: insertError } = await supabase
-              .from('transactions')
-              .insert(transactionData);
-
-            if (insertError) {
-              if (insertError.code === '23505') {
-                skipped++;
-              } else {
-                failed++;
-                errors.push(`Erro ao inserir transação ${transaction.description}: ${insertError.message}`);
-              }
-            } else {
-              successful++;
-            }
-          }
-        } catch (error) {
-          failed++;
-          errors.push(`Erro inesperado para transação ${transaction.description}: ${error.message}`);
-        }
+      if (sessionError) {
+        console.error('❌ [AI] Error creating import session:', sessionError);
+        throw sessionError;
       }
 
-      // Process grouped transactions (refunds and unified PIX)
-      if (duplicateAnalysis) {
-        // Insert refunded transactions with special status
-        for (const refund of duplicateAnalysis.refundedTransactions) {
-          try {
-            const refundData = {
-              user_id: user.id,
-              external_id: refund.id,
-              date: refund.originalTransaction.date,
-              amount: 0, // Amount is zero for refunded transactions
-              description: `${refund.originalTransaction.description} (Estornado)`,
-              original_description: refund.originalTransaction.originalDescription,
-              category_id: null,
-              subcategory_id: null,
-              type: 'expense',
-              import_session_id: session.id,
-              payment_method: 'Estorno',
-              notes: JSON.stringify({
-                originalTransaction: refund.originalTransaction,
-                refundTransaction: refund.refundTransaction,
-                status: 'refunded'
-              })
-            };
+      setImportSession(session);
 
-            const { error: insertError } = await supabase
-              .from('transactions')
-              .insert(refundData);
-
-            if (insertError) {
-              console.error('Error inserting refund:', insertError);
-            } else {
-              groupedCount++;
-            }
-          } catch (error) {
-            console.error('Error processing refund:', error);
-          }
-        }
-
-        // Insert unified PIX transactions
-        for (const unified of duplicateAnalysis.unifiedPixTransactions) {
-          try {
-            const unifiedData = {
-              user_id: user.id,
-              external_id: unified.id,
-              date: unified.pixTransaction.date,
-              amount: unified.pixTransaction.amount,
-              description: `PIX (via Crédito): ${unified.pixTransaction.description}`,
-              original_description: unified.pixTransaction.originalDescription,
-              category_id: null,
-              subcategory_id: null,
-              type: 'expense',
-              import_session_id: session.id,
-              payment_method: 'PIX',
-              notes: JSON.stringify({
-                creditTransaction: unified.creditTransaction,
-                pixTransaction: unified.pixTransaction,
-                status: 'unified-pix'
-              })
-            };
-
-            const { error: insertError } = await supabase
-              .from('transactions')
-              .insert(unifiedData);
-
-            if (insertError) {
-              console.error('Error inserting unified PIX:', insertError);
-            } else {
-              groupedCount++;
-            }
-          } catch (error) {
-            console.error('Error processing unified PIX:', error);
-          }
-        }
-      }
-
-      await supabase
-        .from('import_sessions')
-        .update({ 
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          processed_records: successful + updated + groupedCount
-        })
-        .eq('id', session.id);
-
-      // Set results and show results screen
-      setImportResults({
-        successful,
-        failed,
-        skipped,
-        updated,
-        grouped: groupedCount,
-        total: processedData.length + (duplicateAnalysis ? duplicateAnalysis.totalRefunded + duplicateAnalysis.totalUnifiedPix : 0),
-        errors
+      // Process with AI categorization
+      const { data: categorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
+        body: { transactions: transactionsToProcess }
       });
+
+      if (aiError) {
+        console.error('❌ [AI] Error in AI categorization:', aiError);
+        throw aiError;
+      }
+
+      console.log('✅ [AI] AI categorization completed successfully');
       
-      setCurrentStep('results');
+      // Update transactions with AI suggestions
+      const updatedTransactions = transactionsToProcess.map(transaction => {
+        const aiSuggestion = categorizedTransactions?.find((cat: any) => cat.id === transaction.id);
+        return {
+          ...transaction,
+          categoryId: aiSuggestion?.categoryId || transaction.categoryId,
+          subcategoryId: aiSuggestion?.subcategoryId || transaction.subcategoryId,
+          aiSuggestion: aiSuggestion ? {
+            categoryId: aiSuggestion.categoryId,
+            confidence: aiSuggestion.confidence,
+            reasoning: aiSuggestion.reasoning,
+            isAISuggested: true
+          } : undefined
+        };
+      });
+
+      setTransactions(updatedTransactions);
+      setProcessingProgress(100);
+      setCurrentStep('review');
 
     } catch (error) {
-      console.error('Import error:', error);
+      console.error('💥 [AI] Exception in AI categorization:', error);
+      
+      // Update session with error
+      if (importSession) {
+        await supabase
+          .from('import_sessions')
+          .update({
+            status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          })
+          .eq('id', importSession.id);
+      }
+
       toast({
-        variant: "destructive",
-        title: "Erro na importação",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        title: "Erro na categorização",
+        description: "Ocorreu um erro ao categorizar as transações com IA",
+        variant: "destructive"
       });
     } finally {
-      setIsImporting(false);
+      setIsProcessing(false);
     }
   };
 
-  const getStats = () => {
-    const categorized = processedData.filter(t => t.categoryId).length;
-    const uncategorized = processedData.length - categorized;
-    const totalValue = processedData.reduce((sum, t) => sum + (t.type === 'expense' ? -t.amount : t.amount), 0);
+  const handleDuplicateAnalysisComplete = async (
+    selectedTransactions: TransactionRow[],
+    action: 'import' | 'skip' | 'overwrite'
+  ) => {
+    console.log('🔄 [DUPLICATE] handleDuplicateAnalysisComplete called:', {
+      selectedCount: selectedTransactions.length,
+      action
+    });
 
-    return { categorized, uncategorized, totalValue };
+    if (action === 'skip') {
+      setCurrentStep('upload');
+      return;
+    }
+
+    // Continue with AI categorization
+    await handleAICategorization(selectedTransactions);
   };
 
-  const stats = getStats();
+  const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
+    console.log('🔄 [UPDATE] handleTransactionsUpdate called with:', updatedTransactions.length, 'transactions');
+    setTransactions(updatedTransactions);
+  };
+
+  const handleFinalImport = async () => {
+    console.log('💾 [FINAL] handleFinalImport called');
+    
+    if (!importSession) {
+      toast({
+        title: "Erro",
+        description: "Sessão de importação não encontrada",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingProgress(0);
+
+    try {
+      // Prepare transactions for final import
+      const transactionsToImport = transactions.map(transaction => ({
+        ...transaction,
+        import_session_id: importSession.id,
+        user_id: undefined // Will be set by RLS
+      }));
+
+      console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
+
+      // Import to database
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert(transactionsToImport)
+        .select();
+
+      if (error) {
+        console.error('❌ [FINAL] Error importing transactions:', error);
+        throw error;
+      }
+
+      // Update session
+      await supabase
+        .from('import_sessions')
+        .update({
+          status: 'completed',
+          processed_records: transactionsToImport.length,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', importSession.id);
+
+      setImportResults({
+        imported: transactionsToImport.length,
+        skipped: 0,
+        errors: []
+      });
+
+      setProcessingProgress(100);
+      setCurrentStep('results');
+
+      toast({
+        title: "Importação concluída",
+        description: `${transactionsToImport.length} transações importadas com sucesso`,
+        variant: "default"
+      });
+
+    } catch (error) {
+      console.error('💥 [FINAL] Exception in final import:', error);
+      
+      await supabase
+        .from('import_sessions')
+        .update({
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error'
+        })
+        .eq('id', importSession.id);
+
+      toast({
+        title: "Erro na importação",
+        description: "Ocorreu um erro ao importar as transações",
+        variant: "destructive"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const resetImport = () => {
+    setTransactions([]);
+    setRefundedTransactions([]);
+    setUnifiedPixTransactions([]);
+    setCurrentStep('upload');
+    setImportSession(null);
+    setIsProcessing(false);
+    setProcessingProgress(0);
+    setImportResults(null);
+    setExistingTransactions([]);
+    setDuplicateAnalysis(null);
+  };
 
   return (
-    <>
-      <LoadingOverlay 
-        isVisible={isProcessingAI || isAnalyzingDuplicates} 
-        message={isProcessingAI ? "Processando transações com IA" : "Analisando duplicatas"}
-      />
-      
-      <div className="space-y-6 p-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">Importar Extrato</h1>
-              <p className="text-muted-foreground">
-                Importe transações via CSV ou conecte sua conta bancária diretamente
-              </p>
-            </div>
-            
-            {(currentStep === 'categorization' || currentStep === 'duplicate-analysis') && (
-              <div className="flex gap-2">
-                {isProcessingAI && (
-                  <div className="flex items-center gap-2 text-primary">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm">IA processando...</span>
-                  </div>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={clearData}
-                  disabled={isImporting || isProcessingAI}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Cancelar Importação
-                </Button>
-                
-                {currentStep === 'categorization' && (
-                  <>
-                    <Button
-                      onClick={() => processWithAI(processedData)}
-                      disabled={isImporting || isProcessingAI || processedData.length === 0}
-                      variant="outline"
-                    >
-                      <Bot className="h-4 w-4 mr-2" />
-                      Processar com IA
-                    </Button>
-                    <Button
-                      onClick={importTransactions}
-                      disabled={isImporting || isProcessingAI || stats.uncategorized > 0}
-                      className="min-w-[140px]"
-                    >
-                      {isImporting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          Importando...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4 mr-2" />
-                          Importar ({stats.categorized})
-                        </>
-                      )}
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Step-based content */}
-        {currentStep === 'upload' && (
-          <Tabs defaultValue="csv" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="csv" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Upload CSV
-              </TabsTrigger>
-              <TabsTrigger value="bank" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
-                Conectar Banco
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="csv" className="space-y-6">
-              <CSVUploader 
-                onDataParsed={handleDataParsed}
-                onError={handleError}
-              />
-              
-              {/* Instructions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Formato do Arquivo CSV
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold">Estrutura obrigatória:</h4>
-                    <div className="bg-muted p-3 rounded-md font-mono text-sm mt-2">
-                      Data,Valor,ID_Transacao,Descricao
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="font-semibold">Especificações:</h4>
-                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                        <li>Data: DD/MM/AAAA</li>
-                        <li>Valor: Formato brasileiro (1.234,56)</li>
-                        <li>Codificação: latin-1 (Windows-1252)</li>
-                        <li>Tamanho máximo: 10MB</li>
-                      </ul>
-                    </div>
-                    
-                    <div>
-                      <h4 className="font-semibold">Exemplo:</h4>
-                      <div className="bg-muted p-3 rounded-md font-mono text-xs">
-                        15/01/2024,-150,50,Supermercado XYZ<br />
-                        16/01/2024,2.500,00,Salário Janeiro<br />
-                        17/01/2024,-45,30,Combustível
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="bank" className="space-y-6">
-              <div className="flex justify-center">
-                <BelvoConnectWidget />
-              </div>
-            </TabsContent>
-          </Tabs>
-        )}
-
-        {/* Duplicate Analysis Step */}
-        {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
-          <DuplicateAnalysisCard
-            analysis={duplicateAnalysis}
-            selectedMode={importMode}
-            onModeChange={setImportMode}
-            onProceed={handleDuplicateAnalysisProceed}
-            onCancel={handleDuplicateAnalysisCancel}
-            isLoading={isProcessingAI}
-          />
-        )}
-
-        {/* Categorization Step */}
-        {currentStep === 'categorization' && processedData.length > 0 && (
-          <div className="space-y-4">
-            {stats.uncategorized > 0 && (
-              <Alert>
-                <Upload className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Atenção:</strong> {stats.uncategorized} transações ainda precisam de categoria. 
-                  Categorize todas as transações antes de importar.
-                </AlertDescription>
-              </Alert>
-            )}
-            
-            <TransactionImportTable
-              transactions={processedData}
-              refundedTransactions={duplicateAnalysis?.refundedTransactions}
-              unifiedPixTransactions={duplicateAnalysis?.unifiedPixTransactions}
-              onTransactionsUpdate={handleTransactionsUpdate}
-            />
-          </div>
-        )}
-
-        {/* Results Step */}
-        {currentStep === 'results' && importResults && (
-          <ImportResultsCard
-            result={importResults}
-            onClose={clearData}
-          />
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Importar Extrato</h1>
+        {currentStep !== 'upload' && (
+          <Button variant="outline" onClick={resetImport}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Nova Importação
+          </Button>
         )}
       </div>
-    </>
+
+      {/* Progress Steps */}
+      <div className="flex items-center space-x-4 mb-6">
+        <div className={`flex items-center ${currentStep === 'upload' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            1
+          </div>
+          <span className="ml-2">Upload</span>
+        </div>
+        
+        <div className="flex-1 h-px bg-border" />
+        
+        <div className={`flex items-center ${currentStep === 'duplicate-analysis' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'duplicate-analysis' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            2
+          </div>
+          <span className="ml-2">Análise</span>
+        </div>
+        
+        <div className="flex-1 h-px bg-border" />
+        
+        <div className={`flex items-center ${currentStep === 'processing' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'processing' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            3
+          </div>
+          <span className="ml-2">Processamento</span>
+        </div>
+        
+        <div className="flex-1 h-px bg-border" />
+        
+        <div className={`flex items-center ${currentStep === 'review' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'review' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            4
+          </div>
+          <span className="ml-2">Revisão</span>
+        </div>
+        
+        <div className="flex-1 h-px bg-border" />
+        
+        <div className={`flex items-center ${currentStep === 'results' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'results' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            5
+          </div>
+          <span className="ml-2">Resultados</span>
+        </div>
+      </div>
+
+      {/* Step Content */}
+      {currentStep === 'upload' && (
+        <CSVUploader onDataParsed={handleDataParsed} />
+      )}
+
+      {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
+        <DuplicateAnalysisCard
+          duplicates={duplicateAnalysis.duplicates}
+          newTransactions={duplicateAnalysis.newTransactions}
+          refundedTransactions={refundedTransactions}
+          unifiedPixTransactions={unifiedPixTransactions}
+          onComplete={handleDuplicateAnalysisComplete}
+        />
+      )}
+
+      {currentStep === 'processing' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 animate-spin" />
+              Processando Transações
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                  <span>Categorizando com IA...</span>
+                  <span>{processingProgress}%</span>
+                </div>
+                <Progress value={processingProgress} className="w-full" />
+              </div>
+              
+              {importSession && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    Sessão: {importSession.id.substring(0, 8)}
+                  </Badge>
+                  <Badge variant="outline">
+                    {importSession.total_records} transações
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {currentStep === 'review' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Revisar Transações</h2>
+            <Button onClick={handleFinalImport} disabled={isProcessing}>
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Importar Transações
+                </>
+              )}
+            </Button>
+          </div>
+          
+          <TransactionImportTable
+            transactions={transactions}
+            refundedTransactions={refundedTransactions}
+            unifiedPixTransactions={unifiedPixTransactions}
+            onTransactionsUpdate={handleTransactionsUpdate}
+          />
+        </div>
+      )}
+
+      {currentStep === 'results' && importResults && (
+        <ImportResultsCard
+          results={importResults}
+          onNewImport={resetImport}
+        />
+      )}
+
+      {/* Loading Overlay */}
+      {isProcessing && <LoadingOverlay />}
+    </div>
   );
 }

@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import TransactionIndicators from './TransactionIndicators';
 import GroupedTransactionRow from './GroupedTransactionRow';
+import TransactionFilters from './TransactionFilters';
 import { supabase } from '@/integrations/supabase/client';
 import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
 import { 
@@ -314,6 +315,12 @@ export default function TransactionImportTable({
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
+  // Add filter state
+  const [filters, setFilters] = useState({
+    paymentMethod: 'all',
+    type: 'all'
+  });
+  
   const itemsPerPage = 50;
 
   // Initialize integrity monitoring
@@ -325,6 +332,35 @@ export default function TransactionImportTable({
     loadCategories();
     loadSubcategories();
   }, []);
+
+  // Helper function to detect payment method from description
+  const getPaymentMethod = (description: string): string => {
+    const desc = description.toLowerCase();
+    if (desc.includes('pix')) return 'pix';
+    if (desc.includes('crédito') || desc.includes('credito')) return 'credito';
+    if (desc.includes('débito') || desc.includes('debito')) return 'debito';
+    return 'other';
+  };
+
+  // Filter transactions based on current filters
+  const applyFilters = (transactions: TransactionRow[]): TransactionRow[] => {
+    return transactions.filter(transaction => {
+      // Filter by type
+      if (filters.type !== 'all' && transaction.type !== filters.type) {
+        return false;
+      }
+
+      // Filter by payment method
+      if (filters.paymentMethod !== 'all') {
+        const paymentMethod = getPaymentMethod(transaction.description);
+        if (paymentMethod !== filters.paymentMethod) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
 
   // Create merged data including grouped transactions
   const mergedData = useMemo(() => {
@@ -357,13 +393,16 @@ export default function TransactionImportTable({
       });
     });
     
+    // Apply filters
+    const filteredTransactions = applyFilters(allTransactions);
+    
     // Sort by date
-    return allTransactions.sort((a, b) => {
+    return filteredTransactions.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
-  }, [tableData, refundedTransactions, unifiedPixTransactions, categories, sortOrder]);
+  }, [tableData, refundedTransactions, unifiedPixTransactions, categories, sortOrder, filters]);
 
   // Enhanced initialization with ID validation
   useEffect(() => {
@@ -639,9 +678,26 @@ export default function TransactionImportTable({
     return false;
   }, []);
 
+  // Filter handlers
+  const handleFilterChange = useCallback((filterType: string, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+    setCurrentPage(1); // Reset to first page when filters change
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setFilters({
+      paymentMethod: 'all',
+      type: 'all'
+    });
+    setCurrentPage(1);
+  }, []);
+
   const totalPages = Math.ceil(mergedData.length / itemsPerPage);
   
-  // Calculate totals including grouped transactions
+  // Calculate totals including grouped transactions - use all tableData (not filtered)
   const totalEntrada = tableData
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -652,7 +708,7 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
   
-  // Calculate payment method totals
+  // Calculate payment method totals - use all tableData (not filtered)
   const calculatePaymentMethodTotal = (keyword: string) => {
     let total = 0;
     
@@ -763,6 +819,15 @@ export default function TransactionImportTable({
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Transaction Filters */}
+      <TransactionFilters
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClearFilters={handleClearFilters}
+        totalFiltered={mergedData.length}
+        totalAll={tableData.length + refundedTransactions.length + unifiedPixTransactions.length}
+      />
 
       {/* Bulk Actions */}
       {selectedRows.size > 0 && (
@@ -952,7 +1017,7 @@ export default function TransactionImportTable({
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
                 Página {currentPage} de {totalPages} 
-                ({mergedData.length} transações totais)
+                ({mergedData.length} transações filtradas de {tableData.length + refundedTransactions.length + unifiedPixTransactions.length} totais)
               </div>
               <div className="flex gap-2">
                 <Button
