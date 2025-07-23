@@ -238,13 +238,12 @@ export default function TransactionImportTable({
             </TableHeader>
             <TableBody>
               {allTransactions.map((transaction) => {
-                // Check if this is a grouped transaction with proper type guards
-                if (('originalTransaction' in transaction && 'refundTransaction' in transaction) || 
-                    ('creditTransaction' in transaction && 'pixTransaction' in transaction)) {
+                // Check if this is a grouped transaction
+                if ('status' in transaction && (transaction.status === 'refunded' || transaction.status === 'unified-pix')) {
                   return (
                     <GroupedTransactionRow
                       key={transaction.id}
-                      transaction={transaction as RefundedTransaction | UnifiedPixTransaction}
+                      transaction={transaction}
                       formatCurrency={formatCurrency}
                       formatDate={formatDate}
                     />
