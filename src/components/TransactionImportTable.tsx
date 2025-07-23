@@ -326,6 +326,45 @@ export default function TransactionImportTable({
     loadSubcategories();
   }, []);
 
+  // Create merged data including grouped transactions
+  const mergedData = useMemo(() => {
+    // Create unified list with all transactions
+    const allTransactions: (TransactionRow & { isGrouped?: boolean })[] = [...tableData];
+    
+    // Add refunded transactions with grouped flag
+    refundedTransactions.forEach(refund => {
+      allTransactions.push({
+        ...refund.originalTransaction,
+        isGrouped: true,
+        status: 'refunded'
+      });
+    });
+    
+    // Add unified PIX transactions with grouped flag and auto-categorization
+    unifiedPixTransactions.forEach(unified => {
+      // Find PIX category
+      const pixCategory = categories.find(cat => 
+        cat.name.toLowerCase().includes('pix') || 
+        cat.name.toLowerCase().includes('transferência')
+      );
+      
+      allTransactions.push({
+        ...unified.pixTransaction,
+        isGrouped: true,
+        status: 'unified-pix',
+        categoryId: pixCategory?.id || unified.pixTransaction.categoryId,
+        description: `PIX Crédito: ${unified.pixTransaction.description}`
+      });
+    });
+    
+    // Sort by date
+    return allTransactions.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+  }, [tableData, refundedTransactions, unifiedPixTransactions, categories, sortOrder]);
+
   // Enhanced initialization with ID validation
   useEffect(() => {
     console.log('🔍 [DEBUG] transactions prop changed:', {
@@ -355,19 +394,8 @@ export default function TransactionImportTable({
     // Normalize and validate each transaction
     const normalizedTransactions = fixedTransactions.map(normalizeAndValidateTransaction);
     
-    const sortedData = [...normalizedTransactions]
-      .sort((a, b) => {
-        if (sortBy === 'date') {
-          const comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
-          return sortOrder === 'asc' ? comparison : -comparison;
-        } else {
-          const comparison = a.amount - b.amount;
-          return sortOrder === 'asc' ? comparison : -comparison;
-        }
-      });
-    
-    setTableData(sortedData);
-  }, [transactions, sortBy, sortOrder, onTransactionsUpdate]);
+    setTableData(normalizedTransactions);
+  }, [transactions, onTransactionsUpdate]);
 
   const loadCategories = async () => {
     try {
@@ -582,8 +610,8 @@ export default function TransactionImportTable({
   const getCurrentPageData = useCallback(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return tableData.slice(startIndex, endIndex);
-  }, [tableData, currentPage, itemsPerPage]);
+    return mergedData.slice(startIndex, endIndex);
+  }, [mergedData, currentPage, itemsPerPage]);
 
   // Opções memoizadas para melhor performance - filtradas por tipo de transação
   const categoryOptions = useMemo(() => {
@@ -595,7 +623,6 @@ export default function TransactionImportTable({
     console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
     return options;
   }, [categories]);
-
 
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
@@ -612,9 +639,9 @@ export default function TransactionImportTable({
     return false;
   }, []);
 
-  const totalPages = Math.ceil(tableData.length / itemsPerPage);
+  const totalPages = Math.ceil(mergedData.length / itemsPerPage);
   
-  // Calculate totals excluding grouped transactions
+  // Calculate totals including grouped transactions
   const totalEntrada = tableData
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -625,10 +652,21 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
   
+  // Calculate payment method totals
   const calculatePaymentMethodTotal = (keyword: string) => {
-    return tableData
+    let total = 0;
+    
+    // Regular transactions
+    total += tableData
       .filter(t => t.type === 'expense' && t.description.toLowerCase().includes(keyword.toLowerCase()))
       .reduce((sum, t) => sum + t.amount, 0);
+    
+    // Add unified PIX as credit
+    if (keyword === 'crédito' || keyword === 'credito') {
+      total += unifiedPixTransactions.reduce((sum, unified) => sum + unified.pixTransaction.amount, 0);
+    }
+    
+    return total;
   };
   
   const totalPix = calculatePaymentMethodTotal('pix');
@@ -676,6 +714,34 @@ export default function TransactionImportTable({
         </Card>
       </div>
 
+      {/* Payment Method Totals */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-blue-600">
+              {formatCurrency(totalPix)}
+            </div>
+            <div className="text-sm text-muted-foreground">PIX</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-orange-600">
+              {formatCurrency(totalCredito)}
+            </div>
+            <div className="text-sm text-muted-foreground">Crédito</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-purple-600">
+              {formatCurrency(totalDebito)}
+            </div>
+            <div className="text-sm text-muted-foreground">Débito</div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Grouped Transactions Summary */}
       {(refundedTransactions.length > 0 || unifiedPixTransactions.length > 0) && (
         <Alert>
@@ -684,18 +750,15 @@ export default function TransactionImportTable({
             <div className="flex items-center gap-4 flex-wrap">
               <span>Transações agrupadas encontradas:</span>
               {refundedTransactions.length > 0 && (
-                <Badge variant="secondary">
+                <Badge variant="secondary" size="sm">
                   {refundedTransactions.length} estornos
                 </Badge>
               )}
               {unifiedPixTransactions.length > 0 && (
-                <Badge variant="outline">
-                  {unifiedPixTransactions.length} PIX via crédito
+                <Badge variant="outline" size="sm">
+                  {unifiedPixTransactions.length} PIX Crédito
                 </Badge>
               )}
-              <span className="text-sm text-muted-foreground">
-                (não contabilizadas nos totais)
-              </span>
             </div>
           </AlertDescription>
         </Alert>
@@ -798,43 +861,88 @@ export default function TransactionImportTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* Render grouped transactions first */}
-                {refundedTransactions.map(refund => (
-                  <GroupedTransactionRow
-                    key={refund.id}
-                    transaction={refund}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
-                {unifiedPixTransactions.map(unified => (
-                  <GroupedTransactionRow
-                    key={unified.id}
-                    transaction={unified}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
-                
-                {/* Render normal transactions */}
-                {getCurrentPageData().map(transaction => (
-                  <TransactionRow
-                    key={generateStableKey(transaction, 'transaction-')}
-                    transaction={transaction}
-                    categories={categories}
-                    subcategories={subcategories}
-                    selectedRows={selectedRows}
-                    loadingCategories={loadingCategories}
-                    loadingSubcategories={loadingSubcategories}
-                    categoryOptions={categoryOptions}
-                    onUpdateTransaction={updateTransaction}
-                    onToggleSelection={toggleRowSelection}
-                    needsAttention={needsAttention}
-                    getFilteredSubcategories={getFilteredSubcategories}
-                    formatCurrency={formatCurrency}
-                    formatDate={formatDate}
-                  />
-                ))}
+                {getCurrentPageData().map(transaction => {
+                  if (transaction.isGrouped) {
+                    if (transaction.status === 'refunded') {
+                      return (
+                        <TableRow key={transaction.id} className="bg-gray-50 text-gray-600">
+                          <TableCell></TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {formatDate(transaction.date)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-semibold text-gray-500 line-through">
+                              {formatCurrency(transaction.amount)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="max-w-xs truncate">
+                                {transaction.description} (Estornado)
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" size="sm">
+                              Estorno
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                        </TableRow>
+                      );
+                    } else if (transaction.status === 'unified-pix') {
+                      return (
+                        <TableRow key={transaction.id} className="bg-blue-50 text-blue-800">
+                          <TableCell></TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {formatDate(transaction.date)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-semibold">
+                              -{formatCurrency(transaction.amount)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="max-w-xs truncate">
+                                {transaction.description}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" size="sm">
+                              PIX Crédito
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                          <TableCell className="text-gray-400">—</TableCell>
+                        </TableRow>
+                      );
+                    }
+                  }
+                  
+                  return (
+                    <TransactionRow
+                      key={generateStableKey(transaction, 'transaction-')}
+                      transaction={transaction}
+                      categories={categories}
+                      subcategories={subcategories}
+                      selectedRows={selectedRows}
+                      loadingCategories={loadingCategories}
+                      loadingSubcategories={loadingSubcategories}
+                      categoryOptions={categoryOptions}
+                      onUpdateTransaction={updateTransaction}
+                      onToggleSelection={toggleRowSelection}
+                      needsAttention={needsAttention}
+                      getFilteredSubcategories={getFilteredSubcategories}
+                      formatCurrency={formatCurrency}
+                      formatDate={formatDate}
+                    />
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -844,7 +952,7 @@ export default function TransactionImportTable({
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
                 Página {currentPage} de {totalPages} 
-                ({tableData.length} transações ativas, {refundedTransactions.length + unifiedPixTransactions.length} agrupadas)
+                ({mergedData.length} transações totais)
               </div>
               <div className="flex gap-2">
                 <Button
