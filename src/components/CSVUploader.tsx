@@ -1,4 +1,3 @@
-
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
@@ -22,46 +21,75 @@ interface CSVUploaderProps {
   onError: (error: string) => void;
 }
 
-// Enhanced transaction type detection
+// Enhanced transaction type detection with Brazilian context
 const detectTransactionType = (description: string, amount: number): 'income' | 'expense' => {
   const desc = description.toLowerCase();
   
-  // Strong income indicators
-  const strongIncomePatterns = [
-    'salario', 'salário', 'rendimento', 'pix recebido', 'transferencia recebida',
-    'deposito', 'depósito', 'credito em conta', 'crédito em conta',
-    'reembolso', 'devolução', 'restituição', 'freelance', 'comissão',
-    'venda', 'recebimento', 'entrada', 'bonificação', '13º salário',
-    'dividendos', 'juros recebidos'
-  ];
+  console.log(`🔍 [TYPE_DETECTION] Analyzing: "${description}" (amount: ${amount})`);
   
-  // Strong expense indicators
-  const strongExpensePatterns = [
-    'compra', 'pagamento', 'debito', 'débito', 'saque', 'pix enviado',
-    'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
-    'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa',
-    'cobrança', 'desconto em folha'
+  // Priority 1: Known Brazilian companies/services (always expense when "enviada")
+  const knownExpenseCompanies = [
+    'uber', '99', 'taxi', 'ifood', 'rappi', 'delivery', 'd market', 'd.market',
+    'emporio km', 'casa da sopa', 'navenda', 'americanas', 'magazine luiza',
+    'mercado livre', 'shopee', 'amazon', 'netshoes', 'centauro', 'ponto frio',
+    'casas bahia', 'extra', 'carrefour', 'pao de acucar', 'big', 'bompreco',
+    'posto', 'shell', 'petrobras', 'ipiranga', 'ale', 'texaco',
+    'farmacia', 'drogaria', 'drogasil', 'droga raia', 'pacheco',
+    'academia', 'smartfit', 'bioritmo', 'bodytech',
+    'netflix', 'spotify', 'amazon prime', 'disney+', 'globoplay',
+    'stone', 'pagseguro', 'mercado pago', 'paypal', 'picpay',
+    'nubank', 'inter', 'neon', 'c6 bank', 'original'
   ];
-  
-  // Check for strong income patterns
-  for (const pattern of strongIncomePatterns) {
+
+  // Priority 2: Transaction context patterns (higher priority than companies)
+  const contextPatterns = {
+    income: [
+      'recebido', 'recebimento', 'entrada', 'credito em conta', 'crédito em conta',
+      'deposito', 'depósito', 'transferencia recebida', 'transferência recebida',
+      'estorno', 'devolução', 'reembolso', 'restituição', 'pix recebido',
+      'salario', 'salário', 'rendimento', 'dividendos', 'juros recebidos',
+      'freelance', 'comissão', 'venda', 'bonificação', '13º salário'
+    ],
+    expense: [
+      'enviada', 'enviado', 'pagamento', 'compra', 'debito', 'débito',
+      'saque', 'pix enviado', 'transferencia enviada', 'transferência enviada',
+      'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
+      'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa', 'cobrança',
+      'desconto em folha', 'fatura'
+    ]
+  };
+
+  // Check context patterns first (highest priority)
+  for (const pattern of contextPatterns.income) {
     if (desc.includes(pattern)) {
-      console.log(`💰 [TYPE_DETECTION] Strong income pattern "${pattern}" found in: ${description}`);
+      console.log(`💰 [TYPE_DETECTION] Income context pattern "${pattern}" found → income`);
       return 'income';
     }
   }
-  
-  // Check for strong expense patterns
-  for (const pattern of strongExpensePatterns) {
+
+  for (const pattern of contextPatterns.expense) {
     if (desc.includes(pattern)) {
-      console.log(`💸 [TYPE_DETECTION] Strong expense pattern "${pattern}" found in: ${description}`);
+      console.log(`💸 [TYPE_DETECTION] Expense context pattern "${pattern}" found → expense`);
       return 'expense';
     }
   }
+
+  // Check for known expense companies
+  for (const company of knownExpenseCompanies) {
+    if (desc.includes(company)) {
+      console.log(`🏢 [TYPE_DETECTION] Known expense company "${company}" found → expense`);
+      return 'expense';
+    }
+  }
+
+  // Fallback to amount-based detection (but be more careful with zero values)
+  if (amount === 0) {
+    console.log(`⚠️ [TYPE_DETECTION] Zero amount, defaulting to expense`);
+    return 'expense';
+  }
   
-  // Fallback to amount-based detection with better logic
   const detectedType = amount > 0 ? 'income' : 'expense';
-  console.log(`🔍 [TYPE_DETECTION] No clear pattern, using amount-based: ${detectedType} for ${description} (${amount})`);
+  console.log(`🔢 [TYPE_DETECTION] Amount-based detection: ${detectedType} (${amount})`);
   return detectedType;
 };
 
@@ -165,7 +193,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
                 return null;
               }
 
-              // Enhanced type detection
+              // Enhanced type detection with Brazilian context
               const type = detectTransactionType(description, amount);
 
               return {

@@ -33,57 +33,87 @@ interface AIResponse {
   subcategory_id: string | null;
   confidence: number;
   reasoning: string;
+  suggested_type?: string; // New field for type correction
 }
 
 // Retry configuration
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000; // Reduced from 2000ms
-const BACKOFF_MULTIPLIER = 1.5; // Reduced from 2
+const RETRY_DELAY_MS = 1000;
+const BACKOFF_MULTIPLIER = 1.5;
 
 // Sleep function for delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Enhanced transaction type detection
+// Enhanced transaction type detection (unified with CSVUploader)
 function detectTransactionType(transaction: Transaction): 'income' | 'expense' {
   const { description, amount } = transaction;
   const desc = description.toLowerCase();
   
-  // Income indicators (high priority)
-  const incomePatterns = [
-    'salario', 'salário', 'rendimento', 'pix recebido', 'transferencia recebida',
-    'deposito', 'depósito', 'credito em conta', 'crédito em conta',
-    'reembolso', 'devolução', 'restituição', 'freelance', 'comissão',
-    'rendimento', 'juros', 'dividendos', 'bonificação', '13º salário',
-    'venda', 'recebimento', 'entrada'
-  ];
+  console.log(`🔍 [TYPE_DETECTION] Analyzing: "${description}" (amount: ${amount})`);
   
-  // Expense indicators
-  const expensePatterns = [
-    'compra', 'pagamento', 'debito', 'débito', 'saque', 'transferencia',
-    'pix enviado', 'cartao', 'cartão', 'boleto', 'financiamento',
-    'prestação', 'mensalidade', 'anuidade', 'taxa', 'juros',
-    'multa', 'tarifa', 'desconto', 'cobrança'
+  // Priority 1: Known Brazilian companies/services (always expense when "enviada")
+  const knownExpenseCompanies = [
+    'uber', '99', 'taxi', 'ifood', 'rappi', 'delivery', 'd market', 'd.market',
+    'emporio km', 'casa da sopa', 'navenda', 'americanas', 'magazine luiza',
+    'mercado livre', 'shopee', 'amazon', 'netshoes', 'centauro', 'ponto frio',
+    'casas bahia', 'extra', 'carrefour', 'pao de acucar', 'big', 'bompreco',
+    'posto', 'shell', 'petrobras', 'ipiranga', 'ale', 'texaco',
+    'farmacia', 'drogaria', 'drogasil', 'droga raia', 'pacheco',
+    'academia', 'smartfit', 'bioritmo', 'bodytech',
+    'netflix', 'spotify', 'amazon prime', 'disney+', 'globoplay',
+    'stone', 'pagseguro', 'mercado pago', 'paypal', 'picpay',
+    'nubank', 'inter', 'neon', 'c6 bank', 'original'
   ];
-  
-  // Check for income patterns first
-  for (const pattern of incomePatterns) {
+
+  // Priority 2: Transaction context patterns (higher priority than companies)
+  const contextPatterns = {
+    income: [
+      'recebido', 'recebimento', 'entrada', 'credito em conta', 'crédito em conta',
+      'deposito', 'depósito', 'transferencia recebida', 'transferência recebida',
+      'estorno', 'devolução', 'reembolso', 'restituição', 'pix recebido',
+      'salario', 'salário', 'rendimento', 'dividendos', 'juros recebidos',
+      'freelance', 'comissão', 'venda', 'bonificação', '13º salário'
+    ],
+    expense: [
+      'enviada', 'enviado', 'pagamento', 'compra', 'debito', 'débito',
+      'saque', 'pix enviado', 'transferencia enviada', 'transferência enviada',
+      'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
+      'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa', 'cobrança',
+      'desconto em folha', 'fatura'
+    ]
+  };
+
+  // Check context patterns first (highest priority)
+  for (const pattern of contextPatterns.income) {
     if (desc.includes(pattern)) {
-      console.log(`🔍 [TYPE_DETECTION] Income pattern "${pattern}" found in: ${description}`);
+      console.log(`💰 [TYPE_DETECTION] Income context pattern "${pattern}" found → income`);
       return 'income';
     }
   }
-  
-  // Check for expense patterns
-  for (const pattern of expensePatterns) {
+
+  for (const pattern of contextPatterns.expense) {
     if (desc.includes(pattern)) {
-      console.log(`🔍 [TYPE_DETECTION] Expense pattern "${pattern}" found in: ${description}`);
+      console.log(`💸 [TYPE_DETECTION] Expense context pattern "${pattern}" found → expense`);
       return 'expense';
     }
   }
+
+  // Check for known expense companies
+  for (const company of knownExpenseCompanies) {
+    if (desc.includes(company)) {
+      console.log(`🏢 [TYPE_DETECTION] Known expense company "${company}" found → expense`);
+      return 'expense';
+    }
+  }
+
+  // Fallback to amount-based detection (but be more careful with zero values)
+  if (amount === 0) {
+    console.log(`⚠️ [TYPE_DETECTION] Zero amount, defaulting to expense`);
+    return 'expense';
+  }
   
-  // Fallback to amount-based detection
-  const detectedType = amount >= 0 ? 'income' : 'expense';
-  console.log(`🔍 [TYPE_DETECTION] No pattern found, using amount-based detection: ${detectedType} for ${description}`);
+  const detectedType = amount > 0 ? 'income' : 'expense';
+  console.log(`🔢 [TYPE_DETECTION] Amount-based detection: ${detectedType} (${amount})`);
   return detectedType;
 }
 
@@ -104,7 +134,7 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
           }]
         }],
         generationConfig: {
-          temperature: 0.2, // Reduced for more consistent results
+          temperature: 0.2,
           topK: 1,
           topP: 0.8,
           maxOutputTokens: 8192,
@@ -148,7 +178,7 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
   }
 }
 
-// Enhanced fallback categorization with Brazilian context
+// Enhanced fallback categorization with better Brazilian context
 function createEnhancedFallbackSuggestions(
   transactions: Transaction[], 
   categories: Category[]
@@ -162,38 +192,44 @@ function createEnhancedFallbackSuggestions(
     // Get categories of the correct type
     const correctTypeCategories = categories.filter(cat => cat.type === transactionType);
     
-    // Enhanced Brazilian keyword matching
-    let selectedCategory = correctTypeCategories.find(cat => 
-      cat.name.toLowerCase().includes('outros') || 
-      cat.name.toLowerCase().includes('diversos')
-    );
-    
-    let confidence = 0.4;
-    let reasoning = 'Categorização automática de fallback';
-    
-    // Enhanced pattern matching for Brazilian context
-    const patterns = [
+    // Enhanced Brazilian keyword matching with specific companies
+    const companyPatterns = [
+      // Food & Delivery
+      { keywords: ['ifood', 'rappi', 'uber eats', 'delivery'], category: 'alimentação', type: 'expense', confidence: 0.9 },
+      { keywords: ['d market', 'd.market', 'emporio km', 'casa da sopa'], category: 'alimentação', type: 'expense', confidence: 0.8 },
+      { keywords: ['supermercado', 'mercado', 'padaria', 'açougue'], category: 'alimentação', type: 'expense', confidence: 0.7 },
+      
+      // Transport
+      { keywords: ['uber', '99', 'taxi', 'cabify'], category: 'transporte', type: 'expense', confidence: 0.9 },
+      { keywords: ['posto', 'combustível', 'gasolina', 'etanol'], category: 'transporte', type: 'expense', confidence: 0.8 },
+      
+      // Shopping
+      { keywords: ['americanas', 'magazine luiza', 'mercado livre'], category: 'compras', type: 'expense', confidence: 0.8 },
+      { keywords: ['shopping', 'loja', 'netshoes', 'centauro'], category: 'compras', type: 'expense', confidence: 0.7 },
+      
+      // Health
+      { keywords: ['farmacia', 'farmácia', 'drogaria', 'drogasil'], category: 'saúde', type: 'expense', confidence: 0.8 },
+      { keywords: ['academia', 'smartfit', 'bioritmo', 'bodytech'], category: 'saúde', type: 'expense', confidence: 0.8 },
+      
+      // Entertainment
+      { keywords: ['netflix', 'spotify', 'amazon prime', 'disney+'], category: 'entretenimento', type: 'expense', confidence: 0.9 },
+      
       // Income patterns
       { keywords: ['salario', 'salário', 'rendimento'], category: 'salário', type: 'income', confidence: 0.8 },
-      { keywords: ['pix recebido', 'transferencia recebida'], category: 'receita', type: 'income', confidence: 0.7 },
-      { keywords: ['deposito', 'depósito', 'credito em conta'], category: 'receita', type: 'income', confidence: 0.6 },
+      { keywords: ['freelance', 'comissão', 'venda'], category: 'receita', type: 'income', confidence: 0.7 },
       
-      // Expense patterns
-      { keywords: ['supermercado', 'mercado', 'padaria', 'açougue'], category: 'alimentação', type: 'expense', confidence: 0.7 },
-      { keywords: ['posto', 'combustível', 'gasolina', 'etanol'], category: 'transporte', type: 'expense', confidence: 0.8 },
-      { keywords: ['farmacia', 'farmácia', 'medicamento', 'remedio'], category: 'saúde', type: 'expense', confidence: 0.8 },
-      { keywords: ['restaurante', 'lanchonete', 'ifood', 'uber eats'], category: 'alimentação', type: 'expense', confidence: 0.7 },
-      { keywords: ['shopping', 'loja', 'magazine', 'americanas'], category: 'compras', type: 'expense', confidence: 0.6 },
-      { keywords: ['academia', 'ginásio', 'personal'], category: 'saúde', type: 'expense', confidence: 0.7 },
-      { keywords: ['netflix', 'spotify', 'amazon prime'], category: 'entretenimento', type: 'expense', confidence: 0.9 },
-      { keywords: ['uber', 'taxi', '99', 'transporte'], category: 'transporte', type: 'expense', confidence: 0.8 },
-      { keywords: ['conta de luz', 'energia', 'cemig', 'copel'], category: 'utilidades', type: 'expense', confidence: 0.9 },
+      // Utilities
+      { keywords: ['luz', 'energia', 'cemig', 'copel'], category: 'utilidades', type: 'expense', confidence: 0.9 },
       { keywords: ['água', 'saneamento', 'sabesp'], category: 'utilidades', type: 'expense', confidence: 0.9 },
       { keywords: ['telefone', 'celular', 'internet', 'vivo', 'tim', 'claro'], category: 'utilidades', type: 'expense', confidence: 0.8 },
     ];
     
-    // Try to find a matching pattern
-    for (const pattern of patterns) {
+    let selectedCategory = null;
+    let confidence = 0.4;
+    let reasoning = 'Categorização automática de fallback';
+    
+    // Try to find a matching pattern for the detected type
+    for (const pattern of companyPatterns) {
       if (pattern.type === transactionType) {
         for (const keyword of pattern.keywords) {
           if (description.includes(keyword)) {
@@ -206,7 +242,7 @@ function createEnhancedFallbackSuggestions(
             if (matchedCategory) {
               selectedCategory = matchedCategory;
               confidence = pattern.confidence;
-              reasoning = `Detectado "${keyword}" - padrão brasileiro para ${pattern.category}`;
+              reasoning = `Empresa/serviço brasileiro detectado: "${keyword}" → ${pattern.category}`;
               break;
             }
           }
@@ -215,23 +251,123 @@ function createEnhancedFallbackSuggestions(
       }
     }
     
-    // Fallback to first category of correct type if no other match
+    // Fallback to default category of correct type
     if (!selectedCategory && correctTypeCategories.length > 0) {
-      selectedCategory = correctTypeCategories[0];
+      selectedCategory = correctTypeCategories.find(cat => 
+        cat.name.toLowerCase().includes('outros') || 
+        cat.name.toLowerCase().includes('diversos')
+      ) || correctTypeCategories[0];
+      
       confidence = 0.3;
-      reasoning = `Categoria padrão para ${transactionType}`;
+      reasoning = `Categoria padrão para ${transactionType === 'income' ? 'receita' : 'gasto'}`;
     }
     
-    console.log(`🎯 [FALLBACK] Transaction ${index}: ${description} -> ${selectedCategory?.name || 'N/A'} (${confidence})`);
+    // Ultimate fallback
+    if (!selectedCategory) {
+      selectedCategory = categories[0];
+      confidence = 0.2;
+      reasoning = 'Categoria de emergência - requer revisão manual';
+    }
+    
+    console.log(`🎯 [FALLBACK] Transaction ${index}: "${description}" → ${selectedCategory.name} (${confidence})`);
     
     return {
       transaction_index: index,
-      category_id: selectedCategory?.id || categories[0]?.id || '',
+      category_id: selectedCategory.id,
       subcategory_id: null,
       confidence: confidence,
       reasoning: reasoning
     };
   });
+}
+
+// Intelligent validation that allows AI to correct type detection
+function validateWithTypeCorrection(
+  suggestion: AIResponse,
+  transaction: Transaction,
+  categories: Category[],
+  subcategories: Subcategory[],
+  expectedType: string
+): AIResponse {
+  const suggestedCategory = categories.find(cat => cat.id === suggestion.category_id);
+  
+  if (!suggestedCategory) {
+    console.warn(`⚠️ [VALIDATION] Category ${suggestion.category_id} not found for transaction ${suggestion.transaction_index}`);
+    
+    // Find fallback category of expected type
+    const fallbackCategory = categories.find(cat => 
+      cat.type === expectedType && (
+        cat.name.toLowerCase().includes('outros') || 
+        cat.name.toLowerCase().includes('diversos')
+      )
+    ) || categories.find(cat => cat.type === expectedType);
+    
+    return {
+      ...suggestion,
+      category_id: fallbackCategory?.id || categories[0]?.id || '',
+      confidence: Math.max(0.3, suggestion.confidence * 0.5),
+      reasoning: 'Categoria original não encontrada, usando fallback'
+    };
+  }
+  
+  // Check if AI suggested a different type (potential correction)
+  if (suggestedCategory.type !== expectedType) {
+    const desc = transaction.description.toLowerCase();
+    
+    // Allow AI to correct type for known cases
+    const knownCorrections = [
+      'uber', '99', 'taxi', 'ifood', 'rappi', 'd market', 'emporio km',
+      'americanas', 'magazine luiza', 'mercado livre', 'netflix', 'spotify'
+    ];
+    
+    const needsCorrection = knownCorrections.some(keyword => desc.includes(keyword));
+    
+    if (needsCorrection && suggestion.confidence > 0.6) {
+      console.log(`🔄 [VALIDATION] AI corrected type from ${expectedType} to ${suggestedCategory.type} for "${transaction.description}"`);
+      
+      return {
+        ...suggestion,
+        confidence: Math.min(0.8, suggestion.confidence), // Cap confidence for corrections
+        reasoning: `${suggestion.reasoning} (tipo corrigido pela IA: ${expectedType} → ${suggestedCategory.type})`,
+        suggested_type: suggestedCategory.type
+      };
+    }
+    
+    // Type mismatch - find correct type category
+    console.warn(`⚠️ [VALIDATION] Type mismatch for transaction ${suggestion.transaction_index}: expected ${expectedType}, got ${suggestedCategory.type}`);
+    
+    const correctTypeCategory = categories.find(cat => 
+      cat.type === expectedType && (
+        cat.name.toLowerCase().includes('outros') || 
+        cat.name.toLowerCase().includes('diversos')
+      )
+    ) || categories.find(cat => cat.type === expectedType);
+    
+    if (correctTypeCategory) {
+      return {
+        ...suggestion,
+        category_id: correctTypeCategory.id,
+        confidence: Math.max(0.3, suggestion.confidence * 0.6),
+        reasoning: `Tipo ajustado para ${expectedType} (original: ${suggestion.reasoning})`
+      };
+    }
+  }
+
+  // Validate subcategory
+  if (suggestion.subcategory_id) {
+    const subcategoryExists = subcategories.find(sub => 
+      sub.id === suggestion.subcategory_id && sub.category_id === suggestion.category_id
+    );
+    if (!subcategoryExists) {
+      console.warn(`⚠️ [VALIDATION] Invalid subcategory ${suggestion.subcategory_id} for transaction ${suggestion.transaction_index}`);
+      suggestion.subcategory_id = null;
+    }
+  }
+
+  // Ensure confidence is within valid range
+  suggestion.confidence = Math.max(0.2, Math.min(1.0, suggestion.confidence || 0.5));
+
+  return suggestion;
 }
 
 serve(async (req) => {
@@ -263,11 +399,13 @@ serve(async (req) => {
     let usedFallback = false;
 
     try {
-      // Build optimized prompt focusing on Brazilian context
+      // Build enhanced prompt with intelligent type correction
       const incomeCategories = categories.filter((cat: Category) => cat.type === 'income');
       const expenseCategories = categories.filter((cat: Category) => cat.type === 'expense');
 
       const prompt = `Você é um especialista em categorização de transações financeiras BRASILEIRAS.
+
+IMPORTANTE: Se você detectar que uma transação foi classificada incorretamente como receita/gasto, pode sugerir uma categoria do tipo correto e indicar isso no reasoning.
 
 CATEGORIAS DISPONÍVEIS:
 
@@ -285,15 +423,18 @@ ${categories.map((cat: Category) => {
 
 TRANSAÇÕES PARA ANÁLISE:
 ${transactionsWithType.map((t: any, index: number) => 
-  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | ${t.detectedType.toUpperCase()} | ${t.date}`
+  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | DETECTADO_COMO: ${t.detectedType.toUpperCase()} | ${t.date}`
 ).join('\n')}
 
 INSTRUÇÕES IMPORTANTES:
-1. Analise estabelecimentos e padrões BRASILEIROS (bancos, lojas, serviços)
-2. Para RECEITAS, use APENAS categorias de receita. Para GASTOS, use APENAS categorias de gasto
-3. Seja CONFIANTE nas suas sugestões - use confiança acima de 0.6 quando tiver certeza
-4. Considere contexto brasileiro: PIX, bancos nacionais, redes de supermercados, etc.
-5. Se não conseguir identificar com alta confiança, use categoria "Outros" mas mantenha confiança mínima de 0.4
+1. Analise estabelecimentos e padrões BRASILEIROS (Uber, iFood, D Market, etc.)
+2. UBER, 99, TAXI, IFOOD, D MARKET, AMERICANAS = sempre GASTOS (expense)
+3. "PIX enviado", "Transferência enviada" = sempre GASTOS (expense)
+4. "PIX recebido", "Transferência recebida" = sempre RECEITAS (income)
+5. Se detectar erro de tipo, use categoria correta e explique no reasoning
+6. Seja CONFIANTE (confiança 0.7+) para empresas conhecidas
+7. Use confiança 0.5-0.7 para padrões reconhecíveis
+8. Use confiança 0.3-0.5 apenas para casos duvidosos
 
 RESPONDA APENAS COM JSON:
 [
@@ -301,12 +442,12 @@ RESPONDA APENAS COM JSON:
     "transaction_index": 0,
     "category_id": "uuid-da-categoria",
     "subcategory_id": "uuid-ou-null",
-    "confidence": 0.75,
-    "reasoning": "Explicação clara e concisa"
+    "confidence": 0.85,
+    "reasoning": "Uber é sempre transporte/gasto, mesmo que detectado como receita"
   }
 ]`;
 
-      console.log('🤖 [AI] Sending request to Gemini...');
+      console.log('🤖 [AI] Sending enhanced request to Gemini...');
       
       const geminiResponse = await callGeminiWithRetry(prompt, geminiApiKey);
 
@@ -339,67 +480,27 @@ RESPONDA APENAS COM JSON:
       usedFallback = true;
     }
 
-    // Enhanced validation with better recovery
+    // Enhanced validation with intelligent type correction
     const validatedSuggestions = aiSuggestions.map((suggestion, index) => {
       const transaction = transactionsWithType[index];
       const expectedType = transaction.detectedType;
       
-      // Check if suggested category exists and matches expected type
-      const suggestedCategory = categories.find((cat: Category) => 
-        cat.id === suggestion.category_id
+      return validateWithTypeCorrection(
+        suggestion,
+        transaction,
+        categories,
+        subcategories,
+        expectedType
       );
-      
-      if (!suggestedCategory) {
-        console.warn(`⚠️ [VALIDATION] Category ${suggestion.category_id} not found for transaction ${index}`);
-        
-        // Find fallback category of correct type
-        const fallbackCategory = categories.find((cat: Category) => 
-          cat.type === expectedType && (
-            cat.name.toLowerCase().includes('outros') || 
-            cat.name.toLowerCase().includes('diversos')
-          )
-        ) || categories.find((cat: Category) => cat.type === expectedType);
-        
-        suggestion.category_id = fallbackCategory?.id || categories[0]?.id || '';
-        suggestion.confidence = Math.max(0.3, suggestion.confidence * 0.5);
-        suggestion.reasoning = 'Categoria original não encontrada, usando fallback';
-      } else if (suggestedCategory.type !== expectedType) {
-        console.warn(`⚠️ [VALIDATION] Type mismatch for transaction ${index}: expected ${expectedType}, got ${suggestedCategory.type}`);
-        
-        // Find category of correct type
-        const correctTypeCategory = categories.find((cat: Category) => 
-          cat.type === expectedType && (
-            cat.name.toLowerCase().includes('outros') || 
-            cat.name.toLowerCase().includes('diversos')
-          )
-        ) || categories.find((cat: Category) => cat.type === expectedType);
-        
-        if (correctTypeCategory) {
-          suggestion.category_id = correctTypeCategory.id;
-          suggestion.confidence = Math.max(0.3, suggestion.confidence * 0.6);
-          suggestion.reasoning = `Tipo ajustado para ${expectedType}`;
-        }
-      }
-
-      // Validate subcategory
-      if (suggestion.subcategory_id) {
-        const subcategoryExists = subcategories.find((sub: Subcategory) => 
-          sub.id === suggestion.subcategory_id && sub.category_id === suggestion.category_id
-        );
-        if (!subcategoryExists) {
-          console.warn(`⚠️ [VALIDATION] Invalid subcategory ${suggestion.subcategory_id} for transaction ${index}`);
-          suggestion.subcategory_id = null;
-        }
-      }
-
-      // Ensure confidence is within valid range
-      suggestion.confidence = Math.max(0.2, Math.min(1.0, suggestion.confidence || 0.5));
-
-      return suggestion;
     });
 
     console.log(`✅ [SUCCESS] Processing complete: ${validatedSuggestions.length} suggestions`);
     console.log(`📊 [STATS] Average confidence: ${(validatedSuggestions.reduce((sum, s) => sum + s.confidence, 0) / validatedSuggestions.length).toFixed(2)}`);
+    
+    const typeCorrections = validatedSuggestions.filter(s => s.suggested_type).length;
+    if (typeCorrections > 0) {
+      console.log(`🔄 [STATS] Type corrections made: ${typeCorrections}`);
+    }
     
     if (usedFallback) {
       console.log('⚠️ [FALLBACK] Enhanced fallback system was used');
@@ -409,9 +510,10 @@ RESPONDA APENAS COM JSON:
       JSON.stringify({ 
         suggestions: validatedSuggestions,
         usedFallback: usedFallback,
+        typeCorrections: typeCorrections,
         message: usedFallback ? 
           'Sistema de fallback inteligente aplicado' : 
-          'Categorização por IA concluída com sucesso'
+          `Categorização por IA concluída${typeCorrections > 0 ? ` (${typeCorrections} correções de tipo)` : ''}`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
