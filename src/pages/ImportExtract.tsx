@@ -16,6 +16,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
+// Utility function to validate UUID format
+const isValidUUID = (str: string | undefined | null): boolean => {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
 interface ImportSession {
   id: string;
   filename: string;
@@ -451,8 +458,8 @@ export default function ImportExtract() {
         description: transaction.editedDescription || transaction.description,
         original_description: transaction.originalDescription,
         type: transaction.type,
-        category_id: transaction.categoryId || null,
-        subcategory_id: transaction.subcategoryId || null,
+        category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
+        subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
         payment_method: null,
         tags: null,
         notes: null,
