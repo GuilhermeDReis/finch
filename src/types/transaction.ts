@@ -12,6 +12,8 @@ export type PaymentMethod =
 
 export type RecurringFrequency = 'monthly' | 'weekly' | 'yearly';
 
+export type TransactionStatus = 'normal' | 'refunded' | 'unified-pix' | 'hidden';
+
 export interface Category {
   id: string;
   name: string;
@@ -57,6 +59,23 @@ export interface TransactionRow {
   editedDescription?: string;
   isEditing?: boolean;
   aiSuggestion?: AISuggestion;
+  status?: TransactionStatus;
+  groupedWith?: string[]; // IDs of transactions this is grouped with
+  groupType?: 'refund' | 'pix-credit';
+}
+
+export interface RefundedTransaction {
+  id: string;
+  originalTransaction: TransactionRow;
+  refundTransaction: TransactionRow;
+  status: 'refunded';
+}
+
+export interface UnifiedPixTransaction {
+  id: string;
+  creditTransaction: TransactionRow;
+  pixTransaction: TransactionRow;
+  status: 'unified-pix';
 }
 
 export interface TransactionFormData {

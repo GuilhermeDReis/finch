@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import type { TransactionRow } from '@/types/transaction';
+import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 export interface DuplicateCheckResult {
   isNew: boolean;
@@ -18,8 +18,12 @@ export interface DuplicateCheckResult {
 export interface DuplicateAnalysis {
   newTransactions: TransactionRow[];
   duplicateTransactions: Array<TransactionRow & { duplicateInfo: DuplicateCheckResult }>;
+  refundedTransactions: RefundedTransaction[];
+  unifiedPixTransactions: UnifiedPixTransaction[];
   totalNew: number;
   totalDuplicates: number;
+  totalRefunded: number;
+  totalUnifiedPix: number;
 }
 
 export const checkForDuplicates = async (
@@ -77,15 +81,120 @@ export const checkForDuplicates = async (
   return results;
 };
 
+// Detect refunded transactions (same external_id with "Estorno" in description)
+export const detectRefundedTransactions = (transactions: TransactionRow[]): RefundedTransaction[] => {
+  const refundedTransactions: RefundedTransaction[] = [];
+  const transactionMap = new Map<string, TransactionRow[]>();
+
+  // Group transactions by external_id
+  transactions.forEach(transaction => {
+    const existing = transactionMap.get(transaction.id) || [];
+    existing.push(transaction);
+    transactionMap.set(transaction.id, existing);
+  });
+
+  // Find refund pairs
+  transactionMap.forEach((transactionGroup, externalId) => {
+    if (transactionGroup.length === 2) {
+      const refundTransaction = transactionGroup.find(t => 
+        t.description.toLowerCase().includes('estorno')
+      );
+      const originalTransaction = transactionGroup.find(t => 
+        !t.description.toLowerCase().includes('estorno')
+      );
+
+      if (refundTransaction && originalTransaction) {
+        console.log(`🔄 [REFUND] Found refund pair for ID ${externalId}:`, {
+          original: originalTransaction.description,
+          refund: refundTransaction.description
+        });
+
+        refundedTransactions.push({
+          id: `refund-${externalId}`,
+          originalTransaction,
+          refundTransaction,
+          status: 'refunded'
+        });
+      }
+    }
+  });
+
+  return refundedTransactions;
+};
+
+// Detect PIX via credit transactions (same external_id with "Valor adicionado para Pix no Crédito")
+export const detectUnifiedPixTransactions = (transactions: TransactionRow[]): UnifiedPixTransaction[] => {
+  const unifiedPixTransactions: UnifiedPixTransaction[] = [];
+  const transactionMap = new Map<string, TransactionRow[]>();
+
+  // Group transactions by external_id
+  transactions.forEach(transaction => {
+    const existing = transactionMap.get(transaction.id) || [];
+    existing.push(transaction);
+    transactionMap.set(transaction.id, existing);
+  });
+
+  // Find PIX via credit pairs
+  transactionMap.forEach((transactionGroup, externalId) => {
+    if (transactionGroup.length === 2) {
+      const pixCreditTransaction = transactionGroup.find(t => 
+        t.description.toLowerCase().includes('valor adicionado para pix no crédito')
+      );
+      const pixTransaction = transactionGroup.find(t => 
+        !t.description.toLowerCase().includes('valor adicionado para pix no crédito')
+      );
+
+      if (pixCreditTransaction && pixTransaction) {
+        console.log(`💳 [PIX-CREDIT] Found PIX via credit pair for ID ${externalId}:`, {
+          credit: pixCreditTransaction.description,
+          pix: pixTransaction.description
+        });
+
+        unifiedPixTransactions.push({
+          id: `pix-unified-${externalId}`,
+          creditTransaction: pixCreditTransaction,
+          pixTransaction,
+          status: 'unified-pix'
+        });
+      }
+    }
+  });
+
+  return unifiedPixTransactions;
+};
+
 export const analyzeDuplicates = async (
   transactions: TransactionRow[]
 ): Promise<DuplicateAnalysis> => {
   const duplicateResults = await checkForDuplicates(transactions);
   
+  // Detect special transaction groups
+  const refundedTransactions = detectRefundedTransactions(transactions);
+  const unifiedPixTransactions = detectUnifiedPixTransactions(transactions);
+
+  // Create sets of transaction IDs that are part of special groups
+  const refundedIds = new Set<string>();
+  const unifiedPixIds = new Set<string>();
+
+  refundedTransactions.forEach(refund => {
+    refundedIds.add(refund.originalTransaction.id);
+    refundedIds.add(refund.refundTransaction.id);
+  });
+
+  unifiedPixTransactions.forEach(unified => {
+    unifiedPixIds.add(unified.creditTransaction.id);
+    unifiedPixIds.add(unified.pixTransaction.id);
+  });
+
   const newTransactions: TransactionRow[] = [];
   const duplicateTransactions: Array<TransactionRow & { duplicateInfo: DuplicateCheckResult }> = [];
   
   transactions.forEach(transaction => {
+    // Skip transactions that are part of special groups
+    if (refundedIds.has(transaction.id) || unifiedPixIds.has(transaction.id)) {
+      return;
+    }
+
     const result = duplicateResults.get(transaction.id);
     
     if (result?.isNew) {
@@ -98,10 +207,22 @@ export const analyzeDuplicates = async (
     }
   });
 
+  console.log(`📊 [DUPLICATE_ANALYSIS] Analysis complete:`, {
+    total: transactions.length,
+    new: newTransactions.length,
+    duplicates: duplicateTransactions.length,
+    refunded: refundedTransactions.length,
+    unifiedPix: unifiedPixTransactions.length
+  });
+
   return {
     newTransactions,
     duplicateTransactions,
+    refundedTransactions,
+    unifiedPixTransactions,
     totalNew: newTransactions.length,
-    totalDuplicates: duplicateTransactions.length
+    totalDuplicates: duplicateTransactions.length,
+    totalRefunded: refundedTransactions.length,
+    totalUnifiedPix: unifiedPixTransactions.length
   };
 };

@@ -16,7 +16,7 @@ import { BelvoConnectWidget } from '@/components/BelvoConnectWidget';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import { analyzeDuplicates, type DuplicateAnalysis } from '@/services/duplicateDetection';
-import type { TransactionRow } from '@/types/transaction';
+import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 type ImportStep = 'upload' | 'duplicate-analysis' | 'categorization' | 'results';
 
@@ -44,14 +44,16 @@ export default function ImportExtract() {
     setIsAnalyzingDuplicates(true);
     
     try {
-      // Analyze duplicates
+      // Analyze duplicates with new grouping logic
       const analysis = await analyzeDuplicates(data);
       setDuplicateAnalysis(analysis);
       setCurrentStep('duplicate-analysis');
       
+      const totalGrouped = analysis.totalRefunded + analysis.totalUnifiedPix;
+      
       toast({
         title: "Arquivo processado",
-        description: `${data.length} transações analisadas - ${analysis.totalNew} novas, ${analysis.totalDuplicates} duplicatas`,
+        description: `${data.length} transações analisadas - ${analysis.totalNew} novas, ${analysis.totalDuplicates} duplicatas, ${totalGrouped} agrupadas`,
       });
     } catch (error) {
       console.error('Error analyzing duplicates:', error);
@@ -326,9 +328,10 @@ export default function ImportExtract() {
       let failed = 0;
       let updated = 0;
       let skipped = 0;
+      let groupedCount = 0;
       const errors: string[] = [];
 
-      // Process transactions based on import mode
+      // Process regular transactions
       for (const transaction of processedData) {
         try {
           const transactionData = {
@@ -382,12 +385,87 @@ export default function ImportExtract() {
         }
       }
 
+      // Process grouped transactions (refunds and unified PIX)
+      if (duplicateAnalysis) {
+        // Insert refunded transactions with special status
+        for (const refund of duplicateAnalysis.refundedTransactions) {
+          try {
+            const refundData = {
+              user_id: user.id,
+              external_id: refund.id,
+              date: refund.originalTransaction.date,
+              amount: 0, // Amount is zero for refunded transactions
+              description: `${refund.originalTransaction.description} (Estornado)`,
+              original_description: refund.originalTransaction.originalDescription,
+              category_id: null,
+              subcategory_id: null,
+              type: 'expense',
+              import_session_id: session.id,
+              payment_method: 'Estorno',
+              notes: JSON.stringify({
+                originalTransaction: refund.originalTransaction,
+                refundTransaction: refund.refundTransaction,
+                status: 'refunded'
+              })
+            };
+
+            const { error: insertError } = await supabase
+              .from('transactions')
+              .insert(refundData);
+
+            if (insertError) {
+              console.error('Error inserting refund:', insertError);
+            } else {
+              groupedCount++;
+            }
+          } catch (error) {
+            console.error('Error processing refund:', error);
+          }
+        }
+
+        // Insert unified PIX transactions
+        for (const unified of duplicateAnalysis.unifiedPixTransactions) {
+          try {
+            const unifiedData = {
+              user_id: user.id,
+              external_id: unified.id,
+              date: unified.pixTransaction.date,
+              amount: unified.pixTransaction.amount,
+              description: `PIX (via Crédito): ${unified.pixTransaction.description}`,
+              original_description: unified.pixTransaction.originalDescription,
+              category_id: null,
+              subcategory_id: null,
+              type: 'expense',
+              import_session_id: session.id,
+              payment_method: 'PIX',
+              notes: JSON.stringify({
+                creditTransaction: unified.creditTransaction,
+                pixTransaction: unified.pixTransaction,
+                status: 'unified-pix'
+              })
+            };
+
+            const { error: insertError } = await supabase
+              .from('transactions')
+              .insert(unifiedData);
+
+            if (insertError) {
+              console.error('Error inserting unified PIX:', insertError);
+            } else {
+              groupedCount++;
+            }
+          } catch (error) {
+            console.error('Error processing unified PIX:', error);
+          }
+        }
+      }
+
       await supabase
         .from('import_sessions')
         .update({ 
           status: 'completed',
           completed_at: new Date().toISOString(),
-          processed_records: successful + updated
+          processed_records: successful + updated + groupedCount
         })
         .eq('id', session.id);
 
@@ -397,7 +475,8 @@ export default function ImportExtract() {
         failed,
         skipped,
         updated,
-        total: processedData.length,
+        grouped: groupedCount,
+        total: processedData.length + (duplicateAnalysis ? duplicateAnalysis.totalRefunded + duplicateAnalysis.totalUnifiedPix : 0),
         errors
       });
       
@@ -591,6 +670,8 @@ export default function ImportExtract() {
             
             <TransactionImportTable
               transactions={processedData}
+              refundedTransactions={duplicateAnalysis?.refundedTransactions}
+              unifiedPixTransactions={duplicateAnalysis?.unifiedPixTransactions}
               onTransactionsUpdate={handleTransactionsUpdate}
             />
           </div>

@@ -10,6 +10,7 @@ import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import TransactionIndicators from './TransactionIndicators';
+import GroupedTransactionRow from './GroupedTransactionRow';
 import { supabase } from '@/integrations/supabase/client';
 import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
 import { 
@@ -18,7 +19,7 @@ import {
   verifyTransactionIntegrity,
   generateStableKey
 } from '@/utils/transactionIntegrity';
-import type { TransactionRow } from '@/types/transaction';
+import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 interface Category {
   id: string;
@@ -38,6 +39,8 @@ interface Subcategory {
 
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
+  refundedTransactions?: RefundedTransaction[];
+  unifiedPixTransactions?: UnifiedPixTransaction[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
@@ -295,6 +298,8 @@ TransactionRow.displayName = 'TransactionRow';
 
 export default function TransactionImportTable({ 
   transactions, 
+  refundedTransactions = [],
+  unifiedPixTransactions = [],
   onTransactionsUpdate 
 }: TransactionImportTableProps) {
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
@@ -609,6 +614,7 @@ export default function TransactionImportTable({
 
   const totalPages = Math.ceil(tableData.length / itemsPerPage);
   
+  // Calculate totals excluding grouped transactions
   const totalEntrada = tableData
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -670,33 +676,30 @@ export default function TransactionImportTable({
         </Card>
       </div>
 
-      {/* Statistics - Métodos de Pagamento */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(totalPix)}
+      {/* Grouped Transactions Summary */}
+      {(refundedTransactions.length > 0 || unifiedPixTransactions.length > 0) && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="flex items-center gap-4 flex-wrap">
+              <span>Transações agrupadas encontradas:</span>
+              {refundedTransactions.length > 0 && (
+                <Badge variant="secondary">
+                  {refundedTransactions.length} estornos
+                </Badge>
+              )}
+              {unifiedPixTransactions.length > 0 && (
+                <Badge variant="outline">
+                  {unifiedPixTransactions.length} PIX via crédito
+                </Badge>
+              )}
+              <span className="text-sm text-muted-foreground">
+                (não contabilizadas nos totais)
+              </span>
             </div>
-            <div className="text-sm text-muted-foreground">PIX</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(totalCredito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Crédito</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(totalDebito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Débito</div>
-          </CardContent>
-        </Card>
-      </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Bulk Actions */}
       {selectedRows.size > 0 && (
@@ -795,6 +798,25 @@ export default function TransactionImportTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {/* Render grouped transactions first */}
+                {refundedTransactions.map(refund => (
+                  <GroupedTransactionRow
+                    key={refund.id}
+                    transaction={refund}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                  />
+                ))}
+                {unifiedPixTransactions.map(unified => (
+                  <GroupedTransactionRow
+                    key={unified.id}
+                    transaction={unified}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                  />
+                ))}
+                
+                {/* Render normal transactions */}
                 {getCurrentPageData().map(transaction => (
                   <TransactionRow
                     key={generateStableKey(transaction, 'transaction-')}
@@ -822,7 +844,7 @@ export default function TransactionImportTable({
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
                 Página {currentPage} de {totalPages} 
-                ({tableData.length} transações no total)
+                ({tableData.length} transações ativas, {refundedTransactions.length + unifiedPixTransactions.length} agrupadas)
               </div>
               <div className="flex gap-2">
                 <Button
