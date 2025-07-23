@@ -24,6 +24,10 @@ const badgeVariants = cva(
           "border-transparent bg-success/10 text-success border-success/20",
         expense:
           "border-transparent bg-destructive/10 text-destructive border-destructive/20",
+        refunded:
+          "border-transparent bg-green-100 text-green-800 border-green-200",
+        "unified-pix":
+          "border-transparent bg-blue-100 text-blue-800 border-blue-200",
       },
       size: {
         default: "px-2.5 py-0.5 text-xs",

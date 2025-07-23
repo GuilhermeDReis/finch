@@ -29,8 +29,6 @@ interface ImportSession {
 
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [refundedTransactions, setRefundedTransactions] = useState<RefundedTransaction[]>([]);
-  const [unifiedPixTransactions, setUnifiedPixTransactions] = useState<UnifiedPixTransaction[]>([]);
   const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -44,8 +42,6 @@ export default function ImportExtract() {
   const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
     duplicates: any[];
     newTransactions: TransactionRow[];
-    refundedTransactions: RefundedTransaction[];
-    unifiedPixTransactions: UnifiedPixTransaction[];
   } | null>(null);
   const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
   const { toast } = useToast();
@@ -111,14 +107,16 @@ export default function ImportExtract() {
       
       console.log('🔍 [IMPORT] Duplicate detection results:', {
         duplicates: duplicateResults.duplicates.length,
-        refunds: duplicateResults.refundedTransactions.length,
-        unifiedPix: duplicateResults.unifiedPixTransactions.length,
-        newTransactions: duplicateResults.newTransactions.length
+        refunds: duplicateResults.refundPairs.length,
+        unifiedPix: duplicateResults.pixPairs.length,
+        newTransactions: duplicateResults.newTransactions.length,
+        hidden: duplicateResults.hiddenTransactionIds.size
       });
 
-      setRefundedTransactions(duplicateResults.refundedTransactions);
-      setUnifiedPixTransactions(duplicateResults.unifiedPixTransactions);
-      setDuplicateAnalysis(duplicateResults);
+      setDuplicateAnalysis({
+        duplicates: duplicateResults.duplicates,
+        newTransactions: duplicateResults.newTransactions
+      });
 
       // Check if we have duplicates that require user attention
       const hasDuplicates = duplicateResults.duplicates.length > 0;
@@ -129,28 +127,38 @@ export default function ImportExtract() {
       } else {
         console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
         
-        // Create visible transactions list - only include transactions that should be shown
-        const visibleTransactions = [
+        // Create unified transactions - ONE transaction per group
+        const unifiedTransactions = [
           ...duplicateResults.newTransactions,
-          // Add refund representative transactions (no category/subcategory)
-          ...duplicateResults.refundedTransactions.map(r => ({
-            ...r.originalTransaction,
-            id: `refund-${r.id}`,
+          // Add refund representative transactions (valor ZERO, sem categoria)
+          ...duplicateResults.refundPairs.map(pair => ({
+            id: pair.id,
+            date: pair.originalTransaction.date,
+            amount: 0, // ZERO - representa estorno total
+            description: `Estorno Total: ${pair.originalTransaction.description}`,
+            originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+            type: pair.originalTransaction.type,
             status: 'refunded' as const,
-            categoryId: undefined,
-            subcategoryId: undefined,
-            description: `${r.originalTransaction.description} (Estorno)`
+            selected: true,
+            categoryId: undefined, // Sem categoria
+            subcategoryId: undefined
           })),
-          // Add unified PIX representative transactions
-          ...duplicateResults.unifiedPixTransactions.map(u => ({
-            ...u.pixTransaction,
-            id: `unified-pix-${u.id}`,
+          // Add PIX Crédito representative transactions
+          ...duplicateResults.pixPairs.map(pair => ({
+            id: pair.id,
+            date: pair.pixTransaction.date,
+            amount: pair.pixTransaction.amount, // Valor do PIX
+            description: `PIX Crédito: ${pair.pixTransaction.description}`,
+            originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
+            type: pair.pixTransaction.type,
             status: 'unified-pix' as const,
-            description: `PIX Crédito: ${u.pixTransaction.description}`
+            selected: true,
+            categoryId: pair.pixTransaction.categoryId,
+            subcategoryId: pair.pixTransaction.subcategoryId
           }))
         ];
 
-        await handleAICategorization(visibleTransactions);
+        await handleAICategorization(unifiedTransactions);
       }
 
     } catch (error) {
@@ -284,39 +292,47 @@ export default function ImportExtract() {
       return;
     }
 
-    // Create visible transactions list based on selected mode
-    const visibleTransactions = [];
+    // Re-detect to get fresh pairs data
+    const duplicateResults = detectDuplicates(selectedTransactions, existingTransactions);
     
-    if (duplicateAnalysis) {
-      // Add new transactions
-      visibleTransactions.push(...duplicateAnalysis.newTransactions);
-      
-      // Add refund representative transactions (no category/subcategory)
-      visibleTransactions.push(...duplicateAnalysis.refundedTransactions.map(r => ({
-        ...r.originalTransaction,
-        id: `refund-${r.id}`,
+    // Create unified transactions list based on selected mode
+    const unifiedTransactions = [
+      ...duplicateResults.newTransactions,
+      // Add refund representative transactions (valor ZERO, sem categoria)
+      ...duplicateResults.refundPairs.map(pair => ({
+        id: pair.id,
+        date: pair.originalTransaction.date,
+        amount: 0, // ZERO - representa estorno total
+        description: `Estorno Total: ${pair.originalTransaction.description}`,
+        originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+        type: pair.originalTransaction.type,
         status: 'refunded' as const,
-        categoryId: undefined,
-        subcategoryId: undefined,
-        description: `${r.originalTransaction.description} (Estorno)`
-      })));
-      
-      // Add unified PIX representative transactions
-      visibleTransactions.push(...duplicateAnalysis.unifiedPixTransactions.map(u => ({
-        ...u.pixTransaction,
-        id: `unified-pix-${u.id}`,
+        selected: true,
+        categoryId: undefined, // Sem categoria
+        subcategoryId: undefined
+      })),
+      // Add PIX Crédito representative transactions
+      ...duplicateResults.pixPairs.map(pair => ({
+        id: pair.id,
+        date: pair.pixTransaction.date,
+        amount: pair.pixTransaction.amount, // Valor do PIX
+        description: `PIX Crédito: ${pair.pixTransaction.description}`,
+        originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
+        type: pair.pixTransaction.type,
         status: 'unified-pix' as const,
-        description: `PIX Crédito: ${u.pixTransaction.description}`
-      })));
-      
-      // Add duplicates based on selected mode
-      if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
-        visibleTransactions.push(...duplicateAnalysis.duplicates.map(d => d.new));
-      }
+        selected: true,
+        categoryId: pair.pixTransaction.categoryId,
+        subcategoryId: pair.pixTransaction.subcategoryId
+      }))
+    ];
+    
+    // Add duplicates based on selected mode
+    if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
+      unifiedTransactions.push(...duplicateResults.duplicates.map(d => d.new));
     }
 
     // Continue with AI categorization
-    await handleAICategorization(visibleTransactions);
+    await handleAICategorization(unifiedTransactions);
   };
 
   const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
@@ -414,8 +430,6 @@ export default function ImportExtract() {
 
   const resetImport = () => {
     setTransactions([]);
-    setRefundedTransactions([]);
-    setUnifiedPixTransactions([]);
     setCurrentStep('upload');
     setImportSession(null);
     setIsProcessing(false);
@@ -519,7 +533,10 @@ export default function ImportExtract() {
           analysis={{
             totalNew: duplicateAnalysis.newTransactions.length,
             totalDuplicates: duplicateAnalysis.duplicates.length,
-            ...duplicateAnalysis
+            duplicates: duplicateAnalysis.duplicates,
+            newTransactions: duplicateAnalysis.newTransactions,
+            refundedTransactions: [],
+            unifiedPixTransactions: []
           }}
           selectedMode={selectedImportMode}
           onModeChange={setSelectedImportMode}
@@ -589,12 +606,10 @@ export default function ImportExtract() {
             </Button>
           </div>
           
-          <TransactionImportTable
-            transactions={transactions}
-            refundedTransactions={refundedTransactions}
-            unifiedPixTransactions={unifiedPixTransactions}
-            onTransactionsUpdate={handleTransactionsUpdate}
-          />
+        <TransactionImportTable 
+          transactions={transactions} 
+          onTransactionsUpdate={handleTransactionsUpdate} 
+        />
         </div>
       )}
 

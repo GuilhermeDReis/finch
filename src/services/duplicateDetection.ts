@@ -1,5 +1,4 @@
-
-import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
+import type { TransactionRow } from '@/types/transaction';
 
 export interface DuplicateAnalysis {
   totalNew: number;
@@ -11,35 +10,44 @@ export interface DuplicateAnalysis {
     reasons: string[];
   }>;
   newTransactions: TransactionRow[];
-  refundedTransactions: RefundedTransaction[];
-  unifiedPixTransactions: UnifiedPixTransaction[];
+  refundedTransactions: any[];
+  unifiedPixTransactions: any[];
 }
 
-export interface DuplicateDetectionResult {
+export interface SimplifiedDetectionResult {
+  newTransactions: TransactionRow[];
   duplicates: Array<{
     existing: any;
     new: TransactionRow;
     similarity: number;
     reasons: string[];
   }>;
-  newTransactions: TransactionRow[];
-  refundedTransactions: RefundedTransaction[];
-  unifiedPixTransactions: UnifiedPixTransaction[];
+  hiddenTransactionIds: Set<string>;
+  refundPairs: Array<{
+    id: string;
+    originalTransaction: TransactionRow;
+    refundTransaction: TransactionRow;
+  }>;
+  pixPairs: Array<{
+    id: string;
+    pixTransaction: TransactionRow;
+    creditTransaction: TransactionRow;
+  }>;
 }
 
 export function detectDuplicates(
   newTransactions: TransactionRow[],
   existingTransactions: any[]
-): DuplicateDetectionResult {
-  console.log('🔍 [DUPLICATE] Starting duplicate detection:', {
+): SimplifiedDetectionResult {
+  console.log('🔍 [DUPLICATE] Starting simplified duplicate detection:', {
     newTransactions: newTransactions.length,
     existingTransactions: existingTransactions.length
   });
 
-  const duplicates: DuplicateDetectionResult['duplicates'] = [];
-  const refundedTransactions: RefundedTransaction[] = [];
-  const unifiedPixTransactions: UnifiedPixTransaction[] = [];
-  const processedTransactionIds = new Set<string>();
+  const duplicates: SimplifiedDetectionResult['duplicates'] = [];
+  const refundPairs: SimplifiedDetectionResult['refundPairs'] = [];
+  const pixPairs: SimplifiedDetectionResult['pixPairs'] = [];
+  const hiddenTransactionIds = new Set<string>();
   
   // Step 1: Group transactions by external ID for refund detection
   const groupedById = new Map<string, TransactionRow[]>();
@@ -80,23 +88,15 @@ export function detectDuplicates(
             refundDesc: refundTransaction.description
           });
           
-          refundedTransactions.push({
-            id: `refund-${id}`,
-            originalTransaction: {
-              ...originalTransaction,
-              status: 'refunded',
-              description: `${originalTransaction.description} (Estornado)`
-            },
-            refundTransaction: {
-              ...refundTransaction,
-              status: 'hidden'
-            },
-            status: 'refunded'
+          refundPairs.push({
+            id: `refund-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            originalTransaction,
+            refundTransaction
           });
           
-          // Mark both transactions as processed so they don't appear in newTransactions
-          processedTransactionIds.add(originalTransaction.id);
-          processedTransactionIds.add(refundTransaction.id);
+          // Mark both transactions as hidden
+          hiddenTransactionIds.add(originalTransaction.id);
+          hiddenTransactionIds.add(refundTransaction.id);
         }
       }
     }
@@ -105,7 +105,7 @@ export function detectDuplicates(
   // Step 3: Detect unified PIX transactions (PIX + Credit card pairs)
   // Only consider transactions that haven't been processed as refunds
   const unprocessedTransactions = newTransactions.filter(t => 
-    !processedTransactionIds.has(t.id)
+    !hiddenTransactionIds.has(t.id)
   );
 
   const pixTransactions = unprocessedTransactions.filter(t => 
@@ -130,7 +130,7 @@ export function detectDuplicates(
         new Date(pixTx.date).getTime() - new Date(creditTx.date).getTime()
       ) < 24 * 60 * 60 * 1000; // Within 24 hours
       
-      return amountMatch && dateMatch && !processedTransactionIds.has(creditTx.id);
+      return amountMatch && dateMatch && !hiddenTransactionIds.has(creditTx.id);
     });
 
     if (matchingCredit) {
@@ -142,32 +142,24 @@ export function detectDuplicates(
         amount: pixTx.amount
       });
       
-      unifiedPixTransactions.push({
-        id: `unified-pix-${pixTx.id}`,
-        creditTransaction: {
-          ...matchingCredit,
-          status: 'hidden'
-        },
-        pixTransaction: {
-          ...pixTx,
-          status: 'unified-pix',
-          description: `PIX via Crédito: ${pixTx.description}`
-        },
-        status: 'unified-pix'
+      pixPairs.push({
+        id: `pix-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        pixTransaction: pixTx,
+        creditTransaction: matchingCredit
       });
       
-      // Mark both transactions as processed so they don't appear in newTransactions
-      processedTransactionIds.add(pixTx.id);
-      processedTransactionIds.add(matchingCredit.id);
+      // Mark both transactions as hidden
+      hiddenTransactionIds.add(pixTx.id);
+      hiddenTransactionIds.add(matchingCredit.id);
     }
   });
 
   // Step 4: Check remaining transactions for duplicates with existing data
-  const remainingTransactions = newTransactions.filter(t => !processedTransactionIds.has(t.id));
+  const remainingTransactions = newTransactions.filter(t => !hiddenTransactionIds.has(t.id));
   
   console.log('🔍 [DUPLICATE] Checking remaining transactions for duplicates:', {
     remaining: remainingTransactions.length,
-    processed: processedTransactionIds.size
+    hidden: hiddenTransactionIds.size
   });
 
   remainingTransactions.forEach(newTx => {
@@ -197,23 +189,24 @@ export function detectDuplicates(
     }
   });
 
-  // Step 5: Prepare final results - newTransactions contains only unprocessed transactions
+  // Step 5: Prepare final results
   const finalDuplicateIds = new Set(duplicates.map(d => d.new.id));
   const newTransactionsFiltered = remainingTransactions.filter(t => !finalDuplicateIds.has(t.id));
 
   const result = {
     duplicates,
     newTransactions: newTransactionsFiltered,
-    refundedTransactions,
-    unifiedPixTransactions
+    hiddenTransactionIds,
+    refundPairs,
+    pixPairs
   };
 
   console.log('✅ [DUPLICATE] Detection completed:', {
     duplicates: result.duplicates.length,
     newTransactions: result.newTransactions.length,
-    refundedTransactions: result.refundedTransactions.length,
-    unifiedPixTransactions: result.unifiedPixTransactions.length,
-    totalProcessed: processedTransactionIds.size
+    refundPairs: result.refundPairs.length,
+    pixPairs: result.pixPairs.length,
+    totalHidden: result.hiddenTransactionIds.size
   });
 
   return result;

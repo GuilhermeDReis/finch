@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Combobox } from './ui/combobox';
 import TransactionIndicators from './TransactionIndicators';
 import TransactionFilters from './TransactionFilters';
+import UnifiedTransactionBadge from './UnifiedTransactionBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useTransactionIntegrity } from '@/hooks/useTransactionIntegrity';
 import { 
@@ -39,8 +40,6 @@ interface Subcategory {
 
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
-  refundedTransactions?: RefundedTransaction[];
-  unifiedPixTransactions?: UnifiedPixTransaction[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
 }
 
@@ -217,11 +216,18 @@ const TransactionRow = React.memo(({
       </TableCell>
       
       <TableCell>
-        <span className={`font-semibold ${
-          transaction.type === 'income' ? 'text-success' : 'text-destructive'
-        }`}>
-          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`font-semibold ${
+            transaction.status === 'refunded' ? 'text-muted-foreground line-through' :
+            transaction.type === 'income' ? 'text-success' : 'text-destructive'
+          }`}>
+            {transaction.status === 'refunded' ? 
+              formatCurrency(0) : 
+              `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
+            }
+          </span>
+          <UnifiedTransactionBadge status={transaction.status} />
+        </div>
       </TableCell>
       
       <TableCell>
@@ -298,8 +304,6 @@ TransactionRow.displayName = 'TransactionRow';
 
 export default function TransactionImportTable({ 
   transactions, 
-  refundedTransactions = [],
-  unifiedPixTransactions = [],
   onTransactionsUpdate 
 }: TransactionImportTableProps) {
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
@@ -361,37 +365,14 @@ export default function TransactionImportTable({
     });
   };
 
-  // Create merged data with simplified logic - no more duplication
+  // Simplified merged data - just process the transactions directly
   const mergedData = useMemo(() => {
-    console.log('🔄 [MERGE] Creating merged data:', {
-      tableData: tableData.length,
-      refundedTransactions: refundedTransactions.length,
-      unifiedPixTransactions: unifiedPixTransactions.length
+    console.log('🔄 [MERGE] Processing transactions directly:', {
+      tableData: tableData.length
     });
 
-    // Start with only the unprocessed transactions from tableData
-    const allTransactions: TransactionRow[] = [...tableData];
-    
-    // Add the processed transaction representations (only one per group)
-    refundedTransactions.forEach(refund => {
-      allTransactions.push(refund.originalTransaction);
-    });
-    
-    unifiedPixTransactions.forEach(unified => {
-      // Find PIX category for auto-categorization
-      const pixCategory = categories.find(cat => 
-        cat.name.toLowerCase().includes('pix') || 
-        cat.name.toLowerCase().includes('transferência')
-      );
-      
-      allTransactions.push({
-        ...unified.pixTransaction,
-        categoryId: pixCategory?.id || unified.pixTransaction.categoryId
-      });
-    });
-    
     // Apply filters
-    const filteredTransactions = applyFilters(allTransactions);
+    const filteredTransactions = applyFilters(tableData);
     
     // Sort by date
     const sortedTransactions = filteredTransactions.sort((a, b) => {
@@ -400,7 +381,7 @@ export default function TransactionImportTable({
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
 
-    console.log('✅ [MERGE] Merged data created:', {
+    console.log('✅ [MERGE] Processed transactions:', {
       total: sortedTransactions.length,
       refunded: sortedTransactions.filter(t => t.status === 'refunded').length,
       unifiedPix: sortedTransactions.filter(t => t.status === 'unified-pix').length,
@@ -408,7 +389,7 @@ export default function TransactionImportTable({
     });
 
     return sortedTransactions;
-  }, [tableData, refundedTransactions, unifiedPixTransactions, categories, sortOrder, filters]);
+  }, [tableData, sortOrder, filters]);
 
   // Enhanced initialization with ID validation
   useEffect(() => {
@@ -794,21 +775,21 @@ export default function TransactionImportTable({
         </Card>
       </div>
 
-      {/* Grouped Transactions Summary */}
-      {(refundedTransactions.length > 0 || unifiedPixTransactions.length > 0) && (
+      {/* Unified Transactions Summary */}
+      {(mergedData.filter(t => t.status === 'refunded').length > 0 || mergedData.filter(t => t.status === 'unified-pix').length > 0) && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="flex items-center gap-4 flex-wrap">
               <span>Transações processadas automaticamente:</span>
-              {refundedTransactions.length > 0 && (
+              {mergedData.filter(t => t.status === 'refunded').length > 0 && (
                 <Badge variant="secondary" size="sm">
-                  {refundedTransactions.length} estornos
+                  {mergedData.filter(t => t.status === 'refunded').length} estornos
                 </Badge>
               )}
-              {unifiedPixTransactions.length > 0 && (
+              {mergedData.filter(t => t.status === 'unified-pix').length > 0 && (
                 <Badge variant="outline" size="sm">
-                  {unifiedPixTransactions.length} PIX Crédito
+                  {mergedData.filter(t => t.status === 'unified-pix').length} PIX Crédito
                 </Badge>
               )}
             </div>
