@@ -177,27 +177,31 @@ serve(async (req) => {
 
 DADOS DISPONÍVEIS:
 
-CATEGORIAS:
-${categories.map((cat: Category) => `${cat.id}: ${cat.name} (${cat.type})`).join('\n')}
+CATEGORIAS DE RECEITA:
+${categories.filter((cat: Category) => cat.type === 'income').map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
+
+CATEGORIAS DE GASTO:
+${categories.filter((cat: Category) => cat.type === 'expense').map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
 
 SUBCATEGORIAS (agrupadas por categoria):
 ${categories.map((cat: Category) => {
   const catSubcategories = subcategories.filter((sub: Subcategory) => sub.category_id === cat.id);
-  return `${cat.name}:\n${catSubcategories.map((sub: Subcategory) => `  ${sub.id}: ${sub.name}`).join('\n')}`;
+  return `${cat.name} (${cat.type}):\n${catSubcategories.map((sub: Subcategory) => `  ${sub.id}: ${sub.name}`).join('\n')}`;
 }).join('\n\n')}
 
 TRANSAÇÕES PARA CATEGORIZAR:
 ${transactions.map((t: Transaction, index: number) => 
-  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | ${t.payment_method} | ${t.date}`
+  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | Tipo: ${t.amount >= 0 ? 'RECEITA' : 'GASTO'} | ${t.payment_method} | ${t.date}`
 ).join('\n')}
 
 INSTRUÇÕES:
 1. Analise cada transação baseado na descrição, valor e método de pagamento
 2. Considere padrões brasileiros (nomes de estabelecimentos, bancos, tipos de negócio)
-3. Para cada transação, sugira a categoria e subcategoria mais apropriada
-4. Se não conseguir identificar com confiança (< 50%), use categoria "${defaultCategory?.name}" (ID: ${defaultCategoryId})
-5. Calcule um nível de confiança de 0.0 a 1.0
-6. Forneça uma breve explicação da decisão
+3. IMPORTANTE: Para valores positivos (RECEITA), use apenas categorias de receita. Para valores negativos (GASTO), use apenas categorias de gasto
+4. Para cada transação, sugira a categoria e subcategoria mais apropriada do tipo correto
+5. Se não conseguir identificar com confiança (< 50%), use categoria "${defaultCategory?.name}" (ID: ${defaultCategoryId})
+6. Calcule um nível de confiança de 0.0 a 1.0
+7. Forneça uma breve explicação da decisão
 
 FORMATO DE RESPOSTA (JSON VÁLIDO):
 [
@@ -249,13 +253,27 @@ Retorne APENAS o array JSON, sem texto adicional.`;
 
     // Validar e sanitizar respostas
     const validatedSuggestions = aiSuggestions.map((suggestion, index) => {
-      // Verificar se categoria existe
-      const categoryExists = categories.find((cat: Category) => cat.id === suggestion.category_id);
+      const transaction = transactions[index];
+      const transactionType = transaction.amount >= 0 ? 'income' : 'expense';
+      
+      // Verificar se categoria existe e é do tipo correto
+      const categoryExists = categories.find((cat: Category) => 
+        cat.id === suggestion.category_id && cat.type === transactionType
+      );
+      
       if (!categoryExists) {
-        console.warn(`⚠️ Categoria inválida para transação ${index}, usando padrão`);
-        suggestion.category_id = defaultCategoryId;
+        // Buscar categoria padrão do tipo correto
+        const fallbackCategory = categories.find((cat: Category) => 
+          cat.type === transactionType && (
+            cat.name.toLowerCase().includes('outros') || 
+            cat.name.toLowerCase().includes('diversos')
+          )
+        ) || categories.find((cat: Category) => cat.type === transactionType);
+        
+        console.warn(`⚠️ Categoria inválida ou tipo incorreto para transação ${index}, usando padrão ${transactionType}`);
+        suggestion.category_id = fallbackCategory?.id || defaultCategoryId;
         suggestion.confidence = 0.3;
-        suggestion.reasoning = 'Categoria sugerida pela IA não encontrada, usando padrão';
+        suggestion.reasoning = 'Categoria sugerida pela IA não encontrada ou tipo incorreto, usando padrão';
       }
 
       // Verificar se subcategoria existe e pertence à categoria

@@ -109,11 +109,12 @@ const TransactionRow = React.memo(({
   selectedRows: Set<string>;
   loadingCategories: boolean;
   loadingSubcategories: boolean;
-  categoryOptions: Array<{value: string; label: string}>;
+  categoryOptions: Array<{value: string; label: string; type: string}>;
   onUpdateTransaction: (id: string, updates: Partial<TransactionRow>) => void;
   onToggleSelection: (id: string) => void;
   needsAttention: (transaction: TransactionRow) => boolean;
   getFilteredSubcategories: (categoryId: string) => Subcategory[];
+  getFilteredCategoriesByType: (transactionType: 'income' | 'expense') => Array<{value: string; label: string; type: string}>;
   formatCurrency: (amount: number) => string;
   formatDate: (dateStr: string) => string;
 }) => {
@@ -247,7 +248,7 @@ const TransactionRow = React.memo(({
           key={categoryKey}
           value={transaction.categoryId || ''}
           onValueChange={handleCategoryChange}
-          options={categoryOptions}
+          options={getFilteredCategoriesByType(transaction.type)}
           placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
           searchPlaceholder="Buscar categoria..."
           emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
@@ -575,15 +576,21 @@ export default function TransactionImportTable({
     return tableData.slice(startIndex, endIndex);
   }, [tableData, currentPage, itemsPerPage]);
 
-  // Opções memoizadas para melhor performance
+  // Opções memoizadas para melhor performance - filtradas por tipo de transação
   const categoryOptions = useMemo(() => {
     const options = categories.map(cat => ({
       value: cat.id,
-      label: cat.name
+      label: cat.name,
+      type: cat.type
     }));
     console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
     return options;
   }, [categories]);
+
+  // Função para obter categorias filtradas por tipo de transação
+  const getFilteredCategoriesByType = useCallback((transactionType: 'income' | 'expense') => {
+    return categoryOptions.filter(cat => cat.type === transactionType);
+  }, [categoryOptions]);
 
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
@@ -802,6 +809,7 @@ export default function TransactionImportTable({
                     onToggleSelection={toggleRowSelection}
                     needsAttention={needsAttention}
                     getFilteredSubcategories={getFilteredSubcategories}
+                    getFilteredCategoriesByType={getFilteredCategoriesByType}
                     formatCurrency={formatCurrency}
                     formatDate={formatDate}
                   />
