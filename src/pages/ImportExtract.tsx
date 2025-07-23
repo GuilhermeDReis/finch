@@ -436,6 +436,13 @@ export default function ImportExtract() {
     setProcessingProgress(0);
 
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       // Prepare transactions for final import
       const transactionsToImport = transactions.map(transaction => ({
         external_id: transaction.id,
@@ -451,7 +458,8 @@ export default function ImportExtract() {
         notes: null,
         is_recurring: false,
         recurring_frequency: null,
-        import_session_id: importSession.id
+        import_session_id: importSession.id,
+        user_id: user.id
       }));
 
       console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
