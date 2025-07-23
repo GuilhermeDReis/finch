@@ -37,16 +37,60 @@ interface AIResponse {
 
 // Retry configuration
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds base delay
-const BACKOFF_MULTIPLIER = 2; // Exponential backoff
+const RETRY_DELAY_MS = 1000; // Reduced from 2000ms
+const BACKOFF_MULTIPLIER = 1.5; // Reduced from 2
 
 // Sleep function for delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Enhanced transaction type detection
+function detectTransactionType(transaction: Transaction): 'income' | 'expense' {
+  const { description, amount } = transaction;
+  const desc = description.toLowerCase();
+  
+  // Income indicators (high priority)
+  const incomePatterns = [
+    'salario', 'salário', 'rendimento', 'pix recebido', 'transferencia recebida',
+    'deposito', 'depósito', 'credito em conta', 'crédito em conta',
+    'reembolso', 'devolução', 'restituição', 'freelance', 'comissão',
+    'rendimento', 'juros', 'dividendos', 'bonificação', '13º salário',
+    'venda', 'recebimento', 'entrada'
+  ];
+  
+  // Expense indicators
+  const expensePatterns = [
+    'compra', 'pagamento', 'debito', 'débito', 'saque', 'transferencia',
+    'pix enviado', 'cartao', 'cartão', 'boleto', 'financiamento',
+    'prestação', 'mensalidade', 'anuidade', 'taxa', 'juros',
+    'multa', 'tarifa', 'desconto', 'cobrança'
+  ];
+  
+  // Check for income patterns first
+  for (const pattern of incomePatterns) {
+    if (desc.includes(pattern)) {
+      console.log(`🔍 [TYPE_DETECTION] Income pattern "${pattern}" found in: ${description}`);
+      return 'income';
+    }
+  }
+  
+  // Check for expense patterns
+  for (const pattern of expensePatterns) {
+    if (desc.includes(pattern)) {
+      console.log(`🔍 [TYPE_DETECTION] Expense pattern "${pattern}" found in: ${description}`);
+      return 'expense';
+    }
+  }
+  
+  // Fallback to amount-based detection
+  const detectedType = amount >= 0 ? 'income' : 'expense';
+  console.log(`🔍 [TYPE_DETECTION] No pattern found, using amount-based detection: ${detectedType} for ${description}`);
+  return detectedType;
+}
+
 // Function to call Gemini API with retry logic
 async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCount = 0): Promise<any> {
   try {
-    console.log(`Tentativa ${retryCount + 1}/${MAX_RETRIES + 1} de chamada ao Gemini API...`);
+    console.log(`🤖 [GEMINI] Tentativa ${retryCount + 1}/${MAX_RETRIES + 1}...`);
     
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
@@ -60,7 +104,7 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
           }]
         }],
         generationConfig: {
-          temperature: 0.1,
+          temperature: 0.2, // Reduced for more consistent results
           topK: 1,
           topP: 0.8,
           maxOutputTokens: 8192,
@@ -70,12 +114,11 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Gemini API error - Status: ${response.status}, Response: ${errorText}`);
+      console.error(`❌ [GEMINI] Error - Status: ${response.status}, Response: ${errorText}`);
       
-      // Check if it's a 503 (overloaded) or 429 (rate limit) error that we should retry
       if ((response.status === 503 || response.status === 429) && retryCount < MAX_RETRIES) {
         const delay = RETRY_DELAY_MS * Math.pow(BACKOFF_MULTIPLIER, retryCount);
-        console.log(`Gemini API sobrecarregado. Tentando novamente em ${delay}ms...`);
+        console.log(`⏳ [GEMINI] Retrying in ${delay}ms...`);
         await sleep(delay);
         return callGeminiWithRetry(prompt, geminiApiKey, retryCount + 1);
       }
@@ -84,20 +127,19 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
     }
 
     const geminiResponse = await response.json();
-    console.log(`✅ Gemini API respondeu com sucesso na tentativa ${retryCount + 1}`);
+    console.log(`✅ [GEMINI] Success on attempt ${retryCount + 1}`);
     return geminiResponse;
 
   } catch (error) {
-    console.error(`Erro na tentativa ${retryCount + 1}:`, error);
+    console.error(`❌ [GEMINI] Error on attempt ${retryCount + 1}:`, error);
     
-    // If it's a network error or timeout and we haven't exhausted retries
     if (retryCount < MAX_RETRIES && (
       error.message.includes('fetch') || 
       error.message.includes('network') || 
       error.message.includes('timeout')
     )) {
       const delay = RETRY_DELAY_MS * Math.pow(BACKOFF_MULTIPLIER, retryCount);
-      console.log(`Erro de rede. Tentando novamente em ${delay}ms...`);
+      console.log(`⏳ [GEMINI] Network error, retrying in ${delay}ms...`);
       await sleep(delay);
       return callGeminiWithRetry(prompt, geminiApiKey, retryCount + 1);
     }
@@ -106,34 +148,85 @@ async function callGeminiWithRetry(prompt: string, geminiApiKey: string, retryCo
   }
 }
 
-// Fallback categorization function
-function createFallbackSuggestions(transactions: Transaction[], defaultCategoryId: string): AIResponse[] {
-  console.log('🔄 Aplicando categorização de fallback...');
+// Enhanced fallback categorization with Brazilian context
+function createEnhancedFallbackSuggestions(
+  transactions: Transaction[], 
+  categories: Category[]
+): AIResponse[] {
+  console.log('🔄 [FALLBACK] Applying enhanced fallback categorization...');
   
   return transactions.map((transaction, index) => {
-    // Simple keyword-based categorization as fallback
     const description = transaction.description.toLowerCase();
-    let confidence = 0.3; // Low confidence for fallback
+    const transactionType = detectTransactionType(transaction);
+    
+    // Get categories of the correct type
+    const correctTypeCategories = categories.filter(cat => cat.type === transactionType);
+    
+    // Enhanced Brazilian keyword matching
+    let selectedCategory = correctTypeCategories.find(cat => 
+      cat.name.toLowerCase().includes('outros') || 
+      cat.name.toLowerCase().includes('diversos')
+    );
+    
+    let confidence = 0.4;
     let reasoning = 'Categorização automática de fallback';
     
-    // Basic keyword matching for common categories
-    if (description.includes('supermercado') || description.includes('mercado') || description.includes('padaria')) {
-      reasoning = 'Detectado estabelecimento de alimentação na descrição';
-      confidence = 0.4;
-    } else if (description.includes('posto') || description.includes('combustível') || description.includes('gasolina')) {
-      reasoning = 'Detectado gasto com combustível na descrição';
-      confidence = 0.4;
-    } else if (description.includes('farmácia') || description.includes('medicamento')) {
-      reasoning = 'Detectado gasto com saúde na descrição';
-      confidence = 0.4;
-    } else if (description.includes('restaurante') || description.includes('lanchonete') || description.includes('ifood')) {
-      reasoning = 'Detectado gasto com alimentação na descrição';
-      confidence = 0.4;
+    // Enhanced pattern matching for Brazilian context
+    const patterns = [
+      // Income patterns
+      { keywords: ['salario', 'salário', 'rendimento'], category: 'salário', type: 'income', confidence: 0.8 },
+      { keywords: ['pix recebido', 'transferencia recebida'], category: 'receita', type: 'income', confidence: 0.7 },
+      { keywords: ['deposito', 'depósito', 'credito em conta'], category: 'receita', type: 'income', confidence: 0.6 },
+      
+      // Expense patterns
+      { keywords: ['supermercado', 'mercado', 'padaria', 'açougue'], category: 'alimentação', type: 'expense', confidence: 0.7 },
+      { keywords: ['posto', 'combustível', 'gasolina', 'etanol'], category: 'transporte', type: 'expense', confidence: 0.8 },
+      { keywords: ['farmacia', 'farmácia', 'medicamento', 'remedio'], category: 'saúde', type: 'expense', confidence: 0.8 },
+      { keywords: ['restaurante', 'lanchonete', 'ifood', 'uber eats'], category: 'alimentação', type: 'expense', confidence: 0.7 },
+      { keywords: ['shopping', 'loja', 'magazine', 'americanas'], category: 'compras', type: 'expense', confidence: 0.6 },
+      { keywords: ['academia', 'ginásio', 'personal'], category: 'saúde', type: 'expense', confidence: 0.7 },
+      { keywords: ['netflix', 'spotify', 'amazon prime'], category: 'entretenimento', type: 'expense', confidence: 0.9 },
+      { keywords: ['uber', 'taxi', '99', 'transporte'], category: 'transporte', type: 'expense', confidence: 0.8 },
+      { keywords: ['conta de luz', 'energia', 'cemig', 'copel'], category: 'utilidades', type: 'expense', confidence: 0.9 },
+      { keywords: ['água', 'saneamento', 'sabesp'], category: 'utilidades', type: 'expense', confidence: 0.9 },
+      { keywords: ['telefone', 'celular', 'internet', 'vivo', 'tim', 'claro'], category: 'utilidades', type: 'expense', confidence: 0.8 },
+    ];
+    
+    // Try to find a matching pattern
+    for (const pattern of patterns) {
+      if (pattern.type === transactionType) {
+        for (const keyword of pattern.keywords) {
+          if (description.includes(keyword)) {
+            // Find category that matches the pattern
+            const matchedCategory = correctTypeCategories.find(cat => 
+              cat.name.toLowerCase().includes(pattern.category) ||
+              cat.name.toLowerCase().includes(keyword)
+            );
+            
+            if (matchedCategory) {
+              selectedCategory = matchedCategory;
+              confidence = pattern.confidence;
+              reasoning = `Detectado "${keyword}" - padrão brasileiro para ${pattern.category}`;
+              break;
+            }
+          }
+        }
+        if (confidence > 0.4) break; // Found a good match
+      }
     }
+    
+    // Fallback to first category of correct type if no other match
+    if (!selectedCategory && correctTypeCategories.length > 0) {
+      selectedCategory = correctTypeCategories[0];
+      confidence = 0.3;
+      reasoning = `Categoria padrão para ${transactionType}`;
+    }
+    
+    console.log(`🎯 [FALLBACK] Transaction ${index}: ${description} -> ${selectedCategory?.name || 'N/A'} (${confidence})`);
     
     return {
       transaction_index: index,
-      category_id: defaultCategoryId,
+      category_id: selectedCategory?.id || categories[0]?.id || '',
       subcategory_id: null,
       confidence: confidence,
       reasoning: reasoning
@@ -149,7 +242,7 @@ serve(async (req) => {
   try {
     const { transactions, categories, subcategories } = await req.json();
     
-    console.log('📥 Recebida requisição:', { 
+    console.log('📥 [REQUEST] Received:', { 
       transactionCount: transactions?.length,
       categoryCount: categories?.length,
       subcategoryCount: subcategories?.length 
@@ -160,82 +253,78 @@ serve(async (req) => {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    // Encontrar categoria "Outros/Diversos"
-    const defaultCategory = categories.find((cat: Category) => 
-      cat.name.toLowerCase().includes('outros') || cat.name.toLowerCase().includes('diversos')
-    );
-    
-    const defaultCategoryId = defaultCategory?.id || categories[0]?.id;
-    console.log('🎯 Categoria padrão para fallback:', defaultCategory?.name, defaultCategoryId);
+    // Detect transaction types for better accuracy
+    const transactionsWithType = transactions.map((transaction: Transaction) => ({
+      ...transaction,
+      detectedType: detectTransactionType(transaction)
+    }));
 
     let aiSuggestions: AIResponse[] = [];
     let usedFallback = false;
 
     try {
-      // Construir prompt otimizado
-      const prompt = `Você é um especialista em categorização de transações financeiras brasileiras.
+      // Build optimized prompt focusing on Brazilian context
+      const incomeCategories = categories.filter((cat: Category) => cat.type === 'income');
+      const expenseCategories = categories.filter((cat: Category) => cat.type === 'expense');
 
-DADOS DISPONÍVEIS:
+      const prompt = `Você é um especialista em categorização de transações financeiras BRASILEIRAS.
 
-CATEGORIAS DE RECEITA:
-${categories.filter((cat: Category) => cat.type === 'income').map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
+CATEGORIAS DISPONÍVEIS:
 
-CATEGORIAS DE GASTO:
-${categories.filter((cat: Category) => cat.type === 'expense').map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
+RECEITAS:
+${incomeCategories.map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
 
-SUBCATEGORIAS (agrupadas por categoria):
+GASTOS:
+${expenseCategories.map((cat: Category) => `${cat.id}: ${cat.name}`).join('\n')}
+
+SUBCATEGORIAS:
 ${categories.map((cat: Category) => {
   const catSubcategories = subcategories.filter((sub: Subcategory) => sub.category_id === cat.id);
-  return `${cat.name} (${cat.type}):\n${catSubcategories.map((sub: Subcategory) => `  ${sub.id}: ${sub.name}`).join('\n')}`;
+  return `${cat.name}:\n${catSubcategories.map((sub: Subcategory) => `  ${sub.id}: ${sub.name}`).join('\n')}`;
 }).join('\n\n')}
 
-TRANSAÇÕES PARA CATEGORIZAR:
-${transactions.map((t: Transaction, index: number) => 
-  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | Tipo: ${t.amount >= 0 ? 'RECEITA' : 'GASTO'} | ${t.payment_method} | ${t.date}`
+TRANSAÇÕES PARA ANÁLISE:
+${transactionsWithType.map((t: any, index: number) => 
+  `${index}: ${t.description} | R$ ${t.amount.toFixed(2)} | ${t.detectedType.toUpperCase()} | ${t.date}`
 ).join('\n')}
 
-INSTRUÇÕES:
-1. Analise cada transação baseado na descrição, valor e método de pagamento
-2. Considere padrões brasileiros (nomes de estabelecimentos, bancos, tipos de negócio)
-3. IMPORTANTE: Para valores positivos (RECEITA), use apenas categorias de receita. Para valores negativos (GASTO), use apenas categorias de gasto
-4. Para cada transação, sugira a categoria e subcategoria mais apropriada do tipo correto
-5. Se não conseguir identificar com confiança (< 50%), use categoria "${defaultCategory?.name}" (ID: ${defaultCategoryId})
-6. Calcule um nível de confiança de 0.0 a 1.0
-7. Forneça uma breve explicação da decisão
+INSTRUÇÕES IMPORTANTES:
+1. Analise estabelecimentos e padrões BRASILEIROS (bancos, lojas, serviços)
+2. Para RECEITAS, use APENAS categorias de receita. Para GASTOS, use APENAS categorias de gasto
+3. Seja CONFIANTE nas suas sugestões - use confiança acima de 0.6 quando tiver certeza
+4. Considere contexto brasileiro: PIX, bancos nacionais, redes de supermercados, etc.
+5. Se não conseguir identificar com alta confiança, use categoria "Outros" mas mantenha confiança mínima de 0.4
 
-FORMATO DE RESPOSTA (JSON VÁLIDO):
+RESPONDA APENAS COM JSON:
 [
   {
     "transaction_index": 0,
     "category_id": "uuid-da-categoria",
-    "subcategory_id": "uuid-da-subcategoria-ou-null",
-    "confidence": 0.85,
-    "reasoning": "Descrição indica compra em supermercado"
+    "subcategory_id": "uuid-ou-null",
+    "confidence": 0.75,
+    "reasoning": "Explicação clara e concisa"
   }
-]
+]`;
 
-Retorne APENAS o array JSON, sem texto adicional.`;
-
-      console.log('🤖 Iniciando chamada ao Gemini API com retry logic...');
+      console.log('🤖 [AI] Sending request to Gemini...');
       
       const geminiResponse = await callGeminiWithRetry(prompt, geminiApiKey);
 
       if (geminiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
         const responseText = geminiResponse.candidates[0].content.parts[0].text;
-        console.log('📝 Resposta bruta do Gemini:', responseText.substring(0, 200) + '...');
+        console.log('📝 [AI] Raw response:', responseText.substring(0, 300) + '...');
         
         try {
-          // Extrair JSON da resposta (pode vir com markdown ou texto extra)
+          // Extract JSON from response
           const jsonMatch = responseText.match(/\[[\s\S]*\]/);
           if (jsonMatch) {
             aiSuggestions = JSON.parse(jsonMatch[0]);
-            console.log(`✅ Sugestões da IA processadas com sucesso: ${aiSuggestions.length} transações`);
+            console.log(`✅ [AI] Parsed ${aiSuggestions.length} suggestions successfully`);
           } else {
             throw new Error('No JSON array found in response');
           }
         } catch (parseError) {
-          console.error('❌ Erro ao fazer parse da resposta do Gemini:', parseError);
-          console.error('📄 Texto da resposta:', responseText);
+          console.error('❌ [AI] Parse error:', parseError);
           throw new Error('Failed to parse AI response');
         }
       } else {
@@ -243,59 +332,77 @@ Retorne APENAS o array JSON, sem texto adicional.`;
       }
 
     } catch (geminiError) {
-      console.error('⚠️ Falha na chamada ao Gemini API:', geminiError);
-      console.log('🔄 Aplicando categorização de fallback...');
+      console.error('⚠️ [AI] Gemini API failed:', geminiError);
+      console.log('🔄 [FALLBACK] Using enhanced fallback system...');
       
-      // Use fallback categorization
-      aiSuggestions = createFallbackSuggestions(transactions, defaultCategoryId);
+      aiSuggestions = createEnhancedFallbackSuggestions(transactions, categories);
       usedFallback = true;
     }
 
-    // Validar e sanitizar respostas
+    // Enhanced validation with better recovery
     const validatedSuggestions = aiSuggestions.map((suggestion, index) => {
-      const transaction = transactions[index];
-      const transactionType = transaction.amount >= 0 ? 'income' : 'expense';
+      const transaction = transactionsWithType[index];
+      const expectedType = transaction.detectedType;
       
-      // Verificar se categoria existe e é do tipo correto
-      const categoryExists = categories.find((cat: Category) => 
-        cat.id === suggestion.category_id && cat.type === transactionType
+      // Check if suggested category exists and matches expected type
+      const suggestedCategory = categories.find((cat: Category) => 
+        cat.id === suggestion.category_id
       );
       
-      if (!categoryExists) {
-        // Buscar categoria padrão do tipo correto
+      if (!suggestedCategory) {
+        console.warn(`⚠️ [VALIDATION] Category ${suggestion.category_id} not found for transaction ${index}`);
+        
+        // Find fallback category of correct type
         const fallbackCategory = categories.find((cat: Category) => 
-          cat.type === transactionType && (
+          cat.type === expectedType && (
             cat.name.toLowerCase().includes('outros') || 
             cat.name.toLowerCase().includes('diversos')
           )
-        ) || categories.find((cat: Category) => cat.type === transactionType);
+        ) || categories.find((cat: Category) => cat.type === expectedType);
         
-        console.warn(`⚠️ Categoria inválida ou tipo incorreto para transação ${index}, usando padrão ${transactionType}`);
-        suggestion.category_id = fallbackCategory?.id || defaultCategoryId;
-        suggestion.confidence = 0.3;
-        suggestion.reasoning = 'Categoria sugerida pela IA não encontrada ou tipo incorreto, usando padrão';
+        suggestion.category_id = fallbackCategory?.id || categories[0]?.id || '';
+        suggestion.confidence = Math.max(0.3, suggestion.confidence * 0.5);
+        suggestion.reasoning = 'Categoria original não encontrada, usando fallback';
+      } else if (suggestedCategory.type !== expectedType) {
+        console.warn(`⚠️ [VALIDATION] Type mismatch for transaction ${index}: expected ${expectedType}, got ${suggestedCategory.type}`);
+        
+        // Find category of correct type
+        const correctTypeCategory = categories.find((cat: Category) => 
+          cat.type === expectedType && (
+            cat.name.toLowerCase().includes('outros') || 
+            cat.name.toLowerCase().includes('diversos')
+          )
+        ) || categories.find((cat: Category) => cat.type === expectedType);
+        
+        if (correctTypeCategory) {
+          suggestion.category_id = correctTypeCategory.id;
+          suggestion.confidence = Math.max(0.3, suggestion.confidence * 0.6);
+          suggestion.reasoning = `Tipo ajustado para ${expectedType}`;
+        }
       }
 
-      // Verificar se subcategoria existe e pertence à categoria
+      // Validate subcategory
       if (suggestion.subcategory_id) {
         const subcategoryExists = subcategories.find((sub: Subcategory) => 
           sub.id === suggestion.subcategory_id && sub.category_id === suggestion.category_id
         );
         if (!subcategoryExists) {
-          console.warn(`⚠️ Subcategoria inválida para transação ${index}, removendo`);
+          console.warn(`⚠️ [VALIDATION] Invalid subcategory ${suggestion.subcategory_id} for transaction ${index}`);
           suggestion.subcategory_id = null;
         }
       }
 
-      // Garantir que confidence está no range correto
-      suggestion.confidence = Math.max(0, Math.min(1, suggestion.confidence || 0.5));
+      // Ensure confidence is within valid range
+      suggestion.confidence = Math.max(0.2, Math.min(1.0, suggestion.confidence || 0.5));
 
       return suggestion;
     });
 
-    console.log(`✅ Processamento concluído: ${validatedSuggestions.length} sugestões validadas`);
+    console.log(`✅ [SUCCESS] Processing complete: ${validatedSuggestions.length} suggestions`);
+    console.log(`📊 [STATS] Average confidence: ${(validatedSuggestions.reduce((sum, s) => sum + s.confidence, 0) / validatedSuggestions.length).toFixed(2)}`);
+    
     if (usedFallback) {
-      console.log('⚠️ Usado sistema de fallback devido a falha na IA');
+      console.log('⚠️ [FALLBACK] Enhanced fallback system was used');
     }
 
     return new Response(
@@ -303,14 +410,14 @@ Retorne APENAS o array JSON, sem texto adicional.`;
         suggestions: validatedSuggestions,
         usedFallback: usedFallback,
         message: usedFallback ? 
-          'IA temporariamente indisponível, categorização básica aplicada' : 
-          'Categorização por IA aplicada com sucesso'
+          'Sistema de fallback inteligente aplicado' : 
+          'Categorização por IA concluída com sucesso'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('💥 Erro crítico em gemini-categorize-transactions:', error);
+    console.error('💥 [ERROR] Critical error:', error);
     return new Response(
       JSON.stringify({ 
         error: 'Failed to categorize transactions', 

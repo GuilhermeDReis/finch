@@ -1,3 +1,4 @@
+
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
@@ -21,6 +22,49 @@ interface CSVUploaderProps {
   onError: (error: string) => void;
 }
 
+// Enhanced transaction type detection
+const detectTransactionType = (description: string, amount: number): 'income' | 'expense' => {
+  const desc = description.toLowerCase();
+  
+  // Strong income indicators
+  const strongIncomePatterns = [
+    'salario', 'salário', 'rendimento', 'pix recebido', 'transferencia recebida',
+    'deposito', 'depósito', 'credito em conta', 'crédito em conta',
+    'reembolso', 'devolução', 'restituição', 'freelance', 'comissão',
+    'venda', 'recebimento', 'entrada', 'bonificação', '13º salário',
+    'dividendos', 'juros recebidos'
+  ];
+  
+  // Strong expense indicators
+  const strongExpensePatterns = [
+    'compra', 'pagamento', 'debito', 'débito', 'saque', 'pix enviado',
+    'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
+    'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa',
+    'cobrança', 'desconto em folha'
+  ];
+  
+  // Check for strong income patterns
+  for (const pattern of strongIncomePatterns) {
+    if (desc.includes(pattern)) {
+      console.log(`💰 [TYPE_DETECTION] Strong income pattern "${pattern}" found in: ${description}`);
+      return 'income';
+    }
+  }
+  
+  // Check for strong expense patterns
+  for (const pattern of strongExpensePatterns) {
+    if (desc.includes(pattern)) {
+      console.log(`💸 [TYPE_DETECTION] Strong expense pattern "${pattern}" found in: ${description}`);
+      return 'expense';
+    }
+  }
+  
+  // Fallback to amount-based detection with better logic
+  const detectedType = amount > 0 ? 'income' : 'expense';
+  console.log(`🔍 [TYPE_DETECTION] No clear pattern, using amount-based: ${detectedType} for ${description} (${amount})`);
+  return detectedType;
+};
+
 export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -33,33 +77,31 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
   };
 
   const parseAmount = (amountStr: string): number => {
-    console.log('Parsing amount:', amountStr);
+    console.log('💰 [PARSE_AMOUNT] Parsing:', amountStr);
     
-    // Remove espaços
+    // Remove espaços e normalize
     let cleanAmount = amountStr.trim();
     
     // Remove prefixo de moeda (R$, $, etc.)
     cleanAmount = cleanAmount.replace(/^[R$€£¥]+\s?/i, '');
     
-    // Para valores negativos brasileiros como R$-946.20
+    // Handle negative values (check for minus sign)
     const isNegative = cleanAmount.includes('-');
     cleanAmount = cleanAmount.replace('-', '');
     
-    // Se tem ponto e vírgula, ponto é separador de milhares
-    // Se tem apenas vírgula, é decimal
-    // Se tem apenas ponto e menos de 3 dígitos após, é decimal
+    // Brazilian number format: use comma as decimal separator
     if (cleanAmount.includes(',')) {
-      // Tem vírgula - vírgula é decimal, pontos são milhares
-      cleanAmount = cleanAmount.replace(/\./g, ''); // Remove pontos (milhares)
-      cleanAmount = cleanAmount.replace(',', '.'); // Vírgula vira ponto decimal
+      // Remove dots (thousands separator) and replace comma with dot
+      cleanAmount = cleanAmount.replace(/\./g, '');
+      cleanAmount = cleanAmount.replace(',', '.');
     } else if (cleanAmount.includes('.')) {
-      // Só tem ponto - verificar se é decimal ou milhares
+      // Check if it's a decimal or thousands separator
       const parts = cleanAmount.split('.');
       if (parts.length === 2 && parts[1].length <= 2) {
         // É decimal (ex: 946.20)
         // Não faz nada, já está correto
       } else {
-        // É separador de milhares (ex: 1.000)
+        // It's thousands separator (e.g., 1.234.567)
         cleanAmount = cleanAmount.replace(/\./g, '');
       }
     }
@@ -67,7 +109,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     const result = parseFloat(cleanAmount);
     const finalResult = isNegative ? -result : result;
     
-    console.log('Amount parsed:', amountStr, '->', finalResult);
+    console.log('💰 [PARSE_AMOUNT] Result:', amountStr, '->', finalResult);
     return finalResult;
   };
 
@@ -91,7 +133,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
           }
 
-          console.log('Cabeçalhos encontrados:', headers);
+          console.log('📋 [CSV] Headers found:', headers);
 
           const dataKey = headers.find(h => h.trim().toLowerCase() === 'data');
           const valorKey = headers.find(h => h.trim().toLowerCase() === 'valor');
@@ -104,31 +146,35 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             return normalized === 'descricao' || normalized.includes('descri') || normalized.includes('descriÃ§Ã£o');
           });
 
-          console.log('Chaves encontradas:', { dataKey, valorKey, idKey, descKey });
+          console.log('🔍 [CSV] Mapped keys:', { dataKey, valorKey, idKey, descKey });
 
           if (!dataKey || !valorKey || !idKey || !descKey) {
             throw new Error(`Cabeçalhos ausentes. Encontrados: ${headers.join(', ')}. Necessário: Data, Valor, ID_Transacao ou Identificador, Descricao.`);
           }
 
-          setMessage('Convertendo dados...');
+          setMessage('Analisando e categorizando transações...');
           setProgress(50);
 
           const transactions: ParsedTransaction[] = results.data
             .map((row: any) => {
               const rowValor = row[valorKey];
               const amount = parseAmount(rowValor);
+              const description = String(row[descKey]).trim();
 
-              if (!row[dataKey] || !rowValor || !row[idKey] || !row[descKey] || isNaN(amount)) {
+              if (!row[dataKey] || !rowValor || !row[idKey] || !description || isNaN(amount)) {
                 return null;
               }
+
+              // Enhanced type detection
+              const type = detectTransactionType(description, amount);
 
               return {
                 id: String(row[idKey]).trim(),
                 date: parseDate(String(row[dataKey]).trim()),
-                amount: Math.abs(amount),
-                description: String(row[descKey]).trim(),
-                originalDescription: String(row[descKey]).trim(),
-                type: amount < 0 ? 'expense' : 'income'
+                amount: Math.abs(amount), // Always store positive amount
+                description: description,
+                originalDescription: description,
+                type: type
               };
             })
             .filter((transaction): transaction is ParsedTransaction => transaction !== null);
@@ -137,12 +183,23 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
             throw new Error('Nenhuma transação válida foi encontrada no arquivo.');
           }
 
+          // Log statistics
+          const incomeCount = transactions.filter(t => t.type === 'income').length;
+          const expenseCount = transactions.filter(t => t.type === 'expense').length;
+          
+          console.log('📊 [CSV] Processing complete:', {
+            total: transactions.length,
+            income: incomeCount,
+            expense: expenseCount
+          });
+
           setProgress(100);
           setStatus('success');
-          setMessage(`${transactions.length} transações carregadas com sucesso!`);
+          setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
           onDataParsed(transactions);
 
         } catch (error) {
+          console.error('❌ [CSV] Processing error:', error);
           setStatus('error');
           setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
           onError(error instanceof Error ? error.message : 'Erro desconhecido');
@@ -151,6 +208,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
         }
       },
       error: (error: any) => {
+        console.error('❌ [CSV] Parse error:', error);
         setStatus('error');
         setMessage(`Erro no parser CSV: ${error.message}`);
         onError(error.message);
@@ -220,7 +278,7 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
 
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">
-                {status === 'success' ? 'Arquivo processado!' :
+                {status === 'success' ? 'Arquivo processado com sucesso!' :
                  status === 'error' ? 'Erro no processamento' :
                  isDragActive ? 'Solte o arquivo aqui' :
                  'Arraste um arquivo CSV ou clique para selecionar'}
@@ -229,7 +287,10 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
               {status === 'idle' && (
                 <p className="text-sm text-muted-foreground">
                   Formatos aceitos: .csv (máximo 10MB)<br />
-                  Estrutura: Data, Valor, Identificador, Descrição
+                  Estrutura: Data, Valor, Identificador, Descrição<br />
+                  <span className="text-xs text-primary">
+                    ✨ Detecção inteligente de receitas e gastos
+                  </span>
                 </p>
               )}
             </div>
