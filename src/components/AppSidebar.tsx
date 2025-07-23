@@ -19,10 +19,11 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
+  { title: "Início", url: "/", icon: Home },
   { title: "Transações", url: "/transactions", icon: CreditCard },
   { title: "Importar Extrato", url: "/import", icon: Upload },
-  { title: "Relatórios", url: "/reports", icon: BarChart3 },
+  { title: "Relatórios", url: "/reports", icon: FileText },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];
 

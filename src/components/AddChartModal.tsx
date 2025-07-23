@@ -1,0 +1,231 @@
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { Plus, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useCharts } from '@/contexts/ChartContext';
+import { CHART_COLORS, formatCurrency } from '@/utils/chartUtils';
+import type { ChartFormData, ChartPeriod } from '@/types/chart';
+import { cn } from '@/lib/utils';
+
+interface AddChartModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { allCategories, chartConfigs, addChart } = useCharts();
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors },
+  } = useForm<ChartFormData>({
+    defaultValues: {
+      name: '',
+      category_id: '',
+      monthly_goal: '',
+      color: CHART_COLORS[0],
+      period_months: 12,
+    },
+  });
+
+  const selectedColor = watch('color');
+  const monthlyGoalValue = watch('monthly_goal');
+
+  const expenseCategories = allCategories.filter(cat => cat.type === 'expense');
+
+  const formatCurrencyInput = (value: string) => {
+    const numericValue = value.replace(/[^\d]/g, '');
+    const formattedValue = (Number(numericValue) / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    return formattedValue;
+  };
+
+  const handleMonthlyGoalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCurrencyInput(e.target.value);
+    setValue('monthly_goal', formatted);
+  };
+
+  const validateUniqueName = (name: string) => {
+    const existingNames = chartConfigs.map(chart => chart.name.toLowerCase());
+    return !existingNames.includes(name.toLowerCase()) || 'Já existe um gráfico com este nome';
+  };
+
+  const onSubmit = async (data: ChartFormData) => {
+    setIsSubmitting(true);
+    try {
+      await addChart(data);
+      reset();
+      onClose();
+    } catch (error) {
+      console.error('Error submitting chart:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Adicionar Gráfico
+          </DialogTitle>
+          <DialogDescription>
+            Configure um novo gráfico para monitorar seus gastos por categoria.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Nome do Gráfico */}
+          <div className="space-y-2">
+            <Label htmlFor="name">Nome do Gráfico *</Label>
+            <Input
+              id="name"
+              {...register('name', {
+                required: 'Nome é obrigatório',
+                validate: validateUniqueName,
+              })}
+              placeholder="Ex: Controle de Alimentação"
+              className={cn(errors.name && 'border-destructive')}
+            />
+            {errors.name && (
+              <p className="text-sm text-destructive">{errors.name.message}</p>
+            )}
+          </div>
+
+          {/* Categoria */}
+          <div className="space-y-2">
+            <Label htmlFor="category_id">Categoria *</Label>
+            <Select onValueChange={(value) => setValue('category_id', value)}>
+              <SelectTrigger className={cn(errors.category_id && 'border-destructive')}>
+                <SelectValue placeholder="Selecione uma categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                {expenseCategories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: category.color }}
+                      />
+                      {category.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.category_id && (
+              <p className="text-sm text-destructive">Categoria é obrigatória</p>
+            )}
+          </div>
+
+          {/* Meta Mensal */}
+          <div className="space-y-2">
+            <Label htmlFor="monthly_goal">Meta Mensal *</Label>
+            <Input
+              id="monthly_goal"
+              {...register('monthly_goal', {
+                required: 'Meta mensal é obrigatória',
+                validate: (value) => {
+                  const numericValue = Number(value.replace(/[^\d,]/g, '').replace(',', '.'));
+                  return numericValue > 0 || 'Meta deve ser maior que zero';
+                },
+              })}
+              placeholder="R$ 0,00"
+              onChange={handleMonthlyGoalChange}
+              className={cn(errors.monthly_goal && 'border-destructive')}
+            />
+            {errors.monthly_goal && (
+              <p className="text-sm text-destructive">{errors.monthly_goal.message}</p>
+            )}
+          </div>
+
+          {/* Período de Análise */}
+          <div className="space-y-2">
+            <Label htmlFor="period_months">Período de Análise</Label>
+            <Select 
+              defaultValue="12" 
+              onValueChange={(value) => setValue('period_months', Number(value) as ChartPeriod)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6">6 meses</SelectItem>
+                <SelectItem value="12">12 meses</SelectItem>
+                <SelectItem value="24">24 meses</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Seletor de Cor */}
+          <div className="space-y-2">
+            <Label>Cor do Gráfico</Label>
+            <div className="grid grid-cols-6 gap-2">
+              {CHART_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={cn(
+                    'w-8 h-8 rounded-full border-2 transition-all',
+                    selectedColor === color
+                      ? 'border-foreground scale-110'
+                      : 'border-border hover:scale-105'
+                  )}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setValue('color', color)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Preview */}
+          {monthlyGoalValue && (
+            <div className="p-3 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground mb-1">Preview da meta:</p>
+              <p className="font-medium">{monthlyGoalValue} por mês</p>
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Criando...' : 'Criar Gráfico'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
