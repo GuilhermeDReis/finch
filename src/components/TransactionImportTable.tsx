@@ -361,21 +361,22 @@ export default function TransactionImportTable({
     });
   };
 
-  // Create merged data including grouped transactions
+  // Create merged data with simplified logic - no more duplication
   const mergedData = useMemo(() => {
-    // Start with normal transactions
+    console.log('🔄 [MERGE] Creating merged data:', {
+      tableData: tableData.length,
+      refundedTransactions: refundedTransactions.length,
+      unifiedPixTransactions: unifiedPixTransactions.length
+    });
+
+    // Start with only the unprocessed transactions from tableData
     const allTransactions: TransactionRow[] = [...tableData];
     
-    // Add refunded transactions (showing only the original with refunded status)
+    // Add the processed transaction representations (only one per group)
     refundedTransactions.forEach(refund => {
-      allTransactions.push({
-        ...refund.originalTransaction,
-        description: `${refund.originalTransaction.description} (Estornado)`,
-        status: 'refunded'
-      });
+      allTransactions.push(refund.originalTransaction);
     });
     
-    // Add unified PIX transactions (showing only the PIX with unified status)
     unifiedPixTransactions.forEach(unified => {
       // Find PIX category for auto-categorization
       const pixCategory = categories.find(cat => 
@@ -385,28 +386,28 @@ export default function TransactionImportTable({
       
       allTransactions.push({
         ...unified.pixTransaction,
-        categoryId: pixCategory?.id || unified.pixTransaction.categoryId,
-        status: 'unified-pix'
+        categoryId: pixCategory?.id || unified.pixTransaction.categoryId
       });
     });
     
-    // Filter out hidden transactions (credit transactions from unified PIX and refund transactions)
-    const hiddenTransactionIds = new Set([
-      ...refundedTransactions.map(r => r.refundTransaction.id),
-      ...unifiedPixTransactions.map(u => u.creditTransaction.id)
-    ]);
-    
-    const visibleTransactions = allTransactions.filter(t => !hiddenTransactionIds.has(t.id));
-    
     // Apply filters
-    const filteredTransactions = applyFilters(visibleTransactions);
+    const filteredTransactions = applyFilters(allTransactions);
     
     // Sort by date
-    return filteredTransactions.sort((a, b) => {
+    const sortedTransactions = filteredTransactions.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
+
+    console.log('✅ [MERGE] Merged data created:', {
+      total: sortedTransactions.length,
+      refunded: sortedTransactions.filter(t => t.status === 'refunded').length,
+      unifiedPix: sortedTransactions.filter(t => t.status === 'unified-pix').length,
+      normal: sortedTransactions.filter(t => !t.status || t.status === 'normal').length
+    });
+
+    return sortedTransactions;
   }, [tableData, refundedTransactions, unifiedPixTransactions, categories, sortOrder, filters]);
 
   // Enhanced initialization with ID validation

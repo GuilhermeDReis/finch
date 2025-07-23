@@ -41,16 +41,6 @@ export function detectDuplicates(
   const unifiedPixTransactions: UnifiedPixTransaction[] = [];
   const processedTransactionIds = new Set<string>();
   
-  // Debug: Log all new transactions to understand the data
-  console.log('📋 [DUPLICATE] New transactions sample:', 
-    newTransactions.slice(0, 3).map(t => ({
-      id: t.id,
-      description: t.description,
-      amount: t.amount,
-      date: t.date
-    }))
-  );
-
   // Step 1: Group transactions by external ID for refund detection
   const groupedById = new Map<string, TransactionRow[]>();
   
@@ -94,7 +84,8 @@ export function detectDuplicates(
             id: `refund-${id}`,
             originalTransaction: {
               ...originalTransaction,
-              status: 'refunded'
+              status: 'refunded',
+              description: `${originalTransaction.description} (Estornado)`
             },
             refundTransaction: {
               ...refundTransaction,
@@ -103,29 +94,25 @@ export function detectDuplicates(
             status: 'refunded'
           });
           
-          // Mark both transactions as processed
+          // Mark both transactions as processed so they don't appear in newTransactions
           processedTransactionIds.add(originalTransaction.id);
           processedTransactionIds.add(refundTransaction.id);
         }
       }
-    } else if (transactions.length > 2) {
-      console.warn('⚠️ [DUPLICATE] More than 2 transactions with same ID:', {
-        id,
-        count: transactions.length,
-        descriptions: transactions.map(t => t.description)
-      });
     }
   });
 
   // Step 3: Detect unified PIX transactions (PIX + Credit card pairs)
-  const pixTransactions = newTransactions.filter(t => 
-    !processedTransactionIds.has(t.id) && 
-    t.description.toLowerCase().includes('pix') &&
-    t.type === 'expense'
+  // Only consider transactions that haven't been processed as refunds
+  const unprocessedTransactions = newTransactions.filter(t => 
+    !processedTransactionIds.has(t.id)
   );
 
-  const creditTransactions = newTransactions.filter(t => 
-    !processedTransactionIds.has(t.id) && 
+  const pixTransactions = unprocessedTransactions.filter(t => 
+    t.description.toLowerCase().includes('pix') && t.type === 'expense'
+  );
+
+  const creditTransactions = unprocessedTransactions.filter(t => 
     (t.description.toLowerCase().includes('crédito') || t.description.toLowerCase().includes('credito')) &&
     t.type === 'expense'
   );
@@ -169,6 +156,7 @@ export function detectDuplicates(
         status: 'unified-pix'
       });
       
+      // Mark both transactions as processed so they don't appear in newTransactions
       processedTransactionIds.add(pixTx.id);
       processedTransactionIds.add(matchingCredit.id);
     }
@@ -209,7 +197,7 @@ export function detectDuplicates(
     }
   });
 
-  // Step 5: Prepare final results
+  // Step 5: Prepare final results - newTransactions contains only unprocessed transactions
   const finalDuplicateIds = new Set(duplicates.map(d => d.new.id));
   const newTransactionsFiltered = remainingTransactions.filter(t => !finalDuplicateIds.has(t.id));
 
@@ -224,7 +212,8 @@ export function detectDuplicates(
     duplicates: result.duplicates.length,
     newTransactions: result.newTransactions.length,
     refundedTransactions: result.refundedTransactions.length,
-    unifiedPixTransactions: result.unifiedPixTransactions.length
+    unifiedPixTransactions: result.unifiedPixTransactions.length,
+    totalProcessed: processedTransactionIds.size
   });
 
   return result;
