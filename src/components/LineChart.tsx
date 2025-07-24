@@ -74,12 +74,13 @@ export default function LineChart({ data, height = 300 }: LineChartProps) {
           fillOpacity={0.1}
         />
         
-        {/* Goal reference line */}
+        {/* Goal reference line - thinner and more visible */}
         <ReferenceLine 
           y={config.monthly_goal} 
-          stroke="hsl(var(--muted-foreground))" 
-          strokeDasharray="5 5"
-          strokeWidth={2}
+          stroke={config.color} 
+          strokeDasharray="8 4"
+          strokeWidth={1.5}
+          opacity={0.7}
         />
         
         {/* Actual spending line */}

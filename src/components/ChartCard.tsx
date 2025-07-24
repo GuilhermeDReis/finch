@@ -144,9 +144,14 @@ export default function ChartCard({ config }: ChartCardProps) {
             </div>
             
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Progresso:</span>
+              <span className="text-sm text-muted-foreground">
+                {config.transaction_type === 'income' ? 'Progresso:' : 'Controle:'}
+              </span>
               <span className={`text-sm font-medium ${getStatusColor()}`}>
-                {Math.round(chartData.percentageOfGoal)}% da meta
+                {config.transaction_type === 'income' 
+                  ? `${Math.round(chartData.percentageOfGoal)}% da meta`
+                  : `${Math.round(chartData.percentageOfGoal)}% do teto`
+                }
               </span>
             </div>
           </div>

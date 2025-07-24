@@ -43,7 +43,9 @@ export const calculateGoalStatus = (currentSpent: number, monthlyGoal: number): 
 export const groupTransactionsByMonthAndCategory = (
   transactions: any[],
   categoryId: string,
-  periodMonths: number
+  periodMonths: number,
+  transactionType: 'income' | 'expense' = 'expense',
+  groupingType: 'category' | 'subcategory' = 'category'
 ): ChartDataPoint[] => {
   const now = new Date();
   const months: ChartDataPoint[] = [];
@@ -54,14 +56,18 @@ export const groupTransactionsByMonthAndCategory = (
     const monthStart = startOfMonth(monthDate);
     const monthEnd = endOfMonth(monthDate);
     
-    // Filter transactions for this month and category
+    // Filter transactions for this month and category/subcategory
     const monthTransactions = transactions.filter(transaction => {
       const transactionDate = typeof transaction.date === 'string' 
         ? parseISO(transaction.date) 
         : transaction.date;
       
-      return transaction.category_id === categoryId &&
-             transaction.type === 'expense' &&
+      const matchesGroup = groupingType === 'category' 
+        ? transaction.category_id === categoryId
+        : transaction.subcategory_id === categoryId;
+      
+      return matchesGroup &&
+             transaction.type === transactionType &&
              transactionDate >= monthStart &&
              transactionDate <= monthEnd;
     });
@@ -87,7 +93,9 @@ export const processChartData = (
   const dataPoints = groupTransactionsByMonthAndCategory(
     transactions,
     config.category_id,
-    config.period_months
+    config.period_months,
+    config.transaction_type,
+    config.grouping_type
   ).map(point => ({
     ...point,
     goal: config.monthly_goal

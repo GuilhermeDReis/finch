@@ -1,27 +1,14 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { Plus, X } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useToast } from '@/hooks/use-toast';
 import { useCharts } from '@/contexts/ChartContext';
-import { CHART_COLORS, formatCurrency } from '@/utils/chartUtils';
-import type { ChartFormData, ChartPeriod } from '@/types/chart';
-import { cn } from '@/lib/utils';
+import { CHART_COLORS } from '@/utils/chartUtils';
+import type { ChartFormData, ChartPeriod, TransactionType, GroupingType } from '@/types/chart';
 
 interface AddChartModalProps {
   isOpen: boolean;
@@ -29,111 +16,189 @@ interface AddChartModalProps {
 }
 
 export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { allCategories, chartConfigs, addChart } = useCharts();
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    reset,
-    formState: { errors },
-  } = useForm<ChartFormData>({
-    defaultValues: {
+  const { addChart, allCategories } = useCharts();
+  const { toast } = useToast();
+  
+  const [formData, setFormData] = useState<ChartFormData>({
+    name: '',
+    category_id: '',
+    monthly_goal: '',
+    color: CHART_COLORS[0],
+    period_months: 12,
+    transaction_type: 'expense',
+    grouping_type: 'category'
+  });
+
+  const [filteredCategories, setFilteredCategories] = useState(allCategories);
+
+  // Filter categories based on transaction type
+  useEffect(() => {
+    const filtered = allCategories.filter(cat => cat.type === formData.transaction_type);
+    setFilteredCategories(filtered);
+    
+    // Reset category selection if current category doesn't match transaction type
+    if (formData.category_id) {
+      const currentCategory = allCategories.find(cat => cat.id === formData.category_id);
+      if (currentCategory && currentCategory.type !== formData.transaction_type) {
+        setFormData(prev => ({ ...prev, category_id: '' }));
+      }
+    }
+  }, [formData.transaction_type, allCategories]);
+
+  const resetForm = () => {
+    setFormData({
       name: '',
       category_id: '',
       monthly_goal: '',
       color: CHART_COLORS[0],
       period_months: 12,
-    },
-  });
-
-  const selectedColor = watch('color');
-  const monthlyGoalValue = watch('monthly_goal');
-
-  const expenseCategories = allCategories.filter(cat => cat.type === 'expense');
-
-  const formatCurrencyInput = (value: string) => {
-    const numericValue = value.replace(/[^\d]/g, '');
-    const formattedValue = (Number(numericValue) / 100).toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
+      transaction_type: 'expense',
+      grouping_type: 'category'
     });
-    return formattedValue;
   };
 
-  const handleMonthlyGoalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatCurrencyInput(e.target.value);
-    setValue('monthly_goal', formatted);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name.trim()) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Por favor, insira um nome para o gráfico.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  const validateUniqueName = (name: string) => {
-    const existingNames = chartConfigs.map(chart => chart.name.toLowerCase());
-    return !existingNames.includes(name.toLowerCase()) || 'Já existe um gráfico com este nome';
-  };
+    if (!formData.category_id) {
+      toast({
+        title: "Categoria obrigatória",
+        description: "Por favor, selecione uma categoria.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  const onSubmit = async (data: ChartFormData) => {
-    setIsSubmitting(true);
+    if (!formData.monthly_goal || parseFloat(formData.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) <= 0) {
+      toast({
+        title: "Meta inválida",
+        description: "Por favor, insira uma meta mensal válida.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      await addChart(data);
-      reset();
+      await addChart(formData);
+      resetForm();
       onClose();
     } catch (error) {
-      console.error('Error submitting chart:', error);
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error in form submission:', error);
     }
   };
 
-  const handleClose = () => {
-    reset();
-    onClose();
+  const formatCurrency = (value: string) => {
+    const numericValue = value.replace(/[^\d]/g, '');
+    if (!numericValue) return '';
+    
+    const formatted = new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(parseInt(numericValue));
+    
+    return formatted;
+  };
+
+  const handleGoalChange = (value: string) => {
+    const formatted = formatCurrency(value);
+    setFormData(prev => ({ ...prev, monthly_goal: formatted }));
+  };
+
+  const getTransactionTypeLabel = (type: TransactionType) => {
+    return type === 'income' ? 'Receita' : 'Despesa';
+  };
+
+  const getGoalLabel = () => {
+    return formData.transaction_type === 'income' ? 'Meta Mensal' : 'Teto Mensal';
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Adicionar Gráfico
-          </DialogTitle>
-          <DialogDescription>
-            Configure um novo gráfico para monitorar seus gastos por categoria.
-          </DialogDescription>
+          <DialogTitle>Adicionar Novo Gráfico</DialogTitle>
         </DialogHeader>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Nome do Gráfico */}
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome do Gráfico *</Label>
-            <Input
-              id="name"
-              {...register('name', {
-                required: 'Nome é obrigatório',
-                validate: validateUniqueName,
-              })}
-              placeholder="Ex: Controle de Alimentação"
-              className={cn(errors.name && 'border-destructive')}
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Transaction Type Selection */}
+          <div className="space-y-3">
+            <Label>Tipo de Transação</Label>
+            <RadioGroup
+              value={formData.transaction_type}
+              onValueChange={(value: TransactionType) => 
+                setFormData(prev => ({ ...prev, transaction_type: value }))
+              }
+              className="flex space-x-6"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="expense" id="expense" />
+                <Label htmlFor="expense">Despesa</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="income" id="income" />
+                <Label htmlFor="income">Receita</Label>
+              </div>
+            </RadioGroup>
           </div>
 
-          {/* Categoria */}
+          {/* Grouping Type Selection */}
           <div className="space-y-2">
-            <Label htmlFor="category_id">Categoria *</Label>
-            <Select onValueChange={(value) => setValue('category_id', value)}>
-              <SelectTrigger className={cn(errors.category_id && 'border-destructive')}>
+            <Label>Agrupar por</Label>
+            <Select 
+              value={formData.grouping_type} 
+              onValueChange={(value: GroupingType) => 
+                setFormData(prev => ({ ...prev, grouping_type: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="category">Categoria</SelectItem>
+                <SelectItem value="subcategory">Subcategoria</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Chart Name */}
+          <div className="space-y-2">
+            <Label htmlFor="name">Nome do Gráfico</Label>
+            <Input
+              id="name"
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Ex: Gastos com Alimentação"
+            />
+          </div>
+
+          {/* Category Selection */}
+          <div className="space-y-2">
+            <Label>Categoria</Label>
+            <Select 
+              value={formData.category_id} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
+            >
+              <SelectTrigger>
                 <SelectValue placeholder="Selecione uma categoria" />
               </SelectTrigger>
               <SelectContent>
-                {expenseCategories.map((category) => (
+                {filteredCategories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
+                      <div 
+                        className="w-3 h-3 rounded-full" 
                         style={{ backgroundColor: category.color }}
                       />
                       {category.name}
@@ -142,38 +207,49 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
                 ))}
               </SelectContent>
             </Select>
-            {errors.category_id && (
-              <p className="text-sm text-destructive">Categoria é obrigatória</p>
+            {filteredCategories.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma categoria de {getTransactionTypeLabel(formData.transaction_type).toLowerCase()} encontrada.
+              </p>
             )}
           </div>
 
-          {/* Meta Mensal */}
+          {/* Monthly Goal */}
           <div className="space-y-2">
-            <Label htmlFor="monthly_goal">Meta Mensal *</Label>
+            <Label htmlFor="goal">{getGoalLabel()}</Label>
             <Input
-              id="monthly_goal"
-              {...register('monthly_goal', {
-                required: 'Meta mensal é obrigatória',
-                validate: (value) => {
-                  const numericValue = Number(value.replace(/[^\d,]/g, '').replace(',', '.'));
-                  return numericValue > 0 || 'Meta deve ser maior que zero';
-                },
-              })}
-              placeholder="R$ 0,00"
-              onChange={handleMonthlyGoalChange}
-              className={cn(errors.monthly_goal && 'border-destructive')}
+              id="goal"
+              type="text"
+              value={formData.monthly_goal}
+              onChange={(e) => handleGoalChange(e.target.value)}
+              placeholder="R$ 0"
             />
-            {errors.monthly_goal && (
-              <p className="text-sm text-destructive">{errors.monthly_goal.message}</p>
-            )}
           </div>
 
-          {/* Período de Análise */}
+          {/* Color Selection */}
           <div className="space-y-2">
-            <Label htmlFor="period_months">Período de Análise</Label>
+            <Label>Cor do Gráfico</Label>
+            <div className="flex gap-2 flex-wrap">
+              {CHART_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`w-8 h-8 rounded-full border-2 ${
+                    formData.color === color ? 'border-foreground' : 'border-border'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setFormData(prev => ({ ...prev, color }))}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Period Selection */}
+          <div className="space-y-2">
+            <Label>Período de Análise</Label>
             <Select 
-              defaultValue="12" 
-              onValueChange={(value) => setValue('period_months', Number(value) as ChartPeriod)}
+              value={formData.period_months.toString()} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, period_months: parseInt(value) as ChartPeriod }))}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -186,44 +262,14 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
             </Select>
           </div>
 
-          {/* Seletor de Cor */}
-          <div className="space-y-2">
-            <Label>Cor do Gráfico</Label>
-            <div className="grid grid-cols-6 gap-2">
-              {CHART_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={cn(
-                    'w-8 h-8 rounded-full border-2 transition-all',
-                    selectedColor === color
-                      ? 'border-foreground scale-110'
-                      : 'border-border hover:scale-105'
-                  )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => setValue('color', color)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Preview */}
-          {monthlyGoalValue && (
-            <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground mb-1">Preview da meta:</p>
-              <p className="font-medium">{monthlyGoalValue} por mês</p>
-            </div>
-          )}
-
-          {/* Buttons */}
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={handleClose}>
+          <DialogFooter className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Criando...' : 'Criar Gráfico'}
+            <Button type="submit">
+              Criar Gráfico
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

@@ -50,9 +50,9 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       setLoading(true);
 
-      // Load user charts
+      // Load user charts with raw SQL to handle type issues
       const { data: charts, error: chartsError } = await supabase
-        .from('user_charts')
+        .from('user_charts' as any)
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -65,7 +65,14 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           variant: 'destructive',
         });
       } else {
-        setChartConfigs(charts || []);
+        // Map the data to ensure correct types
+        const typedCharts: ChartConfig[] = (charts || []).map((chart: any) => ({
+          ...chart,
+          period_months: chart.period_months as any,
+          transaction_type: chart.transaction_type || 'expense',
+          grouping_type: chart.grouping_type || 'category'
+        }));
+        setChartConfigs(typedCharts);
       }
 
       // Load user transactions
@@ -130,10 +137,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
         color: data.color,
         period_months: data.period_months,
+        transaction_type: data.transaction_type,
+        grouping_type: data.grouping_type,
       };
 
       const { data: newChart, error } = await supabase
-        .from('user_charts')
+        .from('user_charts' as any)
         .insert(chartData)
         .select()
         .single();
@@ -142,7 +151,14 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw error;
       }
 
-      setChartConfigs(prev => [newChart, ...prev]);
+      const typedChart: ChartConfig = {
+        ...(newChart as any),
+        period_months: (newChart as any).period_months as any,
+        transaction_type: (newChart as any).transaction_type || 'expense',
+        grouping_type: (newChart as any).grouping_type || 'category'
+      };
+
+      setChartConfigs(prev => [typedChart, ...prev]);
       toast({
         title: 'Gráfico criado com sucesso!',
         description: `O gráfico "${data.name}" foi adicionado ao seu dashboard.`,
@@ -175,10 +191,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
         color: data.color,
         period_months: data.period_months,
+        transaction_type: data.transaction_type,
+        grouping_type: data.grouping_type,
       };
 
       const { data: updatedChart, error } = await supabase
-        .from('user_charts')
+        .from('user_charts' as any)
         .update(updateData)
         .eq('id', id)
         .select()
@@ -188,8 +206,15 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw error;
       }
 
+      const typedChart: ChartConfig = {
+        ...(updatedChart as any),
+        period_months: (updatedChart as any).period_months as any,
+        transaction_type: (updatedChart as any).transaction_type || 'expense',
+        grouping_type: (updatedChart as any).grouping_type || 'category'
+      };
+
       setChartConfigs(prev => 
-        prev.map(chart => chart.id === id ? updatedChart : chart)
+        prev.map(chart => chart.id === id ? typedChart : chart)
       );
 
       toast({
@@ -257,10 +282,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         monthly_goal: originalChart.monthly_goal,
         color: originalChart.color,
         period_months: originalChart.period_months,
+        transaction_type: originalChart.transaction_type,
+        grouping_type: originalChart.grouping_type,
       };
 
       const { data: newChart, error } = await supabase
-        .from('user_charts')
+        .from('user_charts' as any)
         .insert(duplicateData)
         .select()
         .single();
@@ -269,7 +296,14 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw error;
       }
 
-      setChartConfigs(prev => [newChart, ...prev]);
+      const typedChart: ChartConfig = {
+        ...(newChart as any),
+        period_months: (newChart as any).period_months as any,
+        transaction_type: (newChart as any).transaction_type || 'expense',
+        grouping_type: (newChart as any).grouping_type || 'category'
+      };
+
+      setChartConfigs(prev => [typedChart, ...prev]);
       toast({
         title: 'Gráfico duplicado!',
         description: `Uma cópia do gráfico foi criada com o nome "${duplicateData.name}".`,

@@ -205,6 +205,56 @@ export type Database = {
           },
         ]
       }
+      user_charts: {
+        Row: {
+          category_id: string
+          color: string
+          created_at: string
+          grouping_type: string | null
+          id: string
+          monthly_goal: number
+          name: string
+          period_months: number
+          transaction_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category_id: string
+          color: string
+          created_at?: string
+          grouping_type?: string | null
+          id?: string
+          monthly_goal: number
+          name: string
+          period_months: number
+          transaction_type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          color?: string
+          created_at?: string
+          grouping_type?: string | null
+          id?: string
+          monthly_goal?: number
+          name?: string
+          period_months?: number
+          transaction_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_charts_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

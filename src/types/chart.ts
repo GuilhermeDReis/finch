@@ -1,6 +1,8 @@
 export type ChartType = 'line';
 export type ChartPeriod = 6 | 12 | 24;
 export type ChartStatus = 'success' | 'warning' | 'danger' | 'no-data';
+export type TransactionType = 'income' | 'expense';
+export type GroupingType = 'category' | 'subcategory';
 
 export interface ChartConfig {
   id: string;
@@ -10,6 +12,8 @@ export interface ChartConfig {
   monthly_goal: number;
   color: string;
   period_months: ChartPeriod;
+  transaction_type: TransactionType;
+  grouping_type: GroupingType;
   created_at?: string;
   updated_at?: string;
 }
@@ -37,4 +41,6 @@ export interface ChartFormData {
   monthly_goal: string;
   color: string;
   period_months: ChartPeriod;
+  transaction_type: TransactionType;
+  grouping_type: GroupingType;
 }
