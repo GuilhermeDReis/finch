@@ -1,5 +1,5 @@
 export type ChartType = 'line';
-export type ChartPeriod = 6 | 12 | 24;
+export type ChartPeriod = 3 | 6 | 12 | 24;
 export type ChartStatus = 'success' | 'warning' | 'danger' | 'no-data';
 export type TransactionType = 'income' | 'expense';
 export type GroupingType = 'category' | 'subcategory';

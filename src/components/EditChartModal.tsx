@@ -42,7 +42,9 @@ interface EditChartModalProps {
 export default function EditChartModal({ isOpen, onClose, chartConfig }: EditChartModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const { allCategories, chartConfigs, updateChart, removeChart } = useCharts();
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [filteredSubcategories, setFilteredSubcategories] = useState<any[]>([]);
+  const { allCategories, allSubcategories, chartConfigs, updateChart, removeChart } = useCharts();
   const {
     register,
     handleSubmit,
@@ -54,8 +56,24 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
 
   const selectedColor = watch('color');
   const monthlyGoalValue = watch('monthly_goal');
+  const selectedCategoryId = watch('category_id');
 
-  const expenseCategories = allCategories.filter(cat => cat.type === 'expense');
+  const filteredCategories = allCategories.filter(cat => cat.type === chartConfig.transaction_type);
+
+  // Load subcategories
+  useEffect(() => {
+    setSubcategories(allSubcategories || []);
+  }, [allSubcategories]);
+
+  // Filter subcategories based on selected category
+  useEffect(() => {
+    if (chartConfig.grouping_type === 'subcategory' && selectedCategoryId) {
+      const filtered = subcategories.filter(sub => sub.category_id === selectedCategoryId);
+      setFilteredSubcategories(filtered);
+    } else {
+      setFilteredSubcategories([]);
+    }
+  }, [selectedCategoryId, chartConfig.grouping_type, subcategories]);
 
   // Initialize form with chart config data
   useEffect(() => {
@@ -161,7 +179,7 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
                   <SelectValue placeholder="Selecione uma categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {expenseCategories.map((category) => (
+                  {filteredCategories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       <div className="flex items-center gap-2">
                         <div
@@ -178,6 +196,34 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
                 <p className="text-sm text-destructive">Categoria é obrigatória</p>
               )}
             </div>
+
+            {/* Subcategory Selection - Only show if grouping by subcategory */}
+            {chartConfig.grouping_type === 'subcategory' && (
+              <div className="space-y-2">
+                <Label>Subcategoria</Label>
+                <Select 
+                  value={chartConfig.grouping_type === 'subcategory' ? watch('category_id') : ''} 
+                  onValueChange={(value) => setValue('category_id', value)}
+                  disabled={!selectedCategoryId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedCategoryId ? "Selecione uma subcategoria" : "Primeiro selecione uma categoria"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredSubcategories.map((subcategory) => (
+                      <SelectItem key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedCategoryId && filteredSubcategories.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma subcategoria encontrada para esta categoria.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Meta Mensal */}
             <div className="space-y-2">
@@ -211,6 +257,7 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="3">3 meses</SelectItem>
                   <SelectItem value="6">6 meses</SelectItem>
                   <SelectItem value="12">12 meses</SelectItem>
                   <SelectItem value="24">24 meses</SelectItem>

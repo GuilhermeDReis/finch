@@ -15,6 +15,7 @@ interface ChartContextType {
   chartConfigs: ChartConfig[];
   allTransactions: any[];
   allCategories: Category[];
+  allSubcategories: any[];
   loading: boolean;
   addChart: (data: ChartFormData) => Promise<void>;
   updateChart: (id: string, data: ChartFormData) => Promise<void>;
@@ -37,6 +38,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
+  const [allSubcategories, setAllSubcategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -108,6 +110,23 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       } else {
         setAllCategories(categories || []);
+      }
+
+      // Load subcategories
+      const { data: subcategories, error: subcategoriesError } = await supabase
+        .from('subcategories')
+        .select('*')
+        .order('name');
+
+      if (subcategoriesError) {
+        console.error('Error loading subcategories:', subcategoriesError);
+        toast({
+          title: 'Erro ao carregar subcategorias',
+          description: subcategoriesError.message,
+          variant: 'destructive',
+        });
+      } else {
+        setAllSubcategories(subcategories || []);
       }
 
     } catch (error) {
@@ -327,6 +346,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     chartConfigs,
     allTransactions,
     allCategories,
+    allSubcategories,
     loading,
     addChart,
     updateChart,

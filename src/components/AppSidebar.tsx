@@ -65,12 +65,13 @@ export function AppSidebar() {
               </div>
             )}
           </div>
-          
-          {!isCollapsed && (
-            <SidebarTrigger className="h-7 w-7 p-0 hover:bg-muted rounded-md transition-colors">
-              <Menu className="h-4 w-4" />
-            </SidebarTrigger>
-          )}
+        </div>
+        
+        {/* Trigger sempre visível */}
+        <div className={`${isCollapsed ? 'flex justify-center mt-2' : 'absolute top-3 right-3'}`}>
+          <SidebarTrigger className="h-7 w-7 p-0 hover:bg-muted rounded-md transition-colors">
+            <Menu className="h-4 w-4" />
+          </SidebarTrigger>
         </div>
       </SidebarHeader>
 
@@ -82,7 +83,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 
-                    className={`h-12 ${isCollapsed ? 'justify-center px-0 mx-1' : 'justify-start px-3'} transition-all duration-200`}
+                    className={`h-12 ${isCollapsed ? 'justify-center px-2 mx-1' : 'justify-start px-3'} transition-all duration-200`}
                   >
                     <NavLink
                       to={item.url}
@@ -90,12 +91,14 @@ export function AppSidebar() {
                       className={getNavCls}
                       title={isCollapsed ? item.title : undefined}
                     >
-                      <item.icon className={`h-5 w-5 flex-shrink-0 ${isCollapsed ? '' : 'mr-3'}`} />
-                      {!isCollapsed && (
-                        <span className="transition-opacity duration-200 overflow-hidden">
-                          {item.title}
-                        </span>
-                      )}
+                      <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'w-auto'}`}>
+                        <item.icon className={`h-5 w-5 flex-shrink-0 ${isCollapsed ? '' : 'mr-3'}`} />
+                        {!isCollapsed && (
+                          <span className="transition-opacity duration-200 overflow-hidden">
+                            {item.title}
+                          </span>
+                        )}
+                      </div>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -124,11 +127,13 @@ export function AppSidebar() {
                   <Button
                     variant="ghost"
                     onClick={signOut}
-                    className={`w-full gap-2 p-2 h-12 ${isCollapsed ? 'justify-center px-0 mx-1' : 'justify-start'}`}
+                    className={`w-full gap-2 p-2 h-12 ${isCollapsed ? 'justify-center px-2 mx-1' : 'justify-start'}`}
                     title={isCollapsed ? 'Sair' : undefined}
                   >
-                    <LogOut className="h-4 w-4" />
-                    {!isCollapsed && 'Sair'}
+                    <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'w-auto'}`}>
+                      <LogOut className="h-4 w-4" />
+                      {!isCollapsed && <span className="ml-2">Sair</span>}
+                    </div>
                   </Button>
                 </SidebarMenuButton>
               </SidebarMenuItem>

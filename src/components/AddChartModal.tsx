@@ -16,7 +16,7 @@ interface AddChartModalProps {
 }
 
 export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
-  const { addChart, allCategories } = useCharts();
+  const { addChart, allCategories, allSubcategories } = useCharts();
   const { toast } = useToast();
   
   const [formData, setFormData] = useState<ChartFormData>({
@@ -30,6 +30,13 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
   });
 
   const [filteredCategories, setFilteredCategories] = useState(allCategories);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [filteredSubcategories, setFilteredSubcategories] = useState<any[]>([]);
+
+  // Load subcategories
+  useEffect(() => {
+    setSubcategories(allSubcategories || []);
+  }, [allSubcategories]);
 
   // Filter categories based on transaction type
   useEffect(() => {
@@ -44,6 +51,16 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
       }
     }
   }, [formData.transaction_type, allCategories]);
+
+  // Filter subcategories based on selected category
+  useEffect(() => {
+    if (formData.grouping_type === 'subcategory' && formData.category_id) {
+      const filtered = subcategories.filter(sub => sub.category_id === formData.category_id);
+      setFilteredSubcategories(filtered);
+    } else {
+      setFilteredSubcategories([]);
+    }
+  }, [formData.category_id, formData.grouping_type, subcategories]);
 
   const resetForm = () => {
     setFormData({
@@ -214,6 +231,34 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
             )}
           </div>
 
+          {/* Subcategory Selection - Only show if grouping by subcategory */}
+          {formData.grouping_type === 'subcategory' && (
+            <div className="space-y-2">
+              <Label>Subcategoria</Label>
+              <Select 
+                value={formData.grouping_type === 'subcategory' ? formData.category_id : ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
+                disabled={!formData.category_id}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.category_id ? "Selecione uma subcategoria" : "Primeiro selecione uma categoria"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredSubcategories.map((subcategory) => (
+                    <SelectItem key={subcategory.id} value={subcategory.id}>
+                      {subcategory.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.category_id && filteredSubcategories.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma subcategoria encontrada para esta categoria.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Monthly Goal */}
           <div className="space-y-2">
             <Label htmlFor="goal">{getGoalLabel()}</Label>
@@ -255,6 +300,7 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="3">3 meses</SelectItem>
                 <SelectItem value="6">6 meses</SelectItem>
                 <SelectItem value="12">12 meses</SelectItem>
                 <SelectItem value="24">24 meses</SelectItem>
