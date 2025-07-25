@@ -29,6 +29,8 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
     grouping_type: 'category'
   });
 
+  const [selectedCategoryForSubcategory, setSelectedCategoryForSubcategory] = useState('');
+
   const [filteredCategories, setFilteredCategories] = useState(allCategories);
   const [subcategories, setSubcategories] = useState<any[]>([]);
   const [filteredSubcategories, setFilteredSubcategories] = useState<any[]>([]);
@@ -54,13 +56,22 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
 
   // Filter subcategories based on selected category
   useEffect(() => {
-    if (formData.grouping_type === 'subcategory' && formData.category_id) {
-      const filtered = subcategories.filter(sub => sub.category_id === formData.category_id);
+    if (formData.grouping_type === 'subcategory' && selectedCategoryForSubcategory) {
+      const filtered = subcategories.filter(sub => sub.category_id === selectedCategoryForSubcategory);
       setFilteredSubcategories(filtered);
     } else {
       setFilteredSubcategories([]);
     }
-  }, [formData.category_id, formData.grouping_type, subcategories]);
+  }, [selectedCategoryForSubcategory, formData.grouping_type, subcategories]);
+
+  // Reset category selection when grouping type changes
+  useEffect(() => {
+    if (formData.grouping_type === 'category') {
+      setSelectedCategoryForSubcategory('');
+    } else {
+      setFormData(prev => ({ ...prev, category_id: '' }));
+    }
+  }, [formData.grouping_type]);
 
   const resetForm = () => {
     setFormData({
@@ -72,6 +83,7 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
       transaction_type: 'expense',
       grouping_type: 'category'
     });
+    setSelectedCategoryForSubcategory('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -200,63 +212,96 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
             />
           </div>
 
-          {/* Category Selection */}
-          <div className="space-y-2">
-            <Label>Categoria</Label>
-            <Select 
-              value={formData.category_id} 
-              onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione uma categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredCategories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: category.color }}
-                      />
-                      {category.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {filteredCategories.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Nenhuma categoria de {getTransactionTypeLabel(formData.transaction_type).toLowerCase()} encontrada.
-              </p>
-            )}
-          </div>
-
-          {/* Subcategory Selection - Only show if grouping by subcategory */}
-          {formData.grouping_type === 'subcategory' && (
+          {/* Category Selection - Only show when grouping by category */}
+          {formData.grouping_type === 'category' && (
             <div className="space-y-2">
-              <Label>Subcategoria</Label>
+              <Label>Categoria</Label>
               <Select 
-                value={formData.grouping_type === 'subcategory' ? formData.category_id : ''} 
+                value={formData.category_id} 
                 onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
-                disabled={!formData.category_id}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={formData.category_id ? "Selecione uma subcategoria" : "Primeiro selecione uma categoria"} />
+                  <SelectValue placeholder="Selecione uma categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredSubcategories.map((subcategory) => (
-                    <SelectItem key={subcategory.id} value={subcategory.id}>
-                      {subcategory.name}
+                  {filteredCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: category.color }}
+                        />
+                        {category.name}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {formData.category_id && filteredSubcategories.length === 0 && (
+              {filteredCategories.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Nenhuma subcategoria encontrada para esta categoria.
+                  Nenhuma categoria de {getTransactionTypeLabel(formData.transaction_type).toLowerCase()} encontrada.
                 </p>
               )}
             </div>
+          )}
+
+          {/* Subcategory Selection - Only show if grouping by subcategory */}
+          {formData.grouping_type === 'subcategory' && (
+            <>
+              <div className="space-y-2">
+                <Label>Categoria (para filtrar subcategorias)</Label>
+                <Select 
+                  value={selectedCategoryForSubcategory} 
+                  onValueChange={(value) => {
+                    setSelectedCategoryForSubcategory(value);
+                    // Reset subcategory selection when category changes
+                    setFormData(prev => ({ ...prev, category_id: '' }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: category.color }}
+                          />
+                          {category.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Subcategoria</Label>
+                <Select 
+                  value={formData.category_id} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
+                  disabled={!selectedCategoryForSubcategory}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedCategoryForSubcategory ? "Selecione uma subcategoria" : "Primeiro selecione uma categoria"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredSubcategories.map((subcategory) => (
+                      <SelectItem key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedCategoryForSubcategory && filteredSubcategories.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma subcategoria encontrada para esta categoria.
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           {/* Monthly Goal */}
