@@ -3,13 +3,37 @@ import { Plus, BarChart3, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ChartCard from '@/components/ChartCard';
 import AddChartModal from '@/components/AddChartModal';
+import DashboardTotalCard from '@/components/DashboardTotalCard';
 import { useCharts } from '@/contexts/ChartContext';
+import { useDashboardTotals } from '@/hooks/useDashboardTotals';
 
 export default function DashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false);
+  const currentDate = new Date();
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
+  
   const { chartConfigs, loading } = useCharts();
+  const { totals, loading: totalsLoading } = useDashboardTotals(selectedYear, selectedMonth);
+
+  const years = Array.from({ length: 10 }, (_, i) => currentDate.getFullYear() - i);
+  const months = [
+    { value: 1, label: 'Janeiro' },
+    { value: 2, label: 'Fevereiro' },
+    { value: 3, label: 'Março' },
+    { value: 4, label: 'Abril' },
+    { value: 5, label: 'Maio' },
+    { value: 6, label: 'Junho' },
+    { value: 7, label: 'Julho' },
+    { value: 8, label: 'Agosto' },
+    { value: 9, label: 'Setembro' },
+    { value: 10, label: 'Outubro' },
+    { value: 11, label: 'Novembro' },
+    { value: 12, label: 'Dezembro' },
+  ];
 
   if (loading) {
     return (
@@ -20,6 +44,20 @@ export default function DashboardPage() {
             <p className="text-muted-foreground">Monitore seus gastos por categoria com metas personalizadas</p>
           </div>
           <Skeleton className="h-10 w-32" />
+        </div>
+
+        {/* Total Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index}>
+              <CardContent className="p-6">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-32" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -75,12 +113,63 @@ export default function DashboardPage() {
           </p>
         </div>
         
-        {chartConfigs.length > 0 && (
-          <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Adicionar Gráfico
-          </Button>
-        )}
+        {/* Date Filter */}
+        <div className="flex items-center gap-2">
+          <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((month) => (
+                <SelectItem key={month.value} value={month.value.toString()}>
+                  {month.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {chartConfigs.length > 0 && (
+            <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Adicionar Gráfico
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Total Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <DashboardTotalCard
+          title="Total de Receitas"
+          value={totals.totalIncome}
+          type="income"
+          loading={totalsLoading}
+        />
+        <DashboardTotalCard
+          title="Total de Gastos"
+          value={totals.totalExpenses}
+          type="expense"
+          loading={totalsLoading}
+        />
+        <DashboardTotalCard
+          title="Saldo"
+          value={totals.balance}
+          type="balance"
+          loading={totalsLoading}
+        />
       </div>
 
       {/* Charts Grid or Empty State */}
