@@ -117,7 +117,10 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
     }
 
     try {
-      await addChart(formData);
+      await addChart({
+        ...formData,
+        selectedCategoryForSubcategory
+      });
       resetForm();
       onClose();
     } catch (error) {

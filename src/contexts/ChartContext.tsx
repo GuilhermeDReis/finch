@@ -17,8 +17,8 @@ interface ChartContextType {
   allCategories: Category[];
   allSubcategories: any[];
   loading: boolean;
-  addChart: (data: ChartFormData) => Promise<void>;
-  updateChart: (id: string, data: ChartFormData) => Promise<void>;
+  addChart: (data: ChartFormData & { selectedCategoryForSubcategory?: string }) => Promise<void>;
+  updateChart: (id: string, data: ChartFormData & { selectedCategoryForSubcategory?: string }) => Promise<void>;
   removeChart: (id: string) => Promise<void>;
   duplicateChart: (id: string) => Promise<void>;
   reorderCharts: (chartIds: string[]) => Promise<void>;
@@ -147,7 +147,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     loadData();
   }, [loadData]);
 
-  const addChart = async (data: ChartFormData) => {
+  const addChart = async (data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
     if (!user) return;
 
     try {
@@ -157,7 +157,8 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const chartData = {
         user_id: user.id,
         name: data.name,
-        category_id: data.category_id,
+        category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
+        subcategory_id: data.grouping_type === 'subcategory' ? data.category_id : null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
         color: data.color,
         period_months: data.period_months,
@@ -209,11 +210,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const updateChart = async (id: string, data: ChartFormData) => {
+  const updateChart = async (id: string, data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
     try {
       const updateData = {
         name: data.name,
-        category_id: data.category_id,
+        category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
+        subcategory_id: data.grouping_type === 'subcategory' ? data.category_id : null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
         color: data.color,
         period_months: data.period_months,
