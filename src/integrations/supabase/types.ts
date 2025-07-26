@@ -215,6 +215,7 @@ export type Database = {
           monthly_goal: number
           name: string
           period_months: number
+          subcategory_id: string | null
           transaction_type: string | null
           updated_at: string
           user_id: string
@@ -228,6 +229,7 @@ export type Database = {
           monthly_goal: number
           name: string
           period_months: number
+          subcategory_id?: string | null
           transaction_type?: string | null
           updated_at?: string
           user_id: string
@@ -241,6 +243,7 @@ export type Database = {
           monthly_goal?: number
           name?: string
           period_months?: number
+          subcategory_id?: string | null
           transaction_type?: string | null
           updated_at?: string
           user_id?: string
@@ -251,6 +254,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_charts_subcategory_id_fkey"
+            columns: ["subcategory_id"]
+            isOneToOne: false
+            referencedRelation: "subcategories"
             referencedColumns: ["id"]
           },
         ]
