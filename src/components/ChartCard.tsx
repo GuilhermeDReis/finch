@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { MoreHorizontal, TrendingUp, TrendingDown, AlertTriangle, BarChart3 } from 'lucide-react';
+import { MoreHorizontal, TrendingUp, TrendingDown, AlertTriangle, BarChart3, GripVertical } from 'lucide-react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +36,21 @@ export default function ChartCard({ config }: ChartCardProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { allTransactions, allCategories, removeChart, duplicateChart } = useCharts();
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: config.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   // Find category name
   const category = allCategories.find(cat => cat.id === config.category_id);
@@ -87,7 +104,11 @@ export default function ChartCard({ config }: ChartCardProps) {
 
   return (
     <>
-      <Card className="h-full flex flex-col">
+      <Card 
+        ref={setNodeRef}
+        style={style}
+        className={`h-full flex flex-col ${isDragging ? 'shadow-xl ring-2 ring-primary/20 z-50' : 'hover:shadow-lg'} transition-shadow`}
+      >
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <div className="flex items-center space-x-2">
             <div 
@@ -99,25 +120,37 @@ export default function ChartCard({ config }: ChartCardProps) {
             </CardTitle>
           </div>
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleEdit}>
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDuplicate}>
-                Duplicar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-                Remover
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center space-x-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 cursor-grab active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </Button>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleEdit}>
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDuplicate}>
+                  Duplicar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                  Remover
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardHeader>
 
         <CardContent className="flex-1 flex flex-col">

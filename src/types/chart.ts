@@ -14,6 +14,7 @@ export interface ChartConfig {
   period_months: ChartPeriod;
   transaction_type: TransactionType;
   grouping_type: GroupingType;
+  display_order: number;
   created_at?: string;
   updated_at?: string;
 }

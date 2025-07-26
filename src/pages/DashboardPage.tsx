@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
-import { Plus, BarChart3, TrendingUp } from 'lucide-react';
+import { Plus, BarChart3, TrendingUp, GripVertical } from 'lucide-react';
+import { 
+  DndContext, 
+  closestCenter, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import { 
+  arrayMove, 
+  SortableContext, 
+  sortableKeyboardCoordinates, 
+  rectSortingStrategy
+} from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,8 +31,29 @@ export default function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   
-  const { chartConfigs, loading } = useCharts();
+  const { chartConfigs, loading, reorderCharts } = useCharts();
   const { totals, loading: totalsLoading } = useDashboardTotals(selectedYear, selectedMonth);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = chartConfigs.findIndex(chart => chart.id === active.id);
+      const newIndex = chartConfigs.findIndex(chart => chart.id === over.id);
+      
+      const newOrder = arrayMove(chartConfigs, oldIndex, newIndex);
+      const chartIds = newOrder.map(chart => chart.id);
+      
+      reorderCharts(chartIds);
+    }
+  };
 
   const years = Array.from({ length: 10 }, (_, i) => currentDate.getFullYear() - i);
   const months = [
@@ -176,29 +212,40 @@ export default function DashboardPage() {
       {chartConfigs.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {chartConfigs.map((config) => (
-            <ChartCard key={config.id} config={config} />
-          ))}
-          
-          {/* Add Chart Card */}
-          <Card 
-            className="h-80 border-dashed border-2 hover:border-primary/50 transition-colors cursor-pointer group"
-            onClick={() => setShowAddModal(true)}
+        <DndContext 
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext 
+            items={chartConfigs.map(chart => chart.id)}
+            strategy={rectSortingStrategy}
           >
-            <CardContent className="h-full flex flex-col items-center justify-center text-center p-6">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4 group-hover:bg-primary/10 transition-colors">
-                <Plus className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
-              </div>
-              <h3 className="font-medium mb-2 group-hover:text-primary transition-colors">
-                Adicionar Gráfico
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Crie um novo gráfico para monitorar uma categoria específica
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {chartConfigs.map((config) => (
+                <ChartCard key={config.id} config={config} />
+              ))}
+              
+              {/* Add Chart Card */}
+              <Card 
+                className="h-80 border-dashed border-2 hover:border-primary/50 transition-colors cursor-pointer group"
+                onClick={() => setShowAddModal(true)}
+              >
+                <CardContent className="h-full flex flex-col items-center justify-center text-center p-6">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4 group-hover:bg-primary/10 transition-colors">
+                    <Plus className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </div>
+                  <h3 className="font-medium mb-2 group-hover:text-primary transition-colors">
+                    Adicionar Gráfico
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Crie um novo gráfico para monitorar uma categoria específica
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <AddChartModal

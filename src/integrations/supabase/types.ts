@@ -210,6 +210,7 @@ export type Database = {
           category_id: string
           color: string
           created_at: string
+          display_order: number | null
           grouping_type: string | null
           id: string
           monthly_goal: number
@@ -224,6 +225,7 @@ export type Database = {
           category_id: string
           color: string
           created_at?: string
+          display_order?: number | null
           grouping_type?: string | null
           id?: string
           monthly_goal: number
@@ -238,6 +240,7 @@ export type Database = {
           category_id?: string
           color?: string
           created_at?: string
+          display_order?: number | null
           grouping_type?: string | null
           id?: string
           monthly_goal?: number

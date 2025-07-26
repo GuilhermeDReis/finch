@@ -21,6 +21,7 @@ interface ChartContextType {
   updateChart: (id: string, data: ChartFormData) => Promise<void>;
   removeChart: (id: string) => Promise<void>;
   duplicateChart: (id: string) => Promise<void>;
+  reorderCharts: (chartIds: string[]) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -57,7 +58,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .from('user_charts' as any)
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('display_order', { ascending: true });
 
       if (chartsError) {
         console.error('Error loading charts:', chartsError);
@@ -72,7 +73,8 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...chart,
           period_months: chart.period_months as any,
           transaction_type: chart.transaction_type || 'expense',
-          grouping_type: chart.grouping_type || 'category'
+          grouping_type: chart.grouping_type || 'category',
+          display_order: chart.display_order || 0
         }));
         setChartConfigs(typedCharts);
       }
@@ -149,6 +151,9 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user) return;
 
     try {
+      // Get the next order position
+      const maxOrder = Math.max(...chartConfigs.map(chart => chart.display_order || 0), 0);
+      
       const chartData = {
         user_id: user.id,
         name: data.name,
@@ -158,6 +163,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         period_months: data.period_months,
         transaction_type: data.transaction_type,
         grouping_type: data.grouping_type,
+        display_order: maxOrder + 1,
       };
 
       const { data: newChart, error } = await supabase
@@ -174,7 +180,8 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(newChart as any),
         period_months: (newChart as any).period_months as any,
         transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category'
+        grouping_type: (newChart as any).grouping_type || 'category',
+        display_order: (newChart as any).display_order || 0
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);
@@ -338,6 +345,47 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const reorderCharts = async (chartIds: string[]) => {
+    if (!user) return;
+
+    try {
+      // Update display_order for each chart
+      const updates = chartIds.map((chartId, index) => ({
+        id: chartId,
+        display_order: index
+      }));
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('user_charts' as any)
+          .update({ display_order: update.display_order })
+          .eq('id', update.id);
+
+        if (error) throw error;
+      }
+
+      // Update local state to reflect new order
+      const reorderedCharts = chartIds.map(id => 
+        chartConfigs.find(chart => chart.id === id)!
+      ).filter(Boolean);
+
+      setChartConfigs(reorderedCharts);
+
+      toast({
+        title: 'Ordem dos gráficos atualizada!',
+        description: 'A nova ordem dos gráficos foi salva.',
+      });
+
+    } catch (error: any) {
+      console.error('Error reordering charts:', error);
+      toast({
+        title: 'Erro ao reordenar gráficos',
+        description: error.message || 'Ocorreu um erro inesperado.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const refreshData = async () => {
     await loadData();
   };
@@ -352,6 +400,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     updateChart,
     removeChart,
     duplicateChart,
+    reorderCharts,
     refreshData,
   };
 
