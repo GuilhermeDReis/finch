@@ -9,6 +9,7 @@ export interface ChartConfig {
   user_id: string;
   name: string;
   category_id: string;
+  subcategory_id?: string | null;
   monthly_goal: number;
   color: string;
   period_months: ChartPeriod;
