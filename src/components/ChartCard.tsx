@@ -181,28 +181,6 @@ export default function ChartCard({ config }: ChartCardProps) {
                 {categoryName}
               </Badge>
             </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Este mês:</span>
-              <div className="flex items-center space-x-2">
-                {getStatusIcon()}
-                <span className={`text-sm font-medium ${getStatusColor()}`}>
-                  {formatCurrency(chartData.currentMonthSpent)} / {formatCurrency(chartData.currentMonthGoal)}
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                {config.transaction_type === 'income' ? 'Progresso:' : 'Controle:'}
-              </span>
-              <span className={`text-sm font-medium ${getStatusColor()}`}>
-                {config.transaction_type === 'income' 
-                  ? `${Math.round(chartData.percentageOfGoal)}% da meta`
-                  : `${Math.round(chartData.percentageOfGoal)}% do teto`
-                }
-              </span>
-            </div>
           </div>
         </CardContent>
       </Card>

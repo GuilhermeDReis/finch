@@ -164,8 +164,8 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const chartData = {
         user_id: user.id,
         name: data.name,
-        category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
-        subcategory_id: data.grouping_type === 'subcategory' ? (data.subcategory_id || data.category_id) : null,
+        category_id: data.category_id || null,
+        subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
         period_months: data.period_months,
@@ -235,8 +235,8 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const updateData = {
         name: data.name,
-        category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
-        subcategory_id: data.grouping_type === 'subcategory' ? (data.subcategory_id || data.category_id) : null,
+        category_id: data.category_id || null,
+        subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
         period_months: data.period_months,

@@ -203,12 +203,13 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           
         case 'distribution':
           if (wizardData.step2.distribution_scope === 'within_category') {
-            grouping_type = 'category';
+            grouping_type = 'category'; // Usar category para evitar constraint, mas filtrar subcategorias depois
             category_id = wizardData.step2.category_id;
+            subcategory_id = null;
           } else {
-            // Para 'all_categories', usar a primeira categoria como placeholder
+            // Para 'all_categories', mostrar todas as categorias
             grouping_type = 'category';
-            category_id = allCategories.find(cat => cat.type === 'expense')?.id || null;
+            category_id = null; // null indica que deve mostrar todas as categorias
           }
           break;
           
@@ -228,8 +229,8 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           break;
       }
 
-      // Garantir que sempre temos um category_id válido
-      if (!category_id) {
+      // Garantir que sempre temos um category_id válido, exceto para distribution com all_categories
+      if (!category_id && !(wizardData.step1.chart_type === 'distribution' && wizardData.step2.distribution_scope === 'all_categories')) {
         const firstCategory = allCategories.find(cat => cat.type === 'expense');
         if (firstCategory) {
           category_id = firstCategory.id;
@@ -241,14 +242,14 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
       const chartData: ChartFormData = {
         name: wizardData.step3.name.trim(),
         category_id: category_id,
-        subcategory_id: subcategory_id,
+        subcategory_id: subcategory_id || undefined, // Ensure it's undefined instead of null to avoid foreign key issues
         monthly_goal: wizardData.step2.monthly_goal || '0',
         color: wizardData.step3.color === 'rainbow' ? '#3B82F6' : wizardData.step3.color,
         period_months: wizardData.step2.period_months || 12,
         transaction_type: 'expense',
         grouping_type: grouping_type,
         chart_type: wizardData.step1.chart_type,
-        comparison_type: wizardData.step2.comparison_type || null,
+        comparison_type: wizardData.step2.comparison_type || undefined,
         show_values_on_points: wizardData.step3.show_values_on_points || false,
         show_percentages: wizardData.step3.show_percentages || false,
         show_trend_line: wizardData.step3.show_trend_line || false,

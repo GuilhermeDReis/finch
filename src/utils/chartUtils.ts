@@ -146,21 +146,35 @@ export const processDistributionChartData = (
   const now = new Date();
   const monthsAgo = subMonths(now, config.period_months);
   
-  // Filter transactions for the period
-  const periodTransactions = transactions.filter(transaction => {
+  // Filter transactions for the period and transaction type
+  let periodTransactions = transactions.filter(transaction => {
     const transactionDate = typeof transaction.date === 'string' 
       ? parseISO(transaction.date) 
       : transaction.date;
     return transactionDate >= monthsAgo && transaction.type === config.transaction_type;
   });
 
-  // Group by categories or subcategories
+  // Apply category filter based on the configuration
+  if (config.category_id) {
+    // When a category is specified, filter transactions by that category
+    periodTransactions = periodTransactions.filter(transaction => 
+      transaction.category_id === config.category_id
+    );
+  }
+
+  // Group by categories or subcategories based on the context
   const groupedData: { [key: string]: number } = {};
   
   periodTransactions.forEach(transaction => {
-    const key = config.grouping_type === 'category' 
-      ? transaction.category_id 
-      : transaction.subcategory_id;
+    let key: string;
+    
+    if (config.category_id) {
+      // When a category is specified, group by subcategories
+      key = transaction.subcategory_id || 'Sem subcategoria';
+    } else {
+      // When no category is specified, group by categories
+      key = transaction.category_id || 'Sem categoria';
+    }
     
     if (key) {
       groupedData[key] = (groupedData[key] || 0) + Number(transaction.amount);
@@ -174,7 +188,7 @@ export const processDistributionChartData = (
     totalSpent: value,
     goal: 0,
     transactionCount: periodTransactions.filter(t => 
-      (config.grouping_type === 'category' ? t.category_id : t.subcategory_id) === key
+      (config.category_id ? t.subcategory_id : t.category_id) === key
     ).length,
     percentage: total > 0 ? (value / total) * 100 : 0
   }));
