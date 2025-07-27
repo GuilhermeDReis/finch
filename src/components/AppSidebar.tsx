@@ -1,8 +1,9 @@
 
-import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, User, LogOut } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, LogOut } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import {
   Sidebar,
@@ -112,13 +113,29 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {!isCollapsed && user?.email && (
+              {user?.email && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
-                    <div className="flex items-center gap-2 p-2 text-muted-foreground">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm truncate">{user.email}</span>
-                    </div>
+                    <NavLink
+                      to="/profile"
+                      className="flex items-center gap-2 p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title={isCollapsed ? 'Perfil' : undefined}
+                    >
+                      <Avatar className={`${isCollapsed ? 'h-8 w-8' : 'h-6 w-6'}`}>
+                        <AvatarImage 
+                          src={user.user_metadata?.avatar_url} 
+                          alt={user.user_metadata?.first_name || user.user_metadata?.full_name || user.email} 
+                        />
+                        <AvatarFallback className={`${isCollapsed ? 'h-8 w-8' : 'h-6 w-6'} text-xs`}>
+                          {user.user_metadata?.first_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {!isCollapsed && (
+                        <span className="text-sm truncate">
+                          {user.user_metadata?.first_name || user.user_metadata?.full_name || user.email}
+                        </span>
+                      )}
+                    </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}

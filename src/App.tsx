@@ -13,6 +13,7 @@ import ImportExtract from "./pages/ImportExtract";
 import DashboardPage from "./pages/DashboardPage";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import { UserProfile } from "./pages/UserProfile";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,13 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <ImportExtract />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UserProfile />
                   </Layout>
                 </ProtectedRoute>
               } />
