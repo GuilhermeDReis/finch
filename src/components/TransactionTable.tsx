@@ -1,13 +1,10 @@
-import { useState } from 'react';
-import { Edit2, Trash2, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -17,39 +14,33 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { Transaction, TransactionType } from '@/types/transaction';
-import { incomeCategories, expenseCategories } from '@/data/mockData';
+import { Transaction } from '@/types/transaction';
 
 interface TransactionTableProps {
   transactions: Transaction[];
-  type: TransactionType;
+  categories: any[];
+  subcategories: any[];
   onEdit: (transaction: Transaction) => void;
   onDelete: (id: string) => void;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  itemsPerPage?: number;
 }
 
-export function TransactionTable({ transactions, type, onEdit, onDelete }: TransactionTableProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [methodFilter, setMethodFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  const categories = type === 'income' ? incomeCategories : expenseCategories;
-  
-  // Filtrar transações
-  const filteredTransactions = transactions.filter(transaction => {
-    const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || transaction.category_id === categoryFilter;
-    const matchesMethod = methodFilter === 'all' || transaction.payment_method === methodFilter;
-    const matchesType = transaction.type === type;
-    
-    return matchesSearch && matchesCategory && matchesMethod && matchesType;
-  });
-
+export function TransactionTable({ 
+  transactions, 
+  categories,
+  subcategories,
+  onEdit, 
+  onDelete, 
+  currentPage, 
+  onPageChange,
+  itemsPerPage = 25 
+}: TransactionTableProps) {
   // Paginação
-  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const totalPages = Math.ceil(transactions.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedTransactions = transactions.slice(startIndex, startIndex + itemsPerPage);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -59,75 +50,30 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
   };
 
   const getCategoryName = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    return category?.name || 'Categoria não encontrada';
+    const category = categories?.find(cat => cat.id === categoryId);
+    return category?.name || 'Sem categoria';
   };
 
   const getCategoryColor = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId);
+    const category = categories?.find(cat => cat.id === categoryId);
     return category?.color || '#6B7280';
+  };
+
+  const getSubcategoryName = (subcategoryId: string) => {
+    const subcategory = subcategories?.find(sub => sub.id === subcategoryId);
+    return subcategory?.name || undefined;
   };
 
   const truncateText = (text: string, maxLength: number = 30) => {
     return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
   };
 
-  const uniquePaymentMethods = Array.from(
-    new Set(transactions.filter(t => t.type === type).map(t => t.payment_method))
-  );
+  const getTypeLabel = (type: 'income' | 'expense') => {
+    return type === 'income' ? 'Receita' : 'Despesa';
+  };
 
   return (
     <Card className="p-6">
-      {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Buscar por descrição..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
-        
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <Filter className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as categorias</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: category.color }}
-                  />
-                  {category.name}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Método" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os métodos</SelectItem>
-            {uniquePaymentMethods.map((method) => (
-              <SelectItem key={method} value={method}>
-                {method}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Tabela Desktop */}
       <div className="hidden md:block">
         <Table>
@@ -135,10 +81,10 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
             <TableRow>
               <TableHead>Data</TableHead>
               <TableHead>Descrição</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Categoria</TableHead>
+              <TableHead>Subcategoria</TableHead>
               <TableHead>Valor</TableHead>
-              <TableHead>Método</TableHead>
-              <TableHead>Tags</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -146,7 +92,7 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
             {paginatedTransactions.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  Nenhuma transação encontrada
+                  Nenhuma transação encontrada. Tente ajustar os filtros ou adicione uma nova transação.
                 </TableCell>
               </TableRow>
             ) : (
@@ -155,7 +101,19 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
                   <TableCell className="font-medium">
                     {format(transaction.date, 'dd/MM/yyyy', { locale: ptBR })}
                   </TableCell>
-                  <TableCell>{truncateText(transaction.description)}</TableCell>
+                  <TableCell>
+                    <div className="max-w-xs" title={transaction.description}>
+                      <span className="block truncate">{transaction.description}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant={transaction.type === 'income' ? 'default' : 'destructive'}
+                      className="text-xs"
+                    >
+                      {getTypeLabel(transaction.type)}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge 
                       variant="outline"
@@ -168,28 +126,20 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className={type === 'income' ? 'text-success font-semibold' : 'text-destructive font-semibold'}>
-                      {formatCurrency(transaction.amount)}
+                    {getSubcategoryName(transaction.subcategory || '') ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {getSubcategoryName(transaction.subcategory || '')}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className={`font-semibold ${
+                      transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                    }`}>
+                      {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
                     </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-xs">
-                      {transaction.payment_method}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {transaction.tags.slice(0, 2).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                      {transaction.tags.length > 2 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{transaction.tags.length - 2}
-                        </Badge>
-                      )}
-                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -197,6 +147,7 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
                         variant="ghost"
                         size="sm"
                         onClick={() => onEdit(transaction)}
+                        title="Editar transação"
                       >
                         <Edit2 className="h-4 w-4" />
                       </Button>
@@ -205,6 +156,7 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
                         size="sm"
                         onClick={() => onDelete(transaction.id)}
                         className="text-destructive hover:text-destructive"
+                        title="Excluir transação"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -221,7 +173,7 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
       <div className="md:hidden space-y-4">
         {paginatedTransactions.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            Nenhuma transação encontrada
+            Nenhuma transação encontrada. Tente ajustar os filtros ou adicione uma nova transação.
           </div>
         ) : (
           paginatedTransactions.map((transaction) => (
@@ -255,6 +207,20 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Badge 
+                    variant={transaction.type === 'income' ? 'default' : 'destructive'}
+                    className="text-xs"
+                  >
+                    {getTypeLabel(transaction.type)}
+                  </Badge>
+                  <span className={`font-semibold ${
+                    transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                  }`}>
+                    {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center text-sm">
+                  <Badge 
                     variant="outline"
                     style={{ 
                       borderColor: getCategoryColor(transaction.category_id),
@@ -263,27 +229,11 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
                   >
                     {getCategoryName(transaction.category_id)}
                   </Badge>
-                  <span className={type === 'income' ? 'text-success font-semibold' : 'text-destructive font-semibold'}>
-                    {formatCurrency(transaction.amount)}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center text-sm">
-                  <Badge variant="secondary" className="text-xs">
-                    {transaction.payment_method}
-                  </Badge>
-                  <div className="flex flex-wrap gap-1">
-                    {transaction.tags.slice(0, 2).map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {transaction.tags.length > 2 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{transaction.tags.length - 2}
-                      </Badge>
-                    )}
-                  </div>
+                  {getSubcategoryName(transaction.subcategory || '') ? (
+                    <Badge variant="secondary" className="text-xs">
+                      {getSubcategoryName(transaction.subcategory || '')}
+                    </Badge>
+                  ) : null}
                 </div>
               </div>
             </Card>
@@ -295,14 +245,14 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-6">
           <p className="text-sm text-muted-foreground">
-            Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredTransactions.length)} de {filteredTransactions.length} transações
+            Exibindo {startIndex + 1}-{Math.min(startIndex + itemsPerPage, transactions.length)} de {transactions.length} transações
           </p>
           
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -316,7 +266,7 @@ export function TransactionTable({ transactions, type, onEdit, onDelete }: Trans
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
               disabled={currentPage === totalPages}
             >
               Próxima
