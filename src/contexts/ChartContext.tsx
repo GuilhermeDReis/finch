@@ -74,6 +74,13 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           period_months: chart.period_months as any,
           transaction_type: chart.transaction_type || 'expense',
           grouping_type: chart.grouping_type || 'category',
+          chart_type: chart.chart_type || 'evolution',
+          comparison_type: chart.comparison_type || undefined,
+          show_values_on_points: chart.show_values_on_points ?? true,
+          show_percentages: chart.show_percentages ?? true,
+          show_trend_line: chart.show_trend_line ?? false,
+          highlight_min_max: chart.highlight_min_max ?? false,
+          visual_options: chart.visual_options || {},
           display_order: chart.display_order || 0
         }));
         setChartConfigs(typedCharts);
@@ -158,12 +165,19 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         user_id: user.id,
         name: data.name,
         category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
-        subcategory_id: data.grouping_type === 'subcategory' ? data.category_id : null,
-        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+        subcategory_id: data.grouping_type === 'subcategory' ? (data.subcategory_id || data.category_id) : null,
+        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
         period_months: data.period_months,
         transaction_type: data.transaction_type,
         grouping_type: data.grouping_type,
+        chart_type: data.chart_type,
+        comparison_type: data.comparison_type || null,
+        show_values_on_points: data.show_values_on_points,
+        show_percentages: data.show_percentages,
+        show_trend_line: data.show_trend_line,
+        highlight_min_max: data.highlight_min_max,
+        visual_options: data.visual_options || {},
         display_order: maxOrder + 1,
       };
 
@@ -182,6 +196,13 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         period_months: (newChart as any).period_months as any,
         transaction_type: (newChart as any).transaction_type || 'expense',
         grouping_type: (newChart as any).grouping_type || 'category',
+        chart_type: (newChart as any).chart_type || 'evolution',
+        comparison_type: (newChart as any).comparison_type || undefined,
+        show_values_on_points: (newChart as any).show_values_on_points ?? true,
+        show_percentages: (newChart as any).show_percentages ?? true,
+        show_trend_line: (newChart as any).show_trend_line ?? false,
+        highlight_min_max: (newChart as any).highlight_min_max ?? false,
+        visual_options: (newChart as any).visual_options || {},
         display_order: (newChart as any).display_order || 0
       };
 
@@ -215,12 +236,19 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updateData = {
         name: data.name,
         category_id: data.grouping_type === 'category' ? data.category_id : data.selectedCategoryForSubcategory || null,
-        subcategory_id: data.grouping_type === 'subcategory' ? data.category_id : null,
-        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+        subcategory_id: data.grouping_type === 'subcategory' ? (data.subcategory_id || data.category_id) : null,
+        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
         period_months: data.period_months,
         transaction_type: data.transaction_type,
         grouping_type: data.grouping_type,
+        chart_type: data.chart_type,
+        comparison_type: data.comparison_type || null,
+        show_values_on_points: data.show_values_on_points,
+        show_percentages: data.show_percentages,
+        show_trend_line: data.show_trend_line,
+        highlight_min_max: data.highlight_min_max,
+        visual_options: data.visual_options || {},
       };
 
       const { data: updatedChart, error } = await supabase
@@ -238,7 +266,14 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(updatedChart as any),
         period_months: (updatedChart as any).period_months as any,
         transaction_type: (updatedChart as any).transaction_type || 'expense',
-        grouping_type: (updatedChart as any).grouping_type || 'category'
+        grouping_type: (updatedChart as any).grouping_type || 'category',
+        chart_type: (updatedChart as any).chart_type || 'evolution',
+        comparison_type: (updatedChart as any).comparison_type || undefined,
+        show_values_on_points: (updatedChart as any).show_values_on_points ?? true,
+        show_percentages: (updatedChart as any).show_percentages ?? true,
+        show_trend_line: (updatedChart as any).show_trend_line ?? false,
+        highlight_min_max: (updatedChart as any).highlight_min_max ?? false,
+        visual_options: (updatedChart as any).visual_options || {}
       };
 
       setChartConfigs(prev => 
@@ -328,7 +363,14 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(newChart as any),
         period_months: (newChart as any).period_months as any,
         transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category'
+        grouping_type: (newChart as any).grouping_type || 'category',
+        chart_type: (newChart as any).chart_type || 'evolution',
+        comparison_type: (newChart as any).comparison_type || undefined,
+        show_values_on_points: (newChart as any).show_values_on_points ?? true,
+        show_percentages: (newChart as any).show_percentages ?? true,
+        show_trend_line: (newChart as any).show_trend_line ?? false,
+        highlight_min_max: (newChart as any).highlight_min_max ?? false,
+        visual_options: (newChart as any).visual_options || {}
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);

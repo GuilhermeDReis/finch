@@ -6,7 +6,7 @@ import Step1ChartTypeSelection from './wizard/Step1ChartTypeSelection';
 import Step2DataConfiguration from './wizard/Step2DataConfiguration';
 import Step3VisualCustomization from './wizard/Step3VisualCustomization';
 import Step4ReviewAndCreate from './wizard/Step4ReviewAndCreate';
-import type { WizardStep1Data, WizardStep2Data, WizardStep3Data, ChartType } from '@/types/chart';
+import type { ChartFormData } from '@/types/chart';
 
 interface AddChartModalProps {
   isOpen: boolean;
@@ -15,18 +15,25 @@ interface AddChartModalProps {
 
 export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [step1Data, setStep1Data] = useState<WizardStep1Data>({
-    chart_type: 'evolution'
-  });
-  const [step2Data, setStep2Data] = useState<WizardStep2Data>({});
-  const [step3Data, setStep3Data] = useState<WizardStep3Data>({
+  const [formData, setFormData] = useState<ChartFormData>({
     name: '',
+    category_id: '',
+    monthly_goal: '',
     color: '#3b82f6',
+    period_months: 12,
+    transaction_type: 'expense',
+    grouping_type: 'category',
+    chart_type: 'evolution',
     show_values_on_points: true,
     show_percentages: true,
     show_trend_line: false,
-    highlight_min_max: false
+    highlight_min_max: false,
+    visual_options: {}
   });
+
+  const updateFormData = (updates: Partial<ChartFormData>) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
 
   const handleNext = () => {
     if (currentStep < 4) {
@@ -42,15 +49,20 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
 
   const handleClose = () => {
     setCurrentStep(1);
-    setStep1Data({ chart_type: 'evolution' });
-    setStep2Data({});
-    setStep3Data({
+    setFormData({
       name: '',
+      category_id: '',
+      monthly_goal: '',
       color: '#3b82f6',
+      period_months: 12,
+      transaction_type: 'expense',
+      grouping_type: 'category',
+      chart_type: 'evolution',
       show_values_on_points: true,
       show_percentages: true,
       show_trend_line: false,
-      highlight_min_max: false
+      highlight_min_max: false,
+      visual_options: {}
     });
     onClose();
   };
@@ -58,40 +70,13 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return (
-          <Step1ChartTypeSelection 
-            data={step1Data} 
-            onUpdate={setStep1Data}
-            onNext={handleNext}
-          />
-        );
+        return <Step1ChartTypeSelection formData={formData} updateFormData={updateFormData} />;
       case 2:
-        return (
-          <Step2DataConfiguration 
-            chartType={step1Data.chart_type}
-            data={step2Data} 
-            onUpdate={setStep2Data}
-          />
-        );
+        return <Step2DataConfiguration formData={formData} updateFormData={updateFormData} />;
       case 3:
-        return (
-          <Step3VisualCustomization 
-            chartType={step1Data.chart_type}
-            data={step3Data} 
-            onUpdate={setStep3Data}
-          />
-        );
+        return <Step3VisualCustomization formData={formData} updateFormData={updateFormData} />;
       case 4:
-        return (
-          <Step4ReviewAndCreate 
-            wizardData={{
-              step1: step1Data,
-              step2: step2Data,
-              step3: step3Data
-            }}
-            onClose={handleClose}
-          />
-        );
+        return <Step4ReviewAndCreate formData={formData} onClose={handleClose} />;
       default:
         return null;
     }

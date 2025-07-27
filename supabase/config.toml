@@ -22,27 +22,12 @@ pop3_port = 54326
 
 [storage]
 enabled = true
-port = 54327
 
 [auth]
 enabled = true
-port = 54328
 
 [edge_runtime]
 enabled = true
-port = 54329
-
-[[edge_runtime.env_vars]]
-name = "SUPABASE_URL"
-value = "http://127.0.0.1:54321"
-
-[[edge_runtime.env_vars]]
-name = "SUPABASE_ANON_KEY"
-value = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhqd255a3FiZGVjanJicXB3ZWFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MzA0ODAsImV4cCI6MjA2ODMwNjQ4MH0.oHMNZl0J5SyiCl7KkEGpNROUiENd3A9Q1VCuxioW4gY"
-
-[[edge_runtime.env_vars]]
-name = "SUPABASE_SERVICE_ROLE_KEY"
-value = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhqd255a3FiZGVjanJicXB3ZWFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MjczMDQ4MCwiZXhwIjoyMDY4MzA2NDgwfQ.R3lWayJKuGcNIE6YnTe82k2vOJaQHLYlYk5Y6x05r3c"
 
 [functions.gemini-categorize-transactions]
 verify_jwt = false

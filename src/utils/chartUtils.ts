@@ -90,6 +90,24 @@ export const processChartData = (
   transactions: any[],
   categoryName: string
 ): ChartData => {
+  // Handle different chart types
+  switch (config.chart_type) {
+    case 'evolution':
+      return processEvolutionChartData(config, transactions, categoryName);
+    case 'distribution':
+      return processDistributionChartData(config, transactions, categoryName);
+    case 'comparison':
+      return processComparisonChartData(config, transactions, categoryName);
+    default:
+      return processEvolutionChartData(config, transactions, categoryName);
+  }
+};
+
+export const processEvolutionChartData = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
   const dataPoints = groupTransactionsByMonthAndCategory(
     transactions,
     config.category_id,
@@ -115,6 +133,202 @@ export const processChartData = (
     currentMonthGoal,
     percentageOfGoal,
     status,
+    categoryName
+  };
+};
+
+export const processDistributionChartData = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
+  // For distribution charts, we need to group by categories or subcategories
+  const now = new Date();
+  const monthsAgo = subMonths(now, config.period_months);
+  
+  // Filter transactions for the period
+  const periodTransactions = transactions.filter(transaction => {
+    const transactionDate = typeof transaction.date === 'string' 
+      ? parseISO(transaction.date) 
+      : transaction.date;
+    return transactionDate >= monthsAgo && transaction.type === config.transaction_type;
+  });
+
+  // Group by categories or subcategories
+  const groupedData: { [key: string]: number } = {};
+  
+  periodTransactions.forEach(transaction => {
+    const key = config.grouping_type === 'category' 
+      ? transaction.category_id 
+      : transaction.subcategory_id;
+    
+    if (key) {
+      groupedData[key] = (groupedData[key] || 0) + Number(transaction.amount);
+    }
+  });
+
+  // Convert to data points format
+  const total = Object.values(groupedData).reduce((sum, value) => sum + value, 0);
+  const dataPoints = Object.entries(groupedData).map(([key, value]) => ({
+    month: key, // Using key as identifier
+    totalSpent: value,
+    goal: 0,
+    transactionCount: periodTransactions.filter(t => 
+      (config.grouping_type === 'category' ? t.category_id : t.subcategory_id) === key
+    ).length,
+    percentage: total > 0 ? (value / total) * 100 : 0
+  }));
+
+  return {
+    config,
+    dataPoints,
+    currentMonthSpent: total,
+    currentMonthGoal: config.monthly_goal,
+    percentageOfGoal: config.monthly_goal > 0 ? (total / config.monthly_goal) * 100 : 0,
+    status: calculateGoalStatus(total, config.monthly_goal),
+    categoryName
+  };
+};
+
+export const processComparisonChartData = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
+  // For comparison charts, the logic depends on comparison_type
+  switch (config.comparison_type) {
+    case 'categories_same_period':
+      return processComparisonCategoriesSamePeriod(config, transactions, categoryName);
+    case 'category_different_periods':
+      return processComparisonCategoryDifferentPeriods(config, transactions, categoryName);
+    case 'subcategories':
+      return processComparisonSubcategories(config, transactions, categoryName);
+    default:
+      return processEvolutionChartData(config, transactions, categoryName);
+  }
+};
+
+const processComparisonCategoriesSamePeriod = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
+  const now = new Date();
+  const monthsAgo = subMonths(now, config.period_months);
+  
+  // Filter transactions for the period
+  const periodTransactions = transactions.filter(transaction => {
+    const transactionDate = typeof transaction.date === 'string' 
+      ? parseISO(transaction.date) 
+      : transaction.date;
+    return transactionDate >= monthsAgo && transaction.type === config.transaction_type;
+  });
+
+  // Group by categories
+  const categoryTotals: { [key: string]: number } = {};
+  periodTransactions.forEach(transaction => {
+    const categoryId = transaction.category_id;
+    if (categoryId) {
+      categoryTotals[categoryId] = (categoryTotals[categoryId] || 0) + Number(transaction.amount);
+    }
+  });
+
+  // Convert to data points
+  const dataPoints = Object.entries(categoryTotals).map(([categoryId, total]) => ({
+    month: categoryId,
+    totalSpent: total,
+    goal: config.monthly_goal,
+    transactionCount: periodTransactions.filter(t => t.category_id === categoryId).length
+  }));
+
+  const totalSpent = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
+
+  return {
+    config,
+    dataPoints,
+    currentMonthSpent: totalSpent,
+    currentMonthGoal: config.monthly_goal,
+    percentageOfGoal: config.monthly_goal > 0 ? (totalSpent / config.monthly_goal) * 100 : 0,
+    status: calculateGoalStatus(totalSpent, config.monthly_goal),
+    categoryName
+  };
+};
+
+const processComparisonCategoryDifferentPeriods = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
+  // This is similar to evolution but for a specific category across different periods
+  const dataPoints = groupTransactionsByMonthAndCategory(
+    transactions,
+    config.category_id,
+    config.period_months,
+    config.transaction_type,
+    config.grouping_type
+  ).map(point => ({
+    ...point,
+    goal: config.monthly_goal
+  }));
+
+  const currentMonth = dataPoints[dataPoints.length - 1];
+  const currentMonthSpent = currentMonth?.totalSpent || 0;
+
+  return {
+    config,
+    dataPoints,
+    currentMonthSpent,
+    currentMonthGoal: config.monthly_goal,
+    percentageOfGoal: config.monthly_goal > 0 ? (currentMonthSpent / config.monthly_goal) * 100 : 0,
+    status: calculateGoalStatus(currentMonthSpent, config.monthly_goal),
+    categoryName
+  };
+};
+
+const processComparisonSubcategories = (
+  config: ChartConfig,
+  transactions: any[],
+  categoryName: string
+): ChartData => {
+  const now = new Date();
+  const monthsAgo = subMonths(now, config.period_months);
+  
+  // Filter transactions for the period and category
+  const periodTransactions = transactions.filter(transaction => {
+    const transactionDate = typeof transaction.date === 'string' 
+      ? parseISO(transaction.date) 
+      : transaction.date;
+    return transactionDate >= monthsAgo && 
+           transaction.type === config.transaction_type &&
+           transaction.category_id === config.category_id;
+  });
+
+  // Group by subcategories
+  const subcategoryTotals: { [key: string]: number } = {};
+  periodTransactions.forEach(transaction => {
+    const subcategoryId = transaction.subcategory_id;
+    if (subcategoryId) {
+      subcategoryTotals[subcategoryId] = (subcategoryTotals[subcategoryId] || 0) + Number(transaction.amount);
+    }
+  });
+
+  // Convert to data points
+  const dataPoints = Object.entries(subcategoryTotals).map(([subcategoryId, total]) => ({
+    month: subcategoryId,
+    totalSpent: total,
+    goal: config.monthly_goal,
+    transactionCount: periodTransactions.filter(t => t.subcategory_id === subcategoryId).length
+  }));
+
+  const totalSpent = Object.values(subcategoryTotals).reduce((sum, value) => sum + value, 0);
+
+  return {
+    config,
+    dataPoints,
+    currentMonthSpent: totalSpent,
+    currentMonthGoal: config.monthly_goal,
+    percentageOfGoal: config.monthly_goal > 0 ? (totalSpent / config.monthly_goal) * 100 : 0,
+    status: calculateGoalStatus(totalSpent, config.monthly_goal),
     categoryName
   };
 };

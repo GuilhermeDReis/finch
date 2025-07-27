@@ -23,6 +23,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import LineChart from './LineChart';
+import PieChart from './PieChart';
+import BarChart from './BarChart';
 import EditChartModal from './EditChartModal';
 import { useCharts } from '@/contexts/ChartContext';
 import { processChartData, formatCurrency } from '@/utils/chartUtils';
@@ -102,6 +104,20 @@ export default function ChartCard({ config }: ChartCardProps) {
     setShowDeleteDialog(false);
   };
 
+  const renderChart = () => {
+    const chartType = config.chart_type || 'line';
+    
+    switch (chartType) {
+      case 'distribution':
+        return <PieChart data={chartData} height={200} />;
+      case 'comparison':
+        return <BarChart data={chartData} height={200} />;
+      case 'evolution':
+      default:
+        return <LineChart data={chartData} height={200} />;
+    }
+  };
+
   return (
     <>
       <Card 
@@ -155,7 +171,7 @@ export default function ChartCard({ config }: ChartCardProps) {
 
         <CardContent className="flex-1 flex flex-col">
           <div className="flex-1 mb-4">
-            <LineChart data={chartData} height={200} />
+            {renderChart()}
           </div>
           
           <div className="space-y-2">
