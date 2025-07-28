@@ -22,6 +22,7 @@ export type Database = {
           name: string
           type: string
           updated_at: string
+          user_id: string
         }
         Insert: {
           color?: string | null
@@ -30,6 +31,7 @@ export type Database = {
           name: string
           type: string
           updated_at?: string
+          user_id: string
         }
         Update: {
           color?: string | null
@@ -38,6 +40,7 @@ export type Database = {
           name?: string
           type?: string
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -104,18 +107,21 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          user_id: string
         }
         Insert: {
           category_id: string
           created_at?: string
           id?: string
           name: string
+          user_id: string
         }
         Update: {
           category_id?: string
           created_at?: string
           id?: string
           name?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -208,48 +214,75 @@ export type Database = {
       user_charts: {
         Row: {
           category_id: string
+          chart_type: Database["public"]["Enums"]["chart_type_enum"]
           color: string
+          comparison_type:
+            | Database["public"]["Enums"]["comparison_type_enum"]
+            | null
           created_at: string
           display_order: number | null
           grouping_type: string | null
+          highlight_min_max: boolean | null
           id: string
-          monthly_goal: number
+          monthly_goal: number | null
           name: string
           period_months: number
+          show_percentages: boolean | null
+          show_trend_line: boolean | null
+          show_values_on_points: boolean | null
           subcategory_id: string | null
           transaction_type: string | null
           updated_at: string
           user_id: string
+          visual_options: Json | null
         }
         Insert: {
           category_id: string
+          chart_type?: Database["public"]["Enums"]["chart_type_enum"]
           color: string
+          comparison_type?:
+            | Database["public"]["Enums"]["comparison_type_enum"]
+            | null
           created_at?: string
           display_order?: number | null
           grouping_type?: string | null
+          highlight_min_max?: boolean | null
           id?: string
-          monthly_goal: number
+          monthly_goal?: number | null
           name: string
           period_months: number
+          show_percentages?: boolean | null
+          show_trend_line?: boolean | null
+          show_values_on_points?: boolean | null
           subcategory_id?: string | null
           transaction_type?: string | null
           updated_at?: string
           user_id: string
+          visual_options?: Json | null
         }
         Update: {
           category_id?: string
+          chart_type?: Database["public"]["Enums"]["chart_type_enum"]
           color?: string
+          comparison_type?:
+            | Database["public"]["Enums"]["comparison_type_enum"]
+            | null
           created_at?: string
           display_order?: number | null
           grouping_type?: string | null
+          highlight_min_max?: boolean | null
           id?: string
-          monthly_goal?: number
+          monthly_goal?: number | null
           name?: string
           period_months?: number
+          show_percentages?: boolean | null
+          show_trend_line?: boolean | null
+          show_values_on_points?: boolean | null
           subcategory_id?: string | null
           transaction_type?: string | null
           updated_at?: string
           user_id?: string
+          visual_options?: Json | null
         }
         Relationships: [
           {
@@ -276,7 +309,11 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      chart_type_enum: "evolution" | "distribution" | "comparison"
+      comparison_type_enum:
+        | "categories_same_period"
+        | "category_different_periods"
+        | "subcategories"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -403,6 +440,13 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      chart_type_enum: ["evolution", "distribution", "comparison"],
+      comparison_type_enum: [
+        "categories_same_period",
+        "category_different_periods",
+        "subcategories",
+      ],
+    },
   },
 } as const
