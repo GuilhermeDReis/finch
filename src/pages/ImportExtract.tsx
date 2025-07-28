@@ -14,6 +14,7 @@ import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
+import transactionMappingService from '@/services/transactionMapping';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 // Utility function to validate UUID format
@@ -306,6 +307,13 @@ export default function ImportExtract() {
         }
         
         const aiSuggestion = categorizedTransactions?.find((cat: any) => cat.id === transaction.id);
+      // console.log('🔍 [DEBUG] AI suggestion for transaction:', {
+      //   id: transaction.id,
+      //   aiCategoryId: aiSuggestion?.categoryId,
+      //   aiSubcategoryId: aiSuggestion?.subcategoryId,
+      //   transactionCategoryId: transaction.categoryId,
+      //   transactionSubcategoryId: transaction.subcategoryId
+      // });
         return {
           ...transaction,
           categoryId: aiSuggestion?.categoryId || transaction.categoryId,
@@ -423,7 +431,7 @@ export default function ImportExtract() {
 
   const handleFinalImport = async () => {
     console.log('💾 [FINAL] handleFinalImport called');
-    
+
     if (!importSession) {
       toast({
         title: "Erro",
@@ -439,13 +447,24 @@ export default function ImportExtract() {
       return;
     }
 
+    // Validate that all transactions have a valid categoryId before importing, excluding refunds
+    const transactionsMissingCategory = transactions.filter(t => t.status !== 'refunded' && (!t.categoryId || !isValidUUID(t.categoryId)));
+    if (transactionsMissingCategory.length > 0) {
+      toast({
+        title: "Erro de validação",
+        description: `Existem ${transactionsMissingCategory.length} transações sem categoria definida. Por favor, atribua categorias antes de importar.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingProgress(0);
 
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new Error('User not authenticated');
       }
@@ -482,6 +501,36 @@ export default function ImportExtract() {
         throw error;
       }
 
+      // Insert or update transaction mappings
+      for (const transaction of transactions) {
+        if (transaction.status === 'refunded') continue; // Skip refunds
+        if (!transaction.categoryId || !transaction.subcategoryId) continue; // Skip if no category or subcategory
+
+        const standardizedIdentifier = transactionMappingService.standardizeIdentifier(transaction.description);
+        try {
+          const existingMapping = await transactionMappingService.findMapping(standardizedIdentifier, user.id);
+          if (existingMapping.found) {
+            await transactionMappingService.updateMapping(existingMapping.mapping!.id, {
+              categoryId: transaction.categoryId,
+              subcategoryId: transaction.subcategoryId,
+              confidenceScore: transaction.aiSuggestion?.confidence || 1,
+              source: 'Import'
+            });
+          } else {
+            await transactionMappingService.createMapping({
+              standardizedIdentifier,
+              userId: user.id,
+              categoryId: transaction.categoryId,
+              subcategoryId: transaction.subcategoryId,
+              confidenceScore: transaction.aiSuggestion?.confidence || 1,
+              source: 'Import'
+            });
+          }
+        } catch (error) {
+          console.error('Error processing transaction mapping:', error);
+        }
+      }
+
       // Update session
       await supabase
         .from('import_sessions')
@@ -509,7 +558,7 @@ export default function ImportExtract() {
 
     } catch (error) {
       console.error('💥 [FINAL] Exception in final import:', error);
-      
+
       await supabase
         .from('import_sessions')
         .update({
