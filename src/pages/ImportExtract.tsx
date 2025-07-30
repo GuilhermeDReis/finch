@@ -14,6 +14,7 @@ import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
+import transactionMappingService from '@/services/transactionMapping';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 // Utility function to validate UUID format
@@ -255,71 +256,108 @@ export default function ImportExtract() {
 
       console.log('👤 [AI] Creating session for user:', user.id);
 
-      // Create session with user_id
-      const { data: session, error: sessionError } = await supabase
-        .from('import_sessions')
-        .insert({
-          filename: 'import_' + Date.now(),
-          total_records: transactionsToProcess.length,
-          status: 'processing',
-          user_id: user.id
-        })
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error('❌ [AI] Error creating import session:', sessionError);
-        throw sessionError;
-      }
-
-      console.log('✅ [AI] Import session created:', session.id);
-      setImportSession(session as ImportSession);
-
-      // Update progress
-      setProcessingProgress(25);
-
-      // Process with AI categorization
-      console.log('🤖 [AI] Calling gemini-categorize-transactions function');
-      const { data: categorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
-        body: { transactions: transactionsToProcess }
-      });
-
-      if (aiError) {
-        console.error('❌ [AI] Error in AI categorization:', aiError);
-        throw aiError;
-      }
-
-      console.log('✅ [AI] AI categorization completed successfully');
-      setProcessingProgress(75);
+      // First, apply existing mappings to avoid unnecessary AI processing
+      console.log('🔍 [MAPPING] Checking for existing mappings...');
+      console.log('🔍 [MAPPING] Processing transactions:', transactionsToProcess.map(t => ({
+        id: t.id,
+        description: t.description,
+        status: t.status
+      })));
       
-      // Update transactions with AI suggestions (excluding refunds)
-      const updatedTransactions = transactionsToProcess.map(transaction => {
-        // Estornos não devem receber sugestões de IA
-        if (transaction.status === 'refunded') {
-          console.log('🚫 [AI] Skipping AI suggestion for refund transaction:', transaction.id);
-          return {
-            ...transaction,
-            categoryId: undefined, // Garantir que não tem categoria
-            subcategoryId: undefined,
-            aiSuggestion: undefined // Sem sugestão de IA
-          };
-        }
-        
-        const aiSuggestion = categorizedTransactions?.find((cat: any) => cat.id === transaction.id);
-        return {
-          ...transaction,
-          categoryId: aiSuggestion?.categoryId || transaction.categoryId,
-          subcategoryId: aiSuggestion?.subcategoryId || transaction.subcategoryId,
-          aiSuggestion: aiSuggestion ? {
-            categoryId: aiSuggestion.categoryId,
-            confidence: aiSuggestion.confidence,
-            reasoning: aiSuggestion.reasoning,
-            isAISuggested: true
-          } : undefined
-        };
+      const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
+        transactionsToProcess,
+        user.id
+      );
+
+      console.log('📊 [MAPPING] Mapping results:', {
+        mapped: mappedTransactions.length,
+        unmapped: unmappedTransactions.length,
+        total: transactionsToProcess.length
       });
 
-      setTransactions(updatedTransactions);
+      // Only process unmapped transactions with AI
+      let categorizedTransactions: any[] = [];
+      if (unmappedTransactions.length > 0) {
+        console.log('🤖 [AI] Sending', unmappedTransactions.length, 'unmapped transactions to AI for categorization');
+
+        // Create session with user_id
+        const { data: session, error: sessionError } = await supabase
+          .from('import_sessions')
+          .insert({
+            filename: 'import_' + Date.now(),
+            total_records: transactionsToProcess.length,
+            status: 'processing',
+            user_id: user.id
+          })
+          .select()
+          .single();
+
+        if (sessionError) {
+          console.error('❌ [AI] Error creating import session:', sessionError);
+          throw sessionError;
+        }
+
+        console.log('✅ [AI] Import session created:', session.id);
+        setImportSession(session as ImportSession);
+
+        // Update progress
+        setProcessingProgress(25);
+
+        // Process with AI categorization only for unmapped transactions
+        console.log('🤖 [AI] Calling gemini-categorize-transactions function');
+        const { data: aiCategorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
+          body: { transactions: unmappedTransactions }
+        });
+
+        if (aiError) {
+          console.error('❌ [AI] Error in AI categorization:', aiError);
+          throw aiError;
+        }
+
+        console.log('✅ [AI] AI categorization completed successfully');
+        categorizedTransactions = aiCategorizedTransactions || [];
+        setProcessingProgress(75);
+      } else {
+        console.log('✅ [MAPPING] All transactions already mapped, skipping AI categorization');
+        setProcessingProgress(75);
+      }
+
+      // Combine mapped transactions with AI categorized transactions
+      console.log('🔍 [COMBINE] Combining mapped and AI categorized transactions:', {
+        mappedCount: mappedTransactions.length,
+        unmappedCount: unmappedTransactions.length,
+        aiCategorizedCount: categorizedTransactions.length
+      });
+      
+      const allCategorizedTransactions = [
+        ...mappedTransactions,
+        ...unmappedTransactions.map(transaction => {
+          // Find AI suggestion for this transaction
+          const aiSuggestion = categorizedTransactions.find((cat: any) => cat.id === transaction.id);
+          
+          if (aiSuggestion) {
+            console.log('✅ [COMBINE] Found AI suggestion for transaction:', transaction.id);
+            return {
+              ...transaction,
+              categoryId: aiSuggestion.categoryId,
+              subcategoryId: aiSuggestion.subcategoryId,
+              type: transaction.type, // Explicitly preserve the original transaction type
+              aiSuggestion: {
+                categoryId: aiSuggestion.categoryId,
+                confidence: aiSuggestion.confidence,
+                reasoning: aiSuggestion.reasoning,
+                isAISuggested: true
+              }
+            };
+          }
+          
+          // If no AI suggestion, return transaction as is
+          console.log('⚠️ [COMBINE] No AI suggestion found for transaction:', transaction.id);
+          return transaction;
+        })
+      ];
+
+      setTransactions(allCategorizedTransactions);
       setProcessingProgress(100);
       setCurrentStep('review');
 
@@ -367,54 +405,54 @@ export default function ImportExtract() {
     // Re-detect to get fresh pairs data
     const duplicateResults = detectDuplicates(selectedTransactions, existingTransactions);
     
-    // Create unified transactions list based on selected mode
-    const unifiedTransactions = [
-      ...duplicateResults.newTransactions,
-      // Add refund representative transactions (valor original, sem categoria)
-      ...duplicateResults.refundPairs.map(pair => {
-        console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
-          originalAmount: pair.originalTransaction.amount,
-          originalDescription: pair.originalTransaction.description,
-          pairId: pair.id
-        });
-        return {
+      // Create unified transactions list based on selected mode
+      const unifiedTransactions = [
+        ...duplicateResults.newTransactions,
+        // Add refund representative transactions (valor original, sem categoria)
+        ...duplicateResults.refundPairs.map(pair => {
+          console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
+            originalAmount: pair.originalTransaction.amount,
+            originalDescription: pair.originalTransaction.description,
+            pairId: pair.id
+          });
+          return {
+            id: pair.id,
+            date: pair.originalTransaction.date,
+            amount: pair.originalTransaction.amount, // Valor original (não zero)
+            description: `Estorno Total: ${pair.originalTransaction.description}`,
+            originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+            type: pair.originalTransaction.type,
+            status: 'refunded' as const,
+            selected: true,
+            categoryId: undefined, // Sem categoria
+            subcategoryId: undefined,
+            // Sem sugestão de IA para estornos
+            aiSuggestion: undefined
+          };
+        }),
+        // Add PIX Crédito representative transactions
+        ...duplicateResults.pixPairs.map(pair => ({
           id: pair.id,
-          date: pair.originalTransaction.date,
-          amount: pair.originalTransaction.amount, // Valor original (não zero)
-          description: `Estorno Total: ${pair.originalTransaction.description}`,
-          originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-          type: pair.originalTransaction.type,
-          status: 'refunded' as const,
+          date: pair.pixTransaction.date,
+          amount: pair.pixTransaction.amount, // Valor do PIX
+          description: `PIX Crédito: ${pair.pixTransaction.description}`,
+          originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
+          type: pair.pixTransaction.type,
+          status: 'unified-pix' as const,
           selected: true,
-          categoryId: undefined, // Sem categoria
-          subcategoryId: undefined,
-          // Sem sugestão de IA para estornos
-          aiSuggestion: undefined
-        };
-      }),
-      // Add PIX Crédito representative transactions
-      ...duplicateResults.pixPairs.map(pair => ({
-        id: pair.id,
-        date: pair.pixTransaction.date,
-        amount: pair.pixTransaction.amount, // Valor do PIX
-        description: `PIX Crédito: ${pair.pixTransaction.description}`,
-        originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
-        type: pair.pixTransaction.type,
-        status: 'unified-pix' as const,
-        selected: true,
-        categoryId: pair.pixTransaction.categoryId,
-        subcategoryId: pair.pixTransaction.subcategoryId
-      }))
-    ];
-    
-    // Add duplicates based on selected mode
-    if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
-      unifiedTransactions.push(...duplicateResults.duplicates.map(d => d.new));
-    }
+          categoryId: pair.pixTransaction.categoryId,
+          subcategoryId: pair.pixTransaction.subcategoryId
+        }))
+      ];
+      
+        // Add duplicates based on selected mode
+        if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
+          unifiedTransactions.push(...duplicateResults.duplicates.map(d => d.new));
+        }
 
-    // Continue with AI categorization
-    await handleAICategorization(unifiedTransactions);
-  };
+        // Continue with AI categorization
+        await handleAICategorization(unifiedTransactions);
+    }
 
   const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
     console.log('🔄 [UPDATE] handleTransactionsUpdate called with:', updatedTransactions.length, 'transactions');
@@ -423,7 +461,7 @@ export default function ImportExtract() {
 
   const handleFinalImport = async () => {
     console.log('💾 [FINAL] handleFinalImport called');
-    
+
     if (!importSession) {
       toast({
         title: "Erro",
@@ -439,13 +477,24 @@ export default function ImportExtract() {
       return;
     }
 
+    // Validate that all transactions have a valid categoryId before importing, excluding refunds
+    const transactionsMissingCategory = transactions.filter(t => t.status !== 'refunded' && (!t.categoryId || !isValidUUID(t.categoryId)));
+    if (transactionsMissingCategory.length > 0) {
+      toast({
+        title: "Erro de validação",
+        description: `Existem ${transactionsMissingCategory.length} transações sem categoria definida. Por favor, atribua categorias antes de importar.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingProgress(0);
 
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new Error('User not authenticated');
       }
@@ -482,6 +531,51 @@ export default function ImportExtract() {
         throw error;
       }
 
+      // Update transaction mappings with final user decisions
+      // Only update mappings for transactions that were categorized by the user
+      for (const transaction of transactions) {
+        // Skip refunds as they don't need categorization
+        if (transaction.status === 'refunded') continue;
+        
+        // Skip transactions without categories
+        if (!transaction.categoryId || !transaction.subcategoryId) continue;
+
+        const standardizedIdentifier = transactionMappingService.standardizeIdentifier(transaction.description);
+        try {
+          // Check if mapping already exists
+          const existingMapping = await transactionMappingService.findMapping(standardizedIdentifier, user.id);
+          
+          // Determine the source of the categorization
+          const source = transaction.aiSuggestion?.isAISuggested ? 'AI' : 'Manual';
+          const confidenceScore = transaction.aiSuggestion?.confidence || 1;
+          
+          if (existingMapping.found) {
+            // Update existing mapping with user's final decision
+            // Even if it was AI-suggested, if the user accepted it, we update the mapping
+            await transactionMappingService.updateMapping(existingMapping.mapping!.id, {
+              categoryId: transaction.categoryId,
+              subcategoryId: transaction.subcategoryId,
+              confidenceScore: confidenceScore,
+              source: source
+            });
+            console.log('🔄 [MAPPING] Updated existing mapping for transaction:', transaction.id);
+          } else {
+            // Create new mapping for this transaction
+            await transactionMappingService.createMapping({
+              standardizedIdentifier,
+              userId: user.id,
+              categoryId: transaction.categoryId,
+              subcategoryId: transaction.subcategoryId,
+              confidenceScore: confidenceScore,
+              source: source
+            });
+            console.log('🆕 [MAPPING] Created new mapping for transaction:', transaction.id);
+          }
+        } catch (error) {
+          console.error('Error processing transaction mapping for transaction:', transaction.id, error);
+        }
+      }
+
       // Update session
       await supabase
         .from('import_sessions')
@@ -509,7 +603,7 @@ export default function ImportExtract() {
 
     } catch (error) {
       console.error('💥 [FINAL] Exception in final import:', error);
-      
+
       await supabase
         .from('import_sessions')
         .update({

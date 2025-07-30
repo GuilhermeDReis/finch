@@ -22,12 +22,27 @@ interface CSVUploaderProps {
 }
 
 // Enhanced transaction type detection with Brazilian context
+// Now prioritizing amount-based detection over pattern matching
 const detectTransactionType = (description: string, amount: number): 'income' | 'expense' => {
   const desc = description.toLowerCase();
   
   console.log(`🔍 [TYPE_DETECTION] Analyzing: "${description}" (amount: ${amount})`);
   
-  // Priority 1: Known Brazilian companies/services (always expense when "enviada")
+  // Priority 1: Amount-based detection (highest priority)
+  if (amount === 0) {
+    console.log(`⚠️ [TYPE_DETECTION] Zero amount, defaulting to expense`);
+    return 'expense';
+  }
+  
+  const amountBasedType = amount > 0 ? 'income' : 'expense';
+  console.log(`🔢 [TYPE_DETECTION] Amount-based detection: ${amountBasedType} (${amount})`);
+  
+  // If amount clearly indicates expense (negative), return immediately
+  if (amount < 0) {
+    return 'expense';
+  }
+  
+  // Priority 2: Known Brazilian companies/services (always expense when "enviada")
   const knownExpenseCompanies = [
     'uber', '99', 'taxi', 'ifood', 'rappi', 'delivery', 'd market', 'd.market',
     'emporio km', 'casa da sopa', 'navenda', 'americanas', 'magazine luiza',
@@ -41,7 +56,7 @@ const detectTransactionType = (description: string, amount: number): 'income' | 
     'nubank', 'inter', 'neon', 'c6 bank', 'original'
   ];
 
-  // Priority 2: Transaction context patterns (higher priority than companies)
+  // Priority 3: Transaction context patterns
   const contextPatterns = {
     income: [
       'recebido', 'recebimento', 'entrada', 'credito em conta', 'crédito em conta',
@@ -59,21 +74,6 @@ const detectTransactionType = (description: string, amount: number): 'income' | 
     ]
   };
 
-  // Check context patterns first (highest priority)
-  for (const pattern of contextPatterns.income) {
-    if (desc.includes(pattern)) {
-      console.log(`💰 [TYPE_DETECTION] Income context pattern "${pattern}" found → income`);
-      return 'income';
-    }
-  }
-
-  for (const pattern of contextPatterns.expense) {
-    if (desc.includes(pattern)) {
-      console.log(`💸 [TYPE_DETECTION] Expense context pattern "${pattern}" found → expense`);
-      return 'expense';
-    }
-  }
-
   // Check for known expense companies
   for (const company of knownExpenseCompanies) {
     if (desc.includes(company)) {
@@ -82,15 +82,24 @@ const detectTransactionType = (description: string, amount: number): 'income' | 
     }
   }
 
-  // Fallback to amount-based detection (but be more careful with zero values)
-  if (amount === 0) {
-    console.log(`⚠️ [TYPE_DETECTION] Zero amount, defaulting to expense`);
-    return 'expense';
+  // Check context patterns
+  for (const pattern of contextPatterns.expense) {
+    if (desc.includes(pattern)) {
+      console.log(`💸 [TYPE_DETECTION] Expense context pattern "${pattern}" found → expense`);
+      return 'expense';
+    }
   }
-  
-  const detectedType = amount > 0 ? 'income' : 'expense';
-  console.log(`🔢 [TYPE_DETECTION] Amount-based detection: ${detectedType} (${amount})`);
-  return detectedType;
+
+  for (const pattern of contextPatterns.income) {
+    if (desc.includes(pattern)) {
+      console.log(`💰 [TYPE_DETECTION] Income context pattern "${pattern}" found → income`);
+      return 'income';
+    }
+  }
+
+  // Fallback to amount-based detection
+  console.log(`🔢 [TYPE_DETECTION] Final fallback to amount-based detection: ${amountBasedType}`);
+  return amountBasedType;
 };
 
 export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps) {
