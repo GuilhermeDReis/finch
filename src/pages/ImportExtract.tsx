@@ -39,6 +39,34 @@ export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
+
+  // Persist session ID in localStorage to survive page reloads
+  const saveSessionToStorage = (session: ImportSession) => {
+    localStorage.setItem('currentImportSession', JSON.stringify(session));
+  };
+
+  const loadSessionFromStorage = (): ImportSession | null => {
+    try {
+      const stored = localStorage.getItem('currentImportSession');
+      return stored ? JSON.parse(stored) : null;
+    } catch (error) {
+      console.error('Error loading session from storage:', error);
+      return null;
+    }
+  };
+
+  const clearSessionFromStorage = () => {
+    localStorage.removeItem('currentImportSession');
+  };
+
+  // Load session from storage on component mount
+  useEffect(() => {
+    const storedSession = loadSessionFromStorage();
+    if (storedSession) {
+      console.log('🔄 [SESSION] Loaded session from storage:', storedSession.id);
+      setImportSession(storedSession);
+    }
+  }, []);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [importResults, setImportResults] = useState<{
@@ -298,7 +326,9 @@ export default function ImportExtract() {
         }
 
         console.log('✅ [AI] Import session created:', session.id);
-        setImportSession(session as ImportSession);
+        const newSession = session as ImportSession;
+        setImportSession(newSession);
+        saveSessionToStorage(newSession);
 
         // Update progress
         setProcessingProgress(25);
@@ -462,19 +492,63 @@ export default function ImportExtract() {
   const handleFinalImport = async () => {
     console.log('💾 [FINAL] handleFinalImport called');
 
-    if (!importSession) {
+    // Check authentication one more time
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+      return;
+    }
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       toast({
-        title: "Erro",
-        description: "Sessão de importação não encontrada",
+        title: "Erro de autenticação",
+        description: "Usuário não autenticado",
         variant: "destructive"
       });
       return;
     }
 
-    // Check authentication one more time
-    const isAuthenticated = await checkAuthentication();
-    if (!isAuthenticated) {
-      return;
+    // If no session exists, create a new one
+    let currentSession = importSession;
+    if (!currentSession) {
+      console.log('⚠️ [FINAL] No import session found, creating new one');
+      
+      try {
+        const { data: newSession, error: sessionError } = await supabase
+          .from('import_sessions')
+          .insert({
+            filename: 'recovery_import_' + Date.now(),
+            total_records: transactions.length,
+            status: 'processing',
+            user_id: user.id
+          })
+          .select()
+          .single();
+
+        if (sessionError) {
+          console.error('❌ [FINAL] Error creating recovery session:', sessionError);
+          toast({
+            title: "Erro",
+            description: "Não foi possível criar sessão de importação",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        console.log('✅ [FINAL] Recovery session created:', newSession.id);
+        currentSession = newSession as ImportSession;
+        setImportSession(currentSession);
+        saveSessionToStorage(currentSession);
+      } catch (error) {
+        console.error('💥 [FINAL] Exception creating recovery session:', error);
+        toast({
+          title: "Erro",
+          description: "Sessão de importação não encontrada e não foi possível criar uma nova",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     // Validate that all transactions have a valid categoryId before importing, excluding refunds
@@ -595,6 +669,9 @@ export default function ImportExtract() {
       setProcessingProgress(100);
       setCurrentStep('results');
 
+      // Clear session from storage after successful import
+      clearSessionFromStorage();
+
       toast({
         title: "Importação concluída",
         description: `${transactionsToImport.length} transações importadas com sucesso`,
@@ -631,6 +708,9 @@ export default function ImportExtract() {
     setImportResults(null);
     setExistingTransactions([]);
     setDuplicateAnalysis(null);
+    
+    // Clear session from storage when resetting
+    clearSessionFromStorage();
   };
 
   // Determine if duplicate analysis step should be shown
