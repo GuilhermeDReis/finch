@@ -127,6 +127,60 @@ export type Database = {
           },
         ]
       }
+      transaction_mappings: {
+        Row: {
+          category_id: string
+          confidence_score: number
+          created_at: string
+          id: string
+          original_description: string
+          source: string
+          standardized_identifier: string
+          subcategory_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category_id: string
+          confidence_score: number
+          created_at?: string
+          id?: string
+          original_description: string
+          source: string
+          standardized_identifier: string
+          subcategory_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          confidence_score?: number
+          created_at?: string
+          id?: string
+          original_description?: string
+          source?: string
+          standardized_identifier?: string
+          subcategory_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_mappings_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_mappings_subcategory_id_fkey"
+            columns: ["subcategory_id"]
+            isOneToOne: false
+            referencedRelation: "subcategories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number

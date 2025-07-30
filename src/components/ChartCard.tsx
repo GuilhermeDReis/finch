@@ -176,6 +176,12 @@ export default function ChartCard({ config }: ChartCardProps) {
           
           <div className="space-y-2">
             <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Total:</span>
+              <span className="font-bold text-lg">
+                {formatCurrency(chartData.currentMonthSpent)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Categoria:</span>
               <Badge variant="outline" style={{ borderColor: category?.color }}>
                 {categoryName}
