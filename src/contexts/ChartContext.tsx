@@ -3,25 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { ChartConfig, ChartFormData } from '@/types/chart';
+import type { Tables } from '@/integrations/supabase/types';
 
-interface Category {
-  id: string;
-  name: string;
-  type: string;
-  color: string;
-}
+type Transaction = Tables<'transactions'>;
+type Category = Tables<'categories'>;
+type Subcategory = Tables<'subcategories'>;
 
 interface ChartContextType {
   chartConfigs: ChartConfig[];
-  allTransactions: any[];
+  allTransactions: Transaction[];
   allCategories: Category[];
-  allSubcategories: any[];
+  allSubcategories: Subcategory[];
   loading: boolean;
-  addChart: (data: ChartFormData & { selectedCategoryForSubcategory?: string }) => Promise<void>;
-  updateChart: (id: string, data: ChartFormData & { selectedCategoryForSubcategory?: string }) => Promise<void>;
+  addChart: (data: ChartFormData) => Promise<void>;
+  updateChart: (id: string, data: ChartFormData) => Promise<void>;
   removeChart: (id: string) => Promise<void>;
   duplicateChart: (id: string) => Promise<void>;
-  reorderCharts: (chartIds: string[]) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -37,9 +34,9 @@ export const useCharts = () => {
 
 export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
-  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const [allSubcategories, setAllSubcategories] = useState<any[]>([]);
+  const [allSubcategories, setAllSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -58,7 +55,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .from('user_charts' as any)
         .select('*')
         .eq('user_id', user.id)
-        .order('display_order', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (chartsError) {
         console.error('Error loading charts:', chartsError);
@@ -73,15 +70,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...chart,
           period_months: chart.period_months as any,
           transaction_type: chart.transaction_type || 'expense',
-          grouping_type: chart.grouping_type || 'category',
-          chart_type: chart.chart_type || 'evolution',
-          comparison_type: chart.comparison_type || undefined,
-          show_values_on_points: chart.show_values_on_points ?? true,
-          show_percentages: chart.show_percentages ?? true,
-          show_trend_line: chart.show_trend_line ?? false,
-          highlight_min_max: chart.highlight_min_max ?? false,
-          visual_options: chart.visual_options || {},
-          display_order: chart.display_order || 0
+          grouping_type: chart.grouping_type || 'category'
         }));
         setChartConfigs(typedCharts);
       }
@@ -154,32 +143,59 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     loadData();
   }, [loadData]);
 
-  const addChart = async (data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
+  const addChart = async (data: ChartFormData) => {
     if (!user) return;
 
     try {
-      // Get the next order position
-      const maxOrder = Math.max(...chartConfigs.map(chart => chart.display_order || 0), 0);
+      console.log('🚀 AddChart - Form Data:', data);
       
-      const chartData = {
-        user_id: user.id,
-        name: data.name,
-        category_id: data.category_id || null,
-        subcategory_id: data.subcategory_id || null,
-        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
-        color: data.color,
-        period_months: data.period_months,
-        transaction_type: data.transaction_type,
-        grouping_type: data.grouping_type,
-        chart_type: data.chart_type,
-        comparison_type: data.comparison_type || null,
-        show_values_on_points: data.show_values_on_points,
-        show_percentages: data.show_percentages,
-        show_trend_line: data.show_trend_line,
-        highlight_min_max: data.highlight_min_max,
-        visual_options: data.visual_options || {},
-        display_order: maxOrder + 1,
-      };
+      // Prepare chart data based on grouping type
+      let chartData;
+      
+      if (data.grouping_type === 'subcategory') {
+        // When grouping by subcategory, data.category_id is actually a subcategory ID
+        const selectedSubcategory = allSubcategories.find(sub => sub.id === data.category_id);
+        if (!selectedSubcategory) {
+          throw new Error('Subcategoria selecionada não encontrada');
+        }
+        
+        chartData = {
+          user_id: user.id,
+          name: data.name,
+          category_id: selectedSubcategory.category_id, // Parent category ID
+          subcategory_id: selectedSubcategory.id, // Subcategory ID
+          monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+          color: data.color,
+          period_months: data.period_months,
+          transaction_type: data.transaction_type,
+          grouping_type: data.grouping_type,
+        };
+        
+        console.log('🚀 Subcategory grouping - Parent category:', selectedSubcategory.category_id);
+        console.log('🚀 Subcategory grouping - Subcategory:', selectedSubcategory.id);
+      } else {
+        // When grouping by category, verify the category exists
+        const selectedCategory = allCategories.find(cat => cat.id === data.category_id);
+        if (!selectedCategory) {
+          throw new Error('Categoria selecionada não encontrada');
+        }
+        
+        chartData = {
+          user_id: user.id,
+          name: data.name,
+          category_id: data.category_id, // Category ID
+          subcategory_id: null, // No subcategory for category grouping
+          monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+          color: data.color,
+          period_months: data.period_months,
+          transaction_type: data.transaction_type,
+          grouping_type: data.grouping_type,
+        };
+        
+        console.log('🚀 Category grouping - Category:', data.category_id);
+      }
+      
+      console.log('🚀 AddChart - Chart Data to Insert:', chartData);
 
       const { data: newChart, error } = await supabase
         .from('user_charts' as any)
@@ -195,15 +211,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(newChart as any),
         period_months: (newChart as any).period_months as any,
         transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category',
-        chart_type: (newChart as any).chart_type || 'evolution',
-        comparison_type: (newChart as any).comparison_type || undefined,
-        show_values_on_points: (newChart as any).show_values_on_points ?? true,
-        show_percentages: (newChart as any).show_percentages ?? true,
-        show_trend_line: (newChart as any).show_trend_line ?? false,
-        highlight_min_max: (newChart as any).highlight_min_max ?? false,
-        visual_options: (newChart as any).visual_options || {},
-        display_order: (newChart as any).display_order || 0
+        grouping_type: (newChart as any).grouping_type || 'category'
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);
@@ -212,10 +220,11 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         description: `O gráfico "${data.name}" foi adicionado ao seu dashboard.`,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding chart:', error);
       
-      if (error.code === '23505') {
+      const errorObj = error as { code?: string; message?: string };
+      if (errorObj.code === '23505') {
         toast({
           title: 'Nome já existe',
           description: 'Já existe um gráfico com este nome. Escolha um nome diferente.',
@@ -224,32 +233,51 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         toast({
           title: 'Erro ao criar gráfico',
-          description: error.message || 'Ocorreu um erro inesperado.',
+          description: errorObj.message || 'Ocorreu um erro inesperado.',
           variant: 'destructive',
         });
       }
     }
   };
 
-  const updateChart = async (id: string, data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
+  const updateChart = async (id: string, data: ChartFormData) => {
     try {
-      const updateData = {
-        name: data.name,
-        category_id: data.category_id || null,
-        subcategory_id: data.subcategory_id || null,
-        monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
-        color: data.color,
-        period_months: data.period_months,
-        transaction_type: data.transaction_type,
-        grouping_type: data.grouping_type,
-        chart_type: data.chart_type,
-        comparison_type: data.comparison_type || null,
-        show_values_on_points: data.show_values_on_points,
-        show_percentages: data.show_percentages,
-        show_trend_line: data.show_trend_line,
-        highlight_min_max: data.highlight_min_max,
-        visual_options: data.visual_options || {},
-      };
+      // Prepare update data based on grouping type (same logic as addChart)
+      let updateData;
+      
+      if (data.grouping_type === 'subcategory') {
+        const selectedSubcategory = allSubcategories.find(sub => sub.id === data.category_id);
+        if (!selectedSubcategory) {
+          throw new Error('Subcategoria selecionada não encontrada');
+        }
+        
+        updateData = {
+          name: data.name,
+          category_id: selectedSubcategory.category_id,
+          subcategory_id: selectedSubcategory.id,
+          monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+          color: data.color,
+          period_months: data.period_months,
+          transaction_type: data.transaction_type,
+          grouping_type: data.grouping_type,
+        };
+      } else {
+        const selectedCategory = allCategories.find(cat => cat.id === data.category_id);
+        if (!selectedCategory) {
+          throw new Error('Categoria selecionada não encontrada');
+        }
+        
+        updateData = {
+          name: data.name,
+          category_id: data.category_id,
+          subcategory_id: null,
+          monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')),
+          color: data.color,
+          period_months: data.period_months,
+          transaction_type: data.transaction_type,
+          grouping_type: data.grouping_type,
+        };
+      }
 
       const { data: updatedChart, error } = await supabase
         .from('user_charts' as any)
@@ -266,14 +294,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(updatedChart as any),
         period_months: (updatedChart as any).period_months as any,
         transaction_type: (updatedChart as any).transaction_type || 'expense',
-        grouping_type: (updatedChart as any).grouping_type || 'category',
-        chart_type: (updatedChart as any).chart_type || 'evolution',
-        comparison_type: (updatedChart as any).comparison_type || undefined,
-        show_values_on_points: (updatedChart as any).show_values_on_points ?? true,
-        show_percentages: (updatedChart as any).show_percentages ?? true,
-        show_trend_line: (updatedChart as any).show_trend_line ?? false,
-        highlight_min_max: (updatedChart as any).highlight_min_max ?? false,
-        visual_options: (updatedChart as any).visual_options || {}
+        grouping_type: (updatedChart as any).grouping_type || 'category'
       };
 
       setChartConfigs(prev => 
@@ -285,10 +306,11 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         description: `As alterações no gráfico "${data.name}" foram salvas.`,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating chart:', error);
       
-      if (error.code === '23505') {
+      const errorObj = error as { code?: string; message?: string };
+      if (errorObj.code === '23505') {
         toast({
           title: 'Nome já existe',
           description: 'Já existe um gráfico com este nome. Escolha um nome diferente.',
@@ -297,7 +319,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         toast({
           title: 'Erro ao atualizar gráfico',
-          description: error.message || 'Ocorreu um erro inesperado.',
+          description: errorObj.message || 'Ocorreu um erro inesperado.',
           variant: 'destructive',
         });
       }
@@ -321,11 +343,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         description: 'O gráfico foi removido do seu dashboard.',
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error removing chart:', error);
+      const errorObj = error as { message?: string };
       toast({
         title: 'Erro ao remover gráfico',
-        description: error.message || 'Ocorreu um erro inesperado.',
+        description: errorObj.message || 'Ocorreu um erro inesperado.',
         variant: 'destructive',
       });
     }
@@ -363,14 +386,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(newChart as any),
         period_months: (newChart as any).period_months as any,
         transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category',
-        chart_type: (newChart as any).chart_type || 'evolution',
-        comparison_type: (newChart as any).comparison_type || undefined,
-        show_values_on_points: (newChart as any).show_values_on_points ?? true,
-        show_percentages: (newChart as any).show_percentages ?? true,
-        show_trend_line: (newChart as any).show_trend_line ?? false,
-        highlight_min_max: (newChart as any).highlight_min_max ?? false,
-        visual_options: (newChart as any).visual_options || {}
+        grouping_type: (newChart as any).grouping_type || 'category'
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);
@@ -379,52 +395,12 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         description: `Uma cópia do gráfico foi criada com o nome "${duplicateData.name}".`,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error duplicating chart:', error);
+      const errorObj = error as { message?: string };
       toast({
         title: 'Erro ao duplicar gráfico',
-        description: error.message || 'Ocorreu um erro inesperado.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const reorderCharts = async (chartIds: string[]) => {
-    if (!user) return;
-
-    try {
-      // Update display_order for each chart
-      const updates = chartIds.map((chartId, index) => ({
-        id: chartId,
-        display_order: index
-      }));
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('user_charts' as any)
-          .update({ display_order: update.display_order })
-          .eq('id', update.id);
-
-        if (error) throw error;
-      }
-
-      // Update local state to reflect new order
-      const reorderedCharts = chartIds.map(id => 
-        chartConfigs.find(chart => chart.id === id)!
-      ).filter(Boolean);
-
-      setChartConfigs(reorderedCharts);
-
-      toast({
-        title: 'Ordem dos gráficos atualizada!',
-        description: 'A nova ordem dos gráficos foi salva.',
-      });
-
-    } catch (error: any) {
-      console.error('Error reordering charts:', error);
-      toast({
-        title: 'Erro ao reordenar gráficos',
-        description: error.message || 'Ocorreu um erro inesperado.',
+        description: errorObj.message || 'Ocorreu um erro inesperado.',
         variant: 'destructive',
       });
     }
@@ -444,7 +420,6 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     updateChart,
     removeChart,
     duplicateChart,
-    reorderCharts,
     refreshData,
   };
 
