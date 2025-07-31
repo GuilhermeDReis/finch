@@ -6,6 +6,7 @@ import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
+import { FileLayoutService } from '@/services/fileLayoutService';
 
 interface ParsedTransaction {
   id: string;
@@ -17,8 +18,9 @@ interface ParsedTransaction {
 }
 
 interface CSVUploaderProps {
-  onDataParsed: (data: ParsedTransaction[]) => void;
+  onDataParsed: (data: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => void;
   onError: (error: string) => void;
+  selectedBankId?: string;
 }
 
 // Enhanced transaction type detection with Brazilian context
@@ -102,15 +104,22 @@ const detectTransactionType = (description: string, amount: number): 'income' | 
   return amountBasedType;
 };
 
-export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps) {
+export default function CSVUploader({ onDataParsed, onError, selectedBankId }: CSVUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
   const parseDate = (dateStr: string): string => {
-    const [day, month, year] = dateStr.split('/');
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    // Handle different date formats
+    if (dateStr.includes('/')) {
+      // Brazilian format: DD/MM/YYYY
+      const [day, month, year] = dateStr.split('/');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    } else {
+      // Credit card format: YYYY-MM-DD (already in ISO format)
+      return dateStr;
+    }
   };
 
   const parseAmount = (amountStr: string): number => {
@@ -150,109 +159,152 @@ export default function CSVUploader({ onDataParsed, onError }: CSVUploaderProps)
     return finalResult;
   };
 
-  const processCSV = useCallback((file: File) => {
+  const processCSV = useCallback(async (file: File) => {
     setIsProcessing(true);
     setStatus('processing');
     setProgress(0);
     setMessage('Processando arquivo...');
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        try {
-          if (!results.data || results.data.length === 0) {
-            throw new Error('Nenhum dado encontrado no arquivo.');
+    try {
+      // Check if bank is selected
+      if (!selectedBankId) {
+        throw new Error('Por favor, selecione um banco antes de importar o arquivo.');
+      }
+
+      // Parse CSV to get headers first
+      const parseResult = await new Promise<any>((resolve, reject) => {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          preview: 1, // Just get headers and first row to check structure
+          complete: (results) => {
+            resolve(results);
+          },
+          error: (error: any) => {
+            reject(error);
           }
+        });
+      });
 
-          const headers = results.meta.fields;
-          if (!headers || headers.length === 0) {
-            throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
+      const headers = parseResult.meta.fields;
+      if (!headers || headers.length === 0) {
+        throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
+      }
+
+      console.log('📋 [CSV] Headers found:', headers);
+
+      // Find matching layout for the selected bank
+      setMessage('Verificando layout do arquivo...');
+      setProgress(25);
+
+      const layoutMatchResult = await FileLayoutService.findMatchingLayout(selectedBankId, headers);
+      
+      if (!layoutMatchResult) {
+        throw new Error(`O arquivo não corresponde ao padrão esperado para o banco selecionado. Cabeçalhos encontrados: ${headers.join(', ')}`);
+      }
+
+      const { layout: matchingLayout, layoutType } = layoutMatchResult;
+      console.log('✅ [CSV] Matching layout found:', matchingLayout.name, 'Type:', layoutType);
+
+      // Map headers to layout columns
+      const headerMapping = FileLayoutService.mapHeadersToLayout(headers, matchingLayout);
+      console.log('🔍 [CSV] Header mapping:', headerMapping);
+
+      // Validate that all required columns are mapped
+      if (!headerMapping.dateColumn || !headerMapping.amountColumn || 
+          !headerMapping.identifierColumn || !headerMapping.descriptionColumn) {
+        throw new Error('Não foi possível mapear todas as colunas necessárias do arquivo.');
+      }
+
+      // Parse the full CSV file with the validated layout
+      setMessage('Processando transações...');
+      setProgress(50);
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          try {
+            if (!results.data || results.data.length === 0) {
+              throw new Error('Nenhum dado encontrado no arquivo.');
+            }
+
+            console.log('📋 [CSV] Full data parsed, rows:', results.data.length);
+
+            setMessage('Analisando e categorizando transações...');
+            setProgress(75);
+
+            const transactions: ParsedTransaction[] = results.data
+              .map((row: any) => {
+                const rowValor = row[headerMapping.amountColumn];
+                const amount = parseAmount(rowValor);
+                const description = String(row[headerMapping.descriptionColumn]).trim();
+
+                if (!row[headerMapping.dateColumn] || !rowValor || !row[headerMapping.identifierColumn] || !description || isNaN(amount)) {
+                  return null;
+                }
+
+                // Enhanced type detection with Brazilian context
+                const type = detectTransactionType(description, amount);
+
+                return {
+                  id: String(row[headerMapping.identifierColumn]).trim(),
+                  date: parseDate(String(row[headerMapping.dateColumn]).trim()),
+                  amount: Math.abs(amount), // Always store positive amount
+                  description: description,
+                  originalDescription: description,
+                  type: type
+                };
+              })
+              .filter((transaction): transaction is ParsedTransaction => transaction !== null);
+
+            if (transactions.length === 0) {
+              throw new Error('Nenhum transação válida foi encontrada no arquivo.');
+            }
+
+            // Log statistics
+            const incomeCount = transactions.filter(t => t.type === 'income').length;
+            const expenseCount = transactions.filter(t => t.type === 'expense').length;
+            
+            console.log('📊 [CSV] Processing complete:', {
+              total: transactions.length,
+              income: incomeCount,
+              expense: expenseCount
+            });
+
+            setProgress(100);
+            setStatus('success');
+            setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
+            
+            // Pass the layout type information to the parent component
+            onDataParsed(transactions, layoutType);
+
+          } catch (error) {
+            console.error('❌ [CSV] Processing error:', error);
+            setStatus('error');
+            setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
+            onError(error instanceof Error ? error.message : 'Erro desconhecido');
+          } finally {
+            setIsProcessing(false);
           }
-
-          console.log('📋 [CSV] Headers found:', headers);
-
-          const dataKey = headers.find(h => h.trim().toLowerCase() === 'data');
-          const valorKey = headers.find(h => h.trim().toLowerCase() === 'valor');
-          const idKey = headers.find(h => {
-            const normalized = h.trim().toLowerCase();
-            return normalized === 'identificador' || normalized === 'id_transacao';
-          });
-          const descKey = headers.find(h => {
-            const normalized = h.trim().toLowerCase();
-            return normalized === 'descricao' || normalized.includes('descri') || normalized.includes('descriÃ§Ã£o');
-          });
-
-          console.log('🔍 [CSV] Mapped keys:', { dataKey, valorKey, idKey, descKey });
-
-          if (!dataKey || !valorKey || !idKey || !descKey) {
-            throw new Error(`Cabeçalhos ausentes. Encontrados: ${headers.join(', ')}. Necessário: Data, Valor, ID_Transacao ou Identificador, Descricao.`);
-          }
-
-          setMessage('Analisando e categorizando transações...');
-          setProgress(50);
-
-          const transactions: ParsedTransaction[] = results.data
-            .map((row: any) => {
-              const rowValor = row[valorKey];
-              const amount = parseAmount(rowValor);
-              const description = String(row[descKey]).trim();
-
-              if (!row[dataKey] || !rowValor || !row[idKey] || !description || isNaN(amount)) {
-                return null;
-              }
-
-              // Enhanced type detection with Brazilian context
-              const type = detectTransactionType(description, amount);
-
-              return {
-                id: String(row[idKey]).trim(),
-                date: parseDate(String(row[dataKey]).trim()),
-                amount: Math.abs(amount), // Always store positive amount
-                description: description,
-                originalDescription: description,
-                type: type
-              };
-            })
-            .filter((transaction): transaction is ParsedTransaction => transaction !== null);
-
-          if (transactions.length === 0) {
-            throw new Error('Nenhuma transação válida foi encontrada no arquivo.');
-          }
-
-          // Log statistics
-          const incomeCount = transactions.filter(t => t.type === 'income').length;
-          const expenseCount = transactions.filter(t => t.type === 'expense').length;
-          
-          console.log('📊 [CSV] Processing complete:', {
-            total: transactions.length,
-            income: incomeCount,
-            expense: expenseCount
-          });
-
-          setProgress(100);
-          setStatus('success');
-          setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
-          onDataParsed(transactions);
-
-        } catch (error) {
-          console.error('❌ [CSV] Processing error:', error);
+        },
+        error: (error: any) => {
+          console.error('❌ [CSV] Parse error:', error);
           setStatus('error');
-          setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
-          onError(error instanceof Error ? error.message : 'Erro desconhecido');
-        } finally {
+          setMessage(`Erro no parser CSV: ${error.message}`);
+          onError(error.message);
           setIsProcessing(false);
         }
-      },
-      error: (error: any) => {
-        console.error('❌ [CSV] Parse error:', error);
-        setStatus('error');
-        setMessage(`Erro no parser CSV: ${error.message}`);
-        onError(error.message);
-        setIsProcessing(false);
-      }
-    });
-  }, [onDataParsed, onError]);
+      });
+
+    } catch (error) {
+      console.error('❌ [CSV] Processing error:', error);
+      setStatus('error');
+      setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
+      onError(error instanceof Error ? error.message : 'Erro desconhecido');
+      setIsProcessing(false);
+    }
+  }, [onDataParsed, onError, selectedBankId]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];

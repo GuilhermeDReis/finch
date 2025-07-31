@@ -12,10 +12,21 @@ import TransactionImportTable from '@/components/TransactionImportTable';
 import DuplicateAnalysisCard from '@/components/DuplicateAnalysisCard';
 import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
+import { BankSelector } from '@/components/BankSelector';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import transactionMappingService from '@/services/transactionMapping';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
+
+// Define ParsedTransaction interface based on CSVUploader
+interface ParsedTransaction {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  originalDescription: string;
+  type: 'income' | 'expense';
+}
 
 // Utility function to validate UUID format
 const isValidUUID = (str: string | undefined | null): boolean => {
@@ -38,7 +49,37 @@ interface ImportSession {
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
+  const [selectedBank, setSelectedBank] = useState<string>('nubank');
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
+  const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
+
+  // Persist session ID in localStorage to survive page reloads
+  const saveSessionToStorage = (session: ImportSession) => {
+    localStorage.setItem('currentImportSession', JSON.stringify(session));
+  };
+
+  const loadSessionFromStorage = (): ImportSession | null => {
+    try {
+      const stored = localStorage.getItem('currentImportSession');
+      return stored ? JSON.parse(stored) : null;
+    } catch (error) {
+      console.error('Error loading session from storage:', error);
+      return null;
+    }
+  };
+
+  const clearSessionFromStorage = () => {
+    localStorage.removeItem('currentImportSession');
+  };
+
+  // Load session from storage on component mount
+  useEffect(() => {
+    const storedSession = loadSessionFromStorage();
+    if (storedSession) {
+      console.log('🔄 [SESSION] Loaded session from storage:', storedSession.id);
+      setImportSession(storedSession);
+    }
+  }, []);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [importResults, setImportResults] = useState<{
@@ -82,8 +123,30 @@ export default function ImportExtract() {
     return true;
   };
 
-  const handleDataParsed = async (parsedTransactions: TransactionRow[]) => {
-    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions');
+  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
+    
+    // Store the layout type
+    setLayoutType(layoutType || null);
+    
+    // Convert ParsedTransaction to TransactionRow
+    const transactionRows: TransactionRow[] = parsedTransactions.map(transaction => ({
+      ...transaction,
+      selected: true,
+      originalDescription: transaction.originalDescription || transaction.description,
+      editedDescription: transaction.description,
+      isEditing: false,
+      status: 'normal'
+    }));
+    
+    // For credit card transactions, we don't need to do duplicate detection or AI categorization
+    // We can import them directly
+    if (layoutType === 'credit_card') {
+      console.log('💳 [IMPORT] Credit card transactions detected, importing directly');
+      setTransactions(transactionRows);
+      setCurrentStep('review');
+      return;
+    }
     
     try {
       // Check authentication first
@@ -111,7 +174,7 @@ export default function ImportExtract() {
       setExistingTransactions(existingData || []);
       
       // Detect duplicates, refunds, and unified PIX
-      const duplicateResults = detectDuplicates(parsedTransactions, existingData || []);
+      const duplicateResults = detectDuplicates(transactionRows, existingData || []);
       
       console.log('🔍 [IMPORT] Duplicate detection results:', {
         duplicates: duplicateResults.duplicates.length,
@@ -204,7 +267,7 @@ export default function ImportExtract() {
 
         // Validation: Verify unification integrity
         console.log('🔍 [VALIDATION] Final unified transactions:', {
-          totalOriginal: parsedTransactions.length,
+          totalOriginal: transactionRows.length,
           totalUnified: unifiedTransactions.length,
           newTransactions: duplicateResults.newTransactions.length,
           refundTransactions: duplicateResults.refundPairs.length,
@@ -298,7 +361,9 @@ export default function ImportExtract() {
         }
 
         console.log('✅ [AI] Import session created:', session.id);
-        setImportSession(session as ImportSession);
+        const newSession = session as ImportSession;
+        setImportSession(newSession);
+        saveSessionToStorage(newSession);
 
         // Update progress
         setProcessingProgress(25);
@@ -462,18 +527,136 @@ export default function ImportExtract() {
   const handleFinalImport = async () => {
     console.log('💾 [FINAL] handleFinalImport called');
 
-    if (!importSession) {
+    // Check authentication one more time
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+      return;
+    }
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       toast({
-        title: "Erro",
-        description: "Sessão de importação não encontrada",
+        title: "Erro de autenticação",
+        description: "Usuário não autenticado",
         variant: "destructive"
       });
       return;
     }
 
-    // Check authentication one more time
-    const isAuthenticated = await checkAuthentication();
-    if (!isAuthenticated) {
+    // If no session exists, create a new one
+    let currentSession = importSession;
+    if (!currentSession) {
+      console.log('⚠️ [FINAL] No import session found, creating new one');
+      
+      try {
+        const { data: newSession, error: sessionError } = await supabase
+          .from('import_sessions')
+          .insert({
+            filename: 'recovery_import_' + Date.now(),
+            total_records: transactions.length,
+            status: 'processing',
+            user_id: user.id
+          })
+          .select()
+          .single();
+
+        if (sessionError) {
+          console.error('❌ [FINAL] Error creating recovery session:', sessionError);
+          toast({
+            title: "Erro",
+            description: "Não foi possível criar sessão de importação",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        console.log('✅ [FINAL] Recovery session created:', newSession.id);
+        currentSession = newSession as ImportSession;
+        setImportSession(currentSession);
+        saveSessionToStorage(currentSession);
+      } catch (error) {
+        console.error('💥 [FINAL] Exception creating recovery session:', error);
+        toast({
+          title: "Erro",
+          description: "Sessão de importação não encontrada e não foi possível criar uma nova",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    // Check if we're importing credit card transactions (based on the layout type)
+    if (layoutType === 'credit_card') {
+      // For credit card transactions, we don't validate categories and import directly
+      setIsProcessing(true);
+      setProcessingProgress(0);
+
+      try {
+        // Prepare credit card transactions for import
+        const creditCardTransactionsToImport = transactions.map(transaction => ({
+          date: transaction.date, // Use date as-is without time component
+          amount: transaction.amount,
+          description: transaction.editedDescription || transaction.description,
+          original_description: transaction.originalDescription,
+          external_id: transaction.id,
+          type: transaction.type,
+          bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
+          import_session_id: importSession.id,
+          user_id: user.id
+        }));
+
+        console.log('💾 [FINAL] Importing', creditCardTransactionsToImport.length, 'credit card transactions');
+
+        // Import to transaction_credit table
+        const { data, error } = await supabase
+          .from('transaction_credit')
+          .insert(creditCardTransactionsToImport)
+          .select();
+
+        if (error) {
+          console.error('❌ [FINAL] Error importing credit card transactions:', error);
+          throw error;
+        }
+
+        setImportResults({
+          imported: creditCardTransactionsToImport.length,
+          skipped: 0,
+          errors: []
+        });
+
+        setProcessingProgress(100);
+        setCurrentStep('results');
+
+        // Clear session from storage after successful import
+        clearSessionFromStorage();
+
+        toast({
+          title: "Importação concluída",
+          description: `${creditCardTransactionsToImport.length} transações de cartão de crédito importadas com sucesso`,
+          variant: "default"
+        });
+
+      } catch (error) {
+        console.error('💥 [FINAL] Exception in credit card import:', error);
+
+        await supabase
+          .from('import_sessions')
+          .update({
+            status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          })
+          .eq('id', importSession.id);
+
+        toast({
+          title: "Erro na importação",
+          description: "Ocorreu um erro ao importar as transações de cartão de crédito",
+          variant: "destructive"
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+
       return;
     }
 
@@ -502,13 +685,14 @@ export default function ImportExtract() {
       // Prepare transactions for final import
       const transactionsToImport = transactions.map(transaction => ({
         external_id: transaction.id,
-        date: transaction.date,
+        date: transaction.date + 'T12:00:00', // Append noon time to avoid timezone shift
         amount: transaction.amount,
         description: transaction.editedDescription || transaction.description,
         original_description: transaction.originalDescription,
         type: transaction.type,
         category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
         subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
+        bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
         payment_method: null,
         tags: null,
         notes: null,
@@ -595,6 +779,9 @@ export default function ImportExtract() {
       setProcessingProgress(100);
       setCurrentStep('results');
 
+      // Clear session from storage after successful import
+      clearSessionFromStorage();
+
       toast({
         title: "Importação concluída",
         description: `${transactionsToImport.length} transações importadas com sucesso`,
@@ -631,6 +818,10 @@ export default function ImportExtract() {
     setImportResults(null);
     setExistingTransactions([]);
     setDuplicateAnalysis(null);
+    setLayoutType(null);
+    
+    // Clear session from storage when resetting
+    clearSessionFromStorage();
   };
 
   // Determine if duplicate analysis step should be shown
@@ -709,17 +900,24 @@ export default function ImportExtract() {
 
       {/* Step Content */}
       {currentStep === 'upload' && (
-        <CSVUploader 
-          onDataParsed={handleDataParsed}
-          onError={(error) => {
-            console.error('CSV Upload Error:', error);
-            toast({
-              title: "Erro ao processar arquivo CSV",
-              description: error,
-              variant: "destructive"
-            });
-          }}
-        />
+        <div className="space-y-6">
+          <BankSelector 
+            value={selectedBank}
+            onValueChange={setSelectedBank}
+          />
+          <CSVUploader 
+            onDataParsed={(data, layoutType) => handleDataParsed(data, layoutType)}
+            onError={(error) => {
+              console.error('CSV Upload Error:', error);
+              toast({
+                title: "Erro ao processar arquivo CSV",
+                description: error,
+                variant: "destructive"
+              });
+            }}
+            selectedBankId={selectedBank}
+          />
+        </div>
       )}
 
       {currentStep === 'duplicate-analysis' && duplicateAnalysis && (

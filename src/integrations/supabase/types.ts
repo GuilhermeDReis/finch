@@ -44,6 +44,101 @@ export type Database = {
         }
         Relationships: []
       }
+      banks: {
+        Row: {
+          id: string
+          name: string
+          icon_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          icon_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          icon_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      file_layouts: {
+        Row: {
+          id: string
+          bank_id: string
+          name: string
+          description: string | null
+          date_column: string
+          amount_column: string
+          identifier_column: string
+          description_column: string
+          date_format: string
+          decimal_separator: string
+          thousands_separator: string | null
+          encoding: string
+          delimiter: string
+          has_header: boolean
+          sample_file: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          bank_id: string
+          name: string
+          description?: string | null
+          date_column: string
+          amount_column: string
+          identifier_column: string
+          description_column: string
+          date_format?: string
+          decimal_separator?: string
+          thousands_separator?: string | null
+          encoding?: string
+          delimiter?: string
+          has_header?: boolean
+          sample_file?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          bank_id?: string
+          name?: string
+          description?: string | null
+          date_column?: string
+          amount_column?: string
+          identifier_column?: string
+          description_column?: string
+          date_format?: string
+          decimal_separator?: string
+          thousands_separator?: string | null
+          encoding?: string
+          delimiter?: string
+          has_header?: boolean
+          sample_file?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_layouts_bank_id_fkey"
+            columns: ["bank_id"]
+            isOneToOne: false
+            referencedRelation: "banks"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       import_sessions: {
         Row: {
           completed_at: string | null
@@ -190,6 +285,7 @@ export type Database = {
       transactions: {
         Row: {
           amount: number
+          bank_id: string | null
           category_id: string | null
           created_at: string
           date: string
@@ -210,6 +306,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          bank_id?: string | null
           category_id?: string | null
           created_at?: string
           date: string
@@ -230,6 +327,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          bank_id?: string | null
           category_id?: string | null
           created_at?: string
           date?: string
@@ -263,6 +361,112 @@ export type Database = {
             referencedRelation: "subcategories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_bank_id_fkey"
+            columns: ["bank_id"]
+            isOneToOne: false
+            referencedRelation: "banks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transaction_credit: {
+        Row: {
+          amount: number
+          bank_id: string | null
+          category_id: string | null
+          created_at: string
+          date: string
+          description: string
+          external_id: string | null
+          id: string
+          import_session_id: string | null
+          is_recurring: boolean | null
+          notes: string | null
+          original_description: string | null
+          recurring_frequency: string | null
+          subcategory_id: string | null
+          tags: string[] | null
+          type: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          amount: number
+          bank_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          date: string
+          description: string
+          external_id?: string | null
+          id?: string
+          import_session_id?: string | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          original_description?: string | null
+          recurring_frequency?: string | null
+          subcategory_id?: string | null
+          tags?: string[] | null
+          type?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          bank_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          date?: string
+          description?: string
+          external_id?: string | null
+          id?: string
+          import_session_id?: string | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          original_description?: string | null
+          recurring_frequency?: string | null
+          subcategory_id?: string | null
+          tags?: string[] | null
+          type?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_credit_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_subcategory_id_fkey"
+            columns: ["subcategory_id"]
+            isOneToOne: false
+            referencedRelation: "subcategories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_bank_id_fkey"
+            columns: ["bank_id"]
+            isOneToOne: false
+            referencedRelation: "banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
         ]
       }
       user_charts: {

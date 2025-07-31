@@ -78,20 +78,12 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
   // Initialize form with chart config data
   useEffect(() => {
     if (isOpen && chartConfig) {
-      // For subcategory grouping, we need to use the subcategory_id as the category_id in the form
-      // For category grouping, we use the category_id
-      const formCategoryId = chartConfig.grouping_type === 'subcategory' 
-        ? chartConfig.subcategory_id 
-        : chartConfig.category_id;
-      
       reset({
         name: chartConfig.name,
-        category_id: formCategoryId || chartConfig.category_id,
+        category_id: chartConfig.category_id,
         monthly_goal: formatCurrency(chartConfig.monthly_goal),
         color: chartConfig.color,
         period_months: chartConfig.period_months,
-        transaction_type: chartConfig.transaction_type,
-        grouping_type: chartConfig.grouping_type,
       });
     }
   }, [isOpen, chartConfig, reset]);
@@ -176,64 +168,59 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
               )}
             </div>
 
-            {/* Category/Subcategory Selection based on grouping type */}
-            {chartConfig.grouping_type === 'category' ? (
-              // Category Selection
+            {/* Categoria */}
+            <div className="space-y-2">
+              <Label htmlFor="category_id">Categoria *</Label>
+              <Select 
+                value={watch('category_id')} 
+                onValueChange={(value) => setValue('category_id', value)}
+              >
+                <SelectTrigger className={cn(errors.category_id && 'border-destructive')}>
+                  <SelectValue placeholder="Selecione uma categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: category.color }}
+                        />
+                        {category.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.category_id && (
+                <p className="text-sm text-destructive">Categoria é obrigatória</p>
+              )}
+            </div>
+
+            {/* Subcategory Selection - Only show if grouping by subcategory */}
+            {chartConfig.grouping_type === 'subcategory' && (
               <div className="space-y-2">
-                <Label htmlFor="category_id">Categoria *</Label>
+                <Label>Subcategoria</Label>
                 <Select 
-                  value={watch('category_id')} 
+                  value={chartConfig.grouping_type === 'subcategory' ? watch('category_id') : ''} 
                   onValueChange={(value) => setValue('category_id', value)}
+                  disabled={!selectedCategoryId}
                 >
-                  <SelectTrigger className={cn(errors.category_id && 'border-destructive')}>
-                    <SelectValue placeholder="Selecione uma categoria" />
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedCategoryId ? "Selecione uma subcategoria" : "Primeiro selecione uma categoria"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredCategories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: category.color }}
-                          />
-                          {category.name}
-                        </div>
+                    {filteredSubcategories.map((subcategory) => (
+                      <SelectItem key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.category_id && (
-                  <p className="text-sm text-destructive">Categoria é obrigatória</p>
-                )}
-              </div>
-            ) : (
-              // Subcategory Selection
-              <div className="space-y-2">
-                <Label htmlFor="category_id">Subcategoria *</Label>
-                <Select 
-                  value={watch('category_id')} 
-                  onValueChange={(value) => setValue('category_id', value)}
-                >
-                  <SelectTrigger className={cn(errors.category_id && 'border-destructive')}>
-                    <SelectValue placeholder="Selecione uma subcategoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subcategories
-                      .filter(sub => {
-                        // Filter subcategories by transaction type
-                        const parentCategory = allCategories.find(cat => cat.id === sub.category_id);
-                        return parentCategory?.type === chartConfig.transaction_type;
-                      })
-                      .map((subcategory) => (
-                        <SelectItem key={subcategory.id} value={subcategory.id}>
-                          {subcategory.name}
-                        </SelectItem>
-                      ))
-                    }
-                  </SelectContent>
-                </Select>
-                {errors.category_id && (
-                  <p className="text-sm text-destructive">Subcategoria é obrigatória</p>
+                {selectedCategoryId && filteredSubcategories.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma subcategoria encontrada para esta categoria.
+                  </p>
                 )}
               </div>
             )}
