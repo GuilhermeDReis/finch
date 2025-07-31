@@ -63,7 +63,7 @@ export default function ImportExtract() {
       const stored = localStorage.getItem('currentImportSession');
       return stored ? JSON.parse(stored) : null;
     } catch (error) {
-      console.error('Error loading session from storage:', error);
+      // console.error('Error loading session from storage:', error);
       return null;
     }
   };
@@ -76,7 +76,7 @@ export default function ImportExtract() {
   useEffect(() => {
     const storedSession = loadSessionFromStorage();
     if (storedSession) {
-      console.log('🔄 [SESSION] Loaded session from storage:', storedSession.id);
+      // console.log('🔄 [SESSION] Loaded session from storage:', storedSession.id);
       setImportSession(storedSession);
     }
   }, []);
@@ -100,7 +100,7 @@ export default function ImportExtract() {
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error) {
-      console.error('❌ [AUTH] Error checking authentication:', error);
+      // console.error('❌ [AUTH] Error checking authentication:', error);
       toast({
         title: "Erro de autenticação",
         description: "Não foi possível verificar a autenticação. Por favor, faça login novamente.",
@@ -110,7 +110,7 @@ export default function ImportExtract() {
     }
 
     if (!user) {
-      console.warn('⚠️ [AUTH] User not authenticated');
+      // console.warn('⚠️ [AUTH] User not authenticated');
       toast({
         title: "Não autenticado",
         description: "Por favor, faça login para importar transações.",
@@ -119,12 +119,12 @@ export default function ImportExtract() {
       return false;
     }
 
-    console.log('✅ [AUTH] User authenticated:', user.id);
+    // console.log('✅ [AUTH] User authenticated:', user.id);
     return true;
   };
 
   const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
-    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
+    // console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
     
     // Store the layout type
     setLayoutType(layoutType || null);
@@ -142,7 +142,7 @@ export default function ImportExtract() {
     // For credit card transactions, we don't need to do duplicate detection or AI categorization
     // We can import them directly
     if (layoutType === 'credit_card') {
-      console.log('💳 [IMPORT] Credit card transactions detected, importing directly');
+      // console.log('💳 [IMPORT] Credit card transactions detected, importing directly');
       setTransactions(transactionRows);
       setCurrentStep('review');
       return;
@@ -162,7 +162,7 @@ export default function ImportExtract() {
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('❌ [IMPORT] Error loading existing transactions:', error);
+        // console.error('❌ [IMPORT] Error loading existing transactions:', error);
         toast({
           title: "Erro ao carregar transações",
           description: error.message,
@@ -176,40 +176,40 @@ export default function ImportExtract() {
       // Detect duplicates, refunds, and unified PIX
       const duplicateResults = detectDuplicates(transactionRows, existingData || []);
       
-      console.log('🔍 [IMPORT] Duplicate detection results:', {
-        duplicates: duplicateResults.duplicates.length,
-        refunds: duplicateResults.refundPairs.length,
-        unifiedPix: duplicateResults.pixPairs.length,
-        newTransactions: duplicateResults.newTransactions.length,
-        hidden: duplicateResults.hiddenTransactionIds.size
-      });
+      // console.log('🔍 [IMPORT] Duplicate detection results:', {
+      //   duplicates: duplicateResults.duplicates.length,
+      //   refunds: duplicateResults.refundPairs.length,
+      //   unifiedPix: duplicateResults.pixPairs.length,
+      //   newTransactions: duplicateResults.newTransactions.length,
+      //   hidden: duplicateResults.hiddenTransactionIds.size
+      // });
 
       // Validation: Log details of unification
-      if (duplicateResults.refundPairs.length > 0) {
-        console.log('✅ [VALIDATION] Refund pairs found:');
-        duplicateResults.refundPairs.forEach((pair, index) => {
-          console.log(`  Refund ${index + 1}:`, {
-            pairId: pair.id,
-            originalAmount: pair.originalTransaction.amount,
-            originalDescription: pair.originalTransaction.description,
-            refundAmount: pair.refundTransaction.amount,
-            refundDescription: pair.refundTransaction.description
-          });
-        });
-      }
+      // if (duplicateResults.refundPairs.length > 0) {
+      //   console.log('✅ [VALIDATION] Refund pairs found:');
+      //   duplicateResults.refundPairs.forEach((pair, index) => {
+      //     console.log(`  Refund ${index + 1}:`, {
+      //       pairId: pair.id,
+      //       originalAmount: pair.originalTransaction.amount,
+      //       originalDescription: pair.originalTransaction.description,
+      //       refundAmount: pair.refundTransaction.amount,
+      //       refundDescription: pair.refundTransaction.description
+      //     });
+      //   });
+      // }
 
-      if (duplicateResults.pixPairs.length > 0) {
-        console.log('✅ [VALIDATION] PIX pairs found:');
-        duplicateResults.pixPairs.forEach((pair, index) => {
-          console.log(`  PIX ${index + 1}:`, {
-            pairId: pair.id,
-            creditAmount: pair.creditTransaction.amount,
-            creditDescription: pair.creditTransaction.description,
-            pixAmount: pair.pixTransaction.amount,
-            pixDescription: pair.pixTransaction.description
-          });
-        });
-      }
+      // if (duplicateResults.pixPairs.length > 0) {
+      //   console.log('✅ [VALIDATION] PIX pairs found:');
+      //   duplicateResults.pixPairs.forEach((pair, index) => {
+      //     console.log(`  PIX ${index + 1}:`, {
+      //       pairId: pair.id,
+      //       creditAmount: pair.creditTransaction.amount,
+      //       creditDescription: pair.creditTransaction.description,
+      //       pixAmount: pair.pixTransaction.amount,
+      //       pixDescription: pair.pixTransaction.description
+      //     });
+      //   });
+      // }
 
       setDuplicateAnalysis({
         duplicates: duplicateResults.duplicates,
@@ -220,21 +220,21 @@ export default function ImportExtract() {
       const hasDuplicates = duplicateResults.duplicates.length > 0;
 
       if (hasDuplicates) {
-        console.log('⚠️ [IMPORT] Duplicates detected, showing analysis screen');
+        // console.log('⚠️ [IMPORT] Duplicates detected, showing analysis screen');
         setCurrentStep('duplicate-analysis');
       } else {
-        console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
+        // console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
         
         // Create unified transactions - ONE transaction per group
         const unifiedTransactions = [
           ...duplicateResults.newTransactions,
           // Add refund representative transactions (valor original, sem categoria)
           ...duplicateResults.refundPairs.map(pair => {
-            console.log('🔄 [REFUND] Creating refund transaction:', {
-              originalAmount: pair.originalTransaction.amount,
-              originalDescription: pair.originalTransaction.description,
-              pairId: pair.id
-            });
+            // console.log('🔄 [REFUND] Creating refund transaction:', {
+            //   originalAmount: pair.originalTransaction.amount,
+            //   originalDescription: pair.originalTransaction.description,
+            //   pairId: pair.id
+            // });
             return {
               id: pair.id,
               date: pair.originalTransaction.date,
@@ -266,28 +266,28 @@ export default function ImportExtract() {
         ];
 
         // Validation: Verify unification integrity
-        console.log('🔍 [VALIDATION] Final unified transactions:', {
-          totalOriginal: transactionRows.length,
-          totalUnified: unifiedTransactions.length,
-          newTransactions: duplicateResults.newTransactions.length,
-          refundTransactions: duplicateResults.refundPairs.length,
-          pixTransactions: duplicateResults.pixPairs.length,
-          hiddenTransactions: duplicateResults.hiddenTransactionIds.size
-        });
+        // console.log('🔍 [VALIDATION] Final unified transactions:', {
+        //   totalOriginal: transactionRows.length,
+        //   totalUnified: unifiedTransactions.length,
+        //   newTransactions: duplicateResults.newTransactions.length,
+        //   refundTransactions: duplicateResults.refundPairs.length,
+        //   pixTransactions: duplicateResults.pixPairs.length,
+        //   hiddenTransactions: duplicateResults.hiddenTransactionIds.size
+        // });
 
         // Verify that no refunds have categories
         const refundsWithCategories = unifiedTransactions.filter(t => 
           t.status === 'refunded' && (t.categoryId || t.subcategoryId)
         );
         if (refundsWithCategories.length > 0) {
-          console.error('🚨 [VALIDATION] ERROR: Refunds should not have categories!', refundsWithCategories);
+          // console.error('🚨 [VALIDATION] ERROR: Refunds should not have categories!', refundsWithCategories);
         }
 
         await handleAICategorization(unifiedTransactions);
       }
 
     } catch (error) {
-      console.error('💥 [IMPORT] Exception in handleDataParsed:', error);
+      // console.error('💥 [IMPORT] Exception in handleDataParsed:', error);
       toast({
         title: "Erro no processamento",
         description: "Ocorreu um erro ao processar as transações",
@@ -297,7 +297,7 @@ export default function ImportExtract() {
   };
 
   const handleAICategorization = async (transactionsToProcess: TransactionRow[]) => {
-    console.log('🤖 [AI] Starting AI categorization for', transactionsToProcess.length, 'transactions');
+    // console.log('🤖 [AI] Starting AI categorization for', transactionsToProcess.length, 'transactions');
     
     // Check authentication again before proceeding
     const isAuthenticated = await checkAuthentication();
@@ -317,31 +317,31 @@ export default function ImportExtract() {
         throw new Error('User not authenticated');
       }
 
-      console.log('👤 [AI] Creating session for user:', user.id);
+      // console.log('👤 [AI] Creating session for user:', user.id);
 
       // First, apply existing mappings to avoid unnecessary AI processing
-      console.log('🔍 [MAPPING] Checking for existing mappings...');
-      console.log('🔍 [MAPPING] Processing transactions:', transactionsToProcess.map(t => ({
-        id: t.id,
-        description: t.description,
-        status: t.status
-      })));
+      // console.log('🔍 [MAPPING] Checking for existing mappings...');
+      // console.log('🔍 [MAPPING] Processing transactions:', transactionsToProcess.map(t => ({
+      //   id: t.id,
+      //   description: t.description,
+      //   status: t.status
+      // })));
       
       const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
         transactionsToProcess,
         user.id
       );
 
-      console.log('📊 [MAPPING] Mapping results:', {
-        mapped: mappedTransactions.length,
-        unmapped: unmappedTransactions.length,
-        total: transactionsToProcess.length
-      });
+      // console.log('📊 [MAPPING] Mapping results:', {
+      //   mapped: mappedTransactions.length,
+      //   unmapped: unmappedTransactions.length,
+      //   total: transactionsToProcess.length
+      // });
 
       // Only process unmapped transactions with AI
       let categorizedTransactions: any[] = [];
       if (unmappedTransactions.length > 0) {
-        console.log('🤖 [AI] Sending', unmappedTransactions.length, 'unmapped transactions to AI for categorization');
+        // console.log('🤖 [AI] Sending', unmappedTransactions.length, 'unmapped transactions to AI for categorization');
 
         // Create session with user_id
         const { data: session, error: sessionError } = await supabase
@@ -356,11 +356,11 @@ export default function ImportExtract() {
           .single();
 
         if (sessionError) {
-          console.error('❌ [AI] Error creating import session:', sessionError);
+          // console.error('❌ [AI] Error creating import session:', sessionError);
           throw sessionError;
         }
 
-        console.log('✅ [AI] Import session created:', session.id);
+        // console.log('✅ [AI] Import session created:', session.id);
         const newSession = session as ImportSession;
         setImportSession(newSession);
         saveSessionToStorage(newSession);
@@ -369,30 +369,30 @@ export default function ImportExtract() {
         setProcessingProgress(25);
 
         // Process with AI categorization only for unmapped transactions
-        console.log('🤖 [AI] Calling gemini-categorize-transactions function');
+        // console.log('🤖 [AI] Calling gemini-categorize-transactions function');
         const { data: aiCategorizedTransactions, error: aiError } = await supabase.functions.invoke('gemini-categorize-transactions', {
           body: { transactions: unmappedTransactions }
         });
 
         if (aiError) {
-          console.error('❌ [AI] Error in AI categorization:', aiError);
+          // console.error('❌ [AI] Error in AI categorization:', aiError);
           throw aiError;
         }
 
-        console.log('✅ [AI] AI categorization completed successfully');
+        // console.log('✅ [AI] AI categorization completed successfully');
         categorizedTransactions = aiCategorizedTransactions || [];
         setProcessingProgress(75);
       } else {
-        console.log('✅ [MAPPING] All transactions already mapped, skipping AI categorization');
+        // console.log('✅ [MAPPING] All transactions already mapped, skipping AI categorization');
         setProcessingProgress(75);
       }
 
       // Combine mapped transactions with AI categorized transactions
-      console.log('🔍 [COMBINE] Combining mapped and AI categorized transactions:', {
-        mappedCount: mappedTransactions.length,
-        unmappedCount: unmappedTransactions.length,
-        aiCategorizedCount: categorizedTransactions.length
-      });
+      // console.log('🔍 [COMBINE] Combining mapped and AI categorized transactions:', {
+      //   mappedCount: mappedTransactions.length,
+      //   unmappedCount: unmappedTransactions.length,
+      //   aiCategorizedCount: categorizedTransactions.length
+      // });
       
       const allCategorizedTransactions = [
         ...mappedTransactions,
@@ -401,7 +401,7 @@ export default function ImportExtract() {
           const aiSuggestion = categorizedTransactions.find((cat: any) => cat.id === transaction.id);
           
           if (aiSuggestion) {
-            console.log('✅ [COMBINE] Found AI suggestion for transaction:', transaction.id);
+            // console.log('✅ [COMBINE] Found AI suggestion for transaction:', transaction.id);
             return {
               ...transaction,
               categoryId: aiSuggestion.categoryId,
@@ -417,7 +417,7 @@ export default function ImportExtract() {
           }
           
           // If no AI suggestion, return transaction as is
-          console.log('⚠️ [COMBINE] No AI suggestion found for transaction:', transaction.id);
+          // console.log('⚠️ [COMBINE] No AI suggestion found for transaction:', transaction.id);
           return transaction;
         })
       ];
@@ -427,7 +427,7 @@ export default function ImportExtract() {
       setCurrentStep('review');
 
     } catch (error) {
-      console.error('💥 [AI] Exception in AI categorization:', error);
+      // console.error('💥 [AI] Exception in AI categorization:', error);
       
       // Update session with error
       if (importSession) {
@@ -457,10 +457,10 @@ export default function ImportExtract() {
     selectedTransactions: TransactionRow[],
     action: 'import' | 'skip' | 'overwrite'
   ) => {
-    console.log('🔄 [DUPLICATE] handleDuplicateAnalysisComplete called:', {
-      selectedCount: selectedTransactions.length,
-      action
-    });
+    // console.log('🔄 [DUPLICATE] handleDuplicateAnalysisComplete called:', {
+    //   selectedCount: selectedTransactions.length,
+    //   action
+    // });
 
     if (action === 'skip') {
       setCurrentStep('upload');
@@ -475,11 +475,11 @@ export default function ImportExtract() {
         ...duplicateResults.newTransactions,
         // Add refund representative transactions (valor original, sem categoria)
         ...duplicateResults.refundPairs.map(pair => {
-          console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
-            originalAmount: pair.originalTransaction.amount,
-            originalDescription: pair.originalTransaction.description,
-            pairId: pair.id
-          });
+          // console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
+          //   originalAmount: pair.originalTransaction.amount,
+          //   originalDescription: pair.originalTransaction.description,
+          //   pairId: pair.id
+          // });
           return {
             id: pair.id,
             date: pair.originalTransaction.date,
@@ -520,12 +520,12 @@ export default function ImportExtract() {
     }
 
   const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
-    console.log('🔄 [UPDATE] handleTransactionsUpdate called with:', updatedTransactions.length, 'transactions');
+    // console.log('🔄 [UPDATE] handleTransactionsUpdate called with:', updatedTransactions.length, 'transactions');
     setTransactions(updatedTransactions);
   };
 
   const handleFinalImport = async () => {
-    console.log('💾 [FINAL] handleFinalImport called');
+    // console.log('💾 [FINAL] handleFinalImport called');
 
     // Check authentication one more time
     const isAuthenticated = await checkAuthentication();
@@ -547,7 +547,7 @@ export default function ImportExtract() {
     // If no session exists, create a new one
     let currentSession = importSession;
     if (!currentSession) {
-      console.log('⚠️ [FINAL] No import session found, creating new one');
+      // console.log('⚠️ [FINAL] No import session found, creating new one');
       
       try {
         const { data: newSession, error: sessionError } = await supabase
@@ -562,7 +562,7 @@ export default function ImportExtract() {
           .single();
 
         if (sessionError) {
-          console.error('❌ [FINAL] Error creating recovery session:', sessionError);
+          // console.error('❌ [FINAL] Error creating recovery session:', sessionError);
           toast({
             title: "Erro",
             description: "Não foi possível criar sessão de importação",
@@ -571,12 +571,12 @@ export default function ImportExtract() {
           return;
         }
 
-        console.log('✅ [FINAL] Recovery session created:', newSession.id);
+        // console.log('✅ [FINAL] Recovery session created:', newSession.id);
         currentSession = newSession as ImportSession;
         setImportSession(currentSession);
         saveSessionToStorage(currentSession);
       } catch (error) {
-        console.error('💥 [FINAL] Exception creating recovery session:', error);
+        // console.error('💥 [FINAL] Exception creating recovery session:', error);
         toast({
           title: "Erro",
           description: "Sessão de importação não encontrada e não foi possível criar uma nova",
@@ -606,7 +606,7 @@ export default function ImportExtract() {
           user_id: user.id
         }));
 
-        console.log('💾 [FINAL] Importing', creditCardTransactionsToImport.length, 'credit card transactions');
+        // console.log('💾 [FINAL] Importing', creditCardTransactionsToImport.length, 'credit card transactions');
 
         // Import to transaction_credit table
         const { data, error } = await supabase
@@ -615,7 +615,7 @@ export default function ImportExtract() {
           .select();
 
         if (error) {
-          console.error('❌ [FINAL] Error importing credit card transactions:', error);
+          // console.error('❌ [FINAL] Error importing credit card transactions:', error);
           throw error;
         }
 
@@ -638,7 +638,7 @@ export default function ImportExtract() {
         });
 
       } catch (error) {
-        console.error('💥 [FINAL] Exception in credit card import:', error);
+        // console.error('💥 [FINAL] Exception in credit card import:', error);
 
         await supabase
           .from('import_sessions')
@@ -702,7 +702,7 @@ export default function ImportExtract() {
         user_id: user.id
       }));
 
-      console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
+      // console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
 
       // Import to database
       const { data, error } = await supabase
@@ -711,7 +711,7 @@ export default function ImportExtract() {
         .select();
 
       if (error) {
-        console.error('❌ [FINAL] Error importing transactions:', error);
+        // console.error('❌ [FINAL] Error importing transactions:', error);
         throw error;
       }
 
@@ -742,7 +742,7 @@ export default function ImportExtract() {
               confidenceScore: confidenceScore,
               source: source
             });
-            console.log('🔄 [MAPPING] Updated existing mapping for transaction:', transaction.id);
+            // console.log('🔄 [MAPPING] Updated existing mapping for transaction:', transaction.id);
           } else {
             // Create new mapping for this transaction
             await transactionMappingService.createMapping({
@@ -753,10 +753,10 @@ export default function ImportExtract() {
               confidenceScore: confidenceScore,
               source: source
             });
-            console.log('🆕 [MAPPING] Created new mapping for transaction:', transaction.id);
+            // console.log('🆕 [MAPPING] Created new mapping for transaction:', transaction.id);
           }
         } catch (error) {
-          console.error('Error processing transaction mapping for transaction:', transaction.id, error);
+          // console.error('Error processing transaction mapping for transaction:', transaction.id, error);
         }
       }
 
@@ -789,7 +789,7 @@ export default function ImportExtract() {
       });
 
     } catch (error) {
-      console.error('💥 [FINAL] Exception in final import:', error);
+      // console.error('💥 [FINAL] Exception in final import:', error);
 
       await supabase
         .from('import_sessions')
@@ -908,7 +908,7 @@ export default function ImportExtract() {
           <CSVUploader 
             onDataParsed={(data, layoutType) => handleDataParsed(data, layoutType)}
             onError={(error) => {
-              console.error('CSV Upload Error:', error);
+              // console.error('CSV Upload Error:', error);
               toast({
                 title: "Erro ao processar arquivo CSV",
                 description: error,

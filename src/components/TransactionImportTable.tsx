@@ -70,19 +70,19 @@ const normalizeAndValidateTransaction = (transaction: TransactionRow): Transacti
 
   // Validate and clean subcategoryId if it's an object
   if (typeof transaction.subcategoryId === 'object' && transaction.subcategoryId !== null) {
-    console.warn('🔧 [VALIDATION] Found object in subcategoryId, cleaning:', {
-      transactionId: transaction.id,
-      subcategoryId: transaction.subcategoryId
-    });
+    // // console.warn('🔧 [VALIDATION] Found object in subcategoryId, cleaning:', {
+    // //   transactionId: transaction.id,
+    // //   subcategoryId: transaction.subcategoryId
+    // // });
     normalized.subcategoryId = undefined;
   }
 
   // Validate and clean categoryId if it's an object
   if (typeof transaction.categoryId === 'object' && transaction.categoryId !== null) {
-    console.warn('🔧 [VALIDATION] Found object in categoryId, cleaning:', {
-      transactionId: transaction.id,
-      categoryId: transaction.categoryId
-    });
+    // // console.warn('🔧 [VALIDATION] Found object in categoryId, cleaning:', {
+    // //   transactionId: transaction.id,
+    // //   categoryId: transaction.categoryId
+    // // });
     normalized.categoryId = undefined;
   }
 
@@ -131,12 +131,12 @@ const TransactionRow = React.memo(({
   const subcategoryKey = generateStableKey(transaction, 'subcategory-');
   
   const handleCategoryChange = useCallback((value: string) => {
-    console.log('🔄 [CATEGORY] Category selection changed:', { 
-      transactionId: transaction.id, 
-      oldValue: transaction.categoryId,
-      newValue: value,
-      timestamp: Date.now()
-    });
+    // // console.log('🔄 [CATEGORY] Category selection changed:', { 
+    // //   transactionId: transaction.id, 
+    // //   oldValue: transaction.categoryId,
+    // //   newValue: value,
+    // //   timestamp: Date.now()
+    // // });
     
     onUpdateTransaction(transaction.id, {
       categoryId: value,
@@ -149,13 +149,13 @@ const TransactionRow = React.memo(({
   }, [transaction.id, transaction.categoryId, transaction.aiSuggestion, onUpdateTransaction]);
   
   const handleSubcategoryChange = useCallback((value: string) => {
-    console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
-      transactionId: transaction.id, 
-      oldValue: transaction.subcategoryId,
-      newValue: value,
-      categoryId: transaction.categoryId,
-      timestamp: Date.now()
-    });
+    // // console.log('🔄 [SUBCATEGORY] Subcategory selection changed:', { 
+    // //   transactionId: transaction.id, 
+    // //   oldValue: transaction.subcategoryId,
+    // //   newValue: value,
+    // //   categoryId: transaction.categoryId,
+    // //   timestamp: Date.now()
+    // // });
     
     onUpdateTransaction(transaction.id, {
       subcategoryId: value
@@ -331,7 +331,7 @@ export default function TransactionImportTable({
 
   // Load categories and subcategories
   useEffect(() => {
-    console.log('🔍 [DEBUG] TransactionImportTable mounted, loading categories and subcategories...');
+    // // console.log('🔍 [DEBUG] TransactionImportTable mounted, loading categories and subcategories...');
     loadCategories();
     loadSubcategories();
   }, []);
@@ -367,9 +367,9 @@ export default function TransactionImportTable({
 
   // Simplified merged data - just process the transactions directly
   const mergedData = useMemo(() => {
-    console.log('🔄 [MERGE] Processing transactions directly:', {
-      tableData: tableData.length
-    });
+    // // console.log('🔄 [MERGE] Processing transactions directly:', {
+    // //   tableData: tableData.length
+    // // });
 
     // Apply filters
     const filteredTransactions = applyFilters(tableData);
@@ -381,23 +381,23 @@ export default function TransactionImportTable({
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
 
-    console.log('✅ [MERGE] Processed transactions:', {
-      total: sortedTransactions.length,
-      refunded: sortedTransactions.filter(t => t.status === 'refunded').length,
-      unifiedPix: sortedTransactions.filter(t => t.status === 'unified-pix').length,
-      normal: sortedTransactions.filter(t => !t.status || t.status === 'normal').length
-    });
+    // // console.log('✅ [MERGE] Processed transactions:', {
+    // //   total: sortedTransactions.length,
+    // //   refunded: sortedTransactions.filter(t => t.status === 'refunded').length,
+    // //   unifiedPix: sortedTransactions.filter(t => t.status === 'unified-pix').length,
+    // //   normal: sortedTransactions.filter(t => !t.status || t.status === 'normal').length
+    // // });
 
     return sortedTransactions;
   }, [tableData, sortOrder, filters]);
 
   // Enhanced initialization with ID validation
   useEffect(() => {
-    console.log('🔍 [DEBUG] transactions prop changed:', {
-      length: transactions.length,
-      firstTransaction: transactions[0],
-      transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length
-    });
+    // // console.log('🔍 [DEBUG] transactions prop changed:', {
+    // //   length: transactions.length,
+    // //   firstTransaction: transactions[0],
+    // //   transactionsWithAI: transactions.filter((t: any) => t.aiSuggestion).length
+    // // });
     
     if (transactions.length === 0) {
       setTableData([]);
@@ -408,10 +408,10 @@ export default function TransactionImportTable({
     const { transactions: fixedTransactions, hadDuplicates, duplicateReport } = validateAndFixDuplicateIds(transactions);
     
     if (hadDuplicates) {
-      console.warn('🚨 [IMPORT_TABLE] Fixed duplicate IDs during initialization:', {
-        duplicatesFixed: duplicateReport.length,
-        duplicateReport
-      });
+      // // console.warn('🚨 [IMPORT_TABLE] Fixed duplicate IDs during initialization:', {
+      // //   duplicatesFixed: duplicateReport.length,
+      // //   duplicateReport
+      // // });
       
       // Notify parent component of ID changes
       onTransactionsUpdate(fixedTransactions);
@@ -426,59 +426,59 @@ export default function TransactionImportTable({
   const loadCategories = async () => {
     try {
       setLoadingCategories(true);
-      console.log('🔍 [DEBUG] Starting to load categories...');
+      // // console.log('🔍 [DEBUG] Starting to load categories...');
       
       const { data: authData, error: authError } = await supabase.auth.getUser();
-      console.log('👤 [DEBUG] Auth check result:', { 
-        authData: authData?.user?.id ? 'User authenticated' : 'No user',
-        authError: authError?.message || 'No auth error',
-        userId: authData?.user?.id
-      });
+      // // console.log('👤 [DEBUG] Auth check result:', { 
+      // //   authData: authData?.user?.id ? 'User authenticated' : 'No user',
+      // //   authError: authError?.message || 'No auth error',
+      // //   userId: authData?.user?.id
+      // // });
       
       if (authError) {
-        console.error('❌ Authentication error:', authError);
+        // // console.error('❌ Authentication error:', authError);
         return;
       }
       
       if (!authData.user) {
-        console.log('❌ No authenticated user found');
+        // // console.log('❌ No authenticated user found');
         return;
       }
 
-      console.log('📊 Fetching categories from database...');
+      // // console.log('📊 Fetching categories from database...');
       const { data, error, status, statusText } = await supabase
         .from('categories')
         .select('*')
         .order('name');
       
-      console.log('📋 Categories query complete:', { 
-        dataExists: !!data,
-        dataLength: data?.length || 0, 
-        error: error?.message || 'No error',
-        status,
-        statusText
-      });
+      // // console.log('📋 Categories query complete:', { 
+      // //   dataExists: !!data,
+      // //   dataLength: data?.length || 0, 
+      // //   error: error?.message || 'No error',
+      // //   status,
+      // //   statusText
+      // // });
       
       if (error) {
-        console.error('❌ Error loading categories:', error);
+        // // console.error('❌ Error loading categories:', error);
         return;
       }
       
       if (!data) {
-        console.warn('⚠️ Categories data is null/undefined');
+        // // console.warn('⚠️ Categories data is null/undefined');
         return;
       }
 
       if (data.length === 0) {
-        console.warn('⚠️ No categories found in database');
+        // // console.warn('⚠️ No categories found in database');
         setCategories([]);
         return;
       }
       
       setCategories(data as Category[]);
-      console.log('✅ Categories loaded and set successfully:', data.length, 'categories');
+      // // console.log('✅ Categories loaded and set successfully:', data.length, 'categories');
     } catch (error) {
-      console.error('💥 Exception in loadCategories:', error);
+      // // console.error('💥 Exception in loadCategories:', error);
     } finally {
       setLoadingCategories(false);
     }
@@ -493,16 +493,16 @@ export default function TransactionImportTable({
         .order('name');
       
       if (error) {
-        console.error('Error loading subcategories:', error);
+        // // console.error('Error loading subcategories:', error);
         return;
       }
       
       if (data) {
         setSubcategories(data);
-        console.log('Subcategories loaded successfully:', data.length, 'subcategories');
+        // // console.log('Subcategories loaded successfully:', data.length, 'subcategories');
       }
     } catch (error) {
-      console.error('Failed to load subcategories:', error);
+      // // console.error('Failed to load subcategories:', error);
     } finally {
       setLoadingSubcategories(false);
     }
@@ -510,11 +510,11 @@ export default function TransactionImportTable({
 
   // Enhanced update function with integrity verification
   const updateTransaction = useCallback((id: string, updates: Partial<TransactionRow>) => {
-    console.log('🔄 [UPDATE] updateTransaction called:', { 
-      id, 
-      updates,
-      timestamp: Date.now()
-    });
+    // // console.log('🔄 [UPDATE] updateTransaction called:', { 
+    // //   id, 
+    // //   updates,
+    // //   timestamp: Date.now()
+    // // });
     
     setOperation(`update-${id}`);
     
@@ -525,14 +525,14 @@ export default function TransactionImportTable({
       // Verify that only one transaction has this ID
       const transactionsWithSameId = prev.filter(t => t.id === id);
       if (transactionsWithSameId.length > 1) {
-        console.error('🚨 [UPDATE] Multiple transactions with same ID detected:', {
-          id,
-          count: transactionsWithSameId.length,
-          transactions: transactionsWithSameId.map(t => ({
-            id: t.id,
-            description: t.description
-          }))
-        });
+        // // console.error('🚨 [UPDATE] Multiple transactions with same ID detected:', {
+        // //   id,
+        // //   count: transactionsWithSameId.length,
+        // //   transactions: transactionsWithSameId.map(t => ({
+        // //     id: t.id,
+        // //     description: t.description
+        // //   }))
+        // // });
       }
       
       // Create completely new array with isolated transactions
@@ -569,7 +569,7 @@ export default function TransactionImportTable({
       );
       
       if (!integrityOk) {
-        console.error('🚨 [UPDATE] Rolling back due to integrity violation');
+        // // console.error('🚨 [UPDATE] Rolling back due to integrity violation');
         return prev; // Rollback on integrity violation
       }
       
@@ -624,12 +624,12 @@ export default function TransactionImportTable({
   const getFilteredSubcategories = useCallback((categoryId: string) => {
     if (!categoryId) return [];
     const filtered = subcategories.filter(sub => sub.category_id === categoryId);
-    console.log('🔍 [SUBCATEGORIES] getFilteredSubcategories:', {
-      categoryId,
-      totalSubcategories: subcategories.length,
-      filteredCount: filtered.length,
-      filtered: filtered.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
-    });
+    // // console.log('🔍 [SUBCATEGORIES] getFilteredSubcategories:', {
+    // //   categoryId,
+    // //   totalSubcategories: subcategories.length,
+    // //   filteredCount: filtered.length,
+    // //   filtered: filtered.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
+    // // });
     return filtered;
   }, [subcategories]);
 
@@ -646,7 +646,7 @@ export default function TransactionImportTable({
       label: cat.name,
       type: cat.type
     }));
-    console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
+    // // console.log('🎯 [CATEGORIES] Category options memoized:', options.length);
     return options;
   }, [categories]);
 
@@ -720,7 +720,7 @@ export default function TransactionImportTable({
 
   const formatDate = (dateStr: string) => {
     // Debug logging
-    console.log('📅 [FORMAT_DATE] Input date string:', dateStr);
+    // // console.log('📅 [FORMAT_DATE] Input date string:', dateStr);
     
     // Parse the date string and add time at noon to avoid timezone issues
     const [year, month, day] = dateStr.split('-');
@@ -731,7 +731,7 @@ export default function TransactionImportTable({
     // Format using UTC to avoid timezone shifts
     const formatted = `${String(parseInt(day)).padStart(2, '0')}/${String(parseInt(month)).padStart(2, '0')}/${year}`;
     
-    console.log('📅 [FORMAT_DATE] Output formatted date:', formatted);
+    // console.log('📅 [FORMAT_DATE] Output formatted date:', formatted);
     
     return formatted;
   };

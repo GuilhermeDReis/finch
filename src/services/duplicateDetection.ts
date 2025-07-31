@@ -39,10 +39,10 @@ export function detectDuplicates(
   newTransactions: TransactionRow[],
   existingTransactions: any[]
 ): SimplifiedDetectionResult {
-  console.log('🔍 [DUPLICATE] Starting simplified duplicate detection:', {
-    newTransactions: newTransactions.length,
-    existingTransactions: existingTransactions.length
-  });
+  // // console.log('🔍 [DUPLICATE] Starting simplified duplicate detection:', {
+  // //   newTransactions: newTransactions.length,
+  // //   existingTransactions: existingTransactions.length
+  // // });
 
   const duplicates: SimplifiedDetectionResult['duplicates'] = [];
   const refundPairs: SimplifiedDetectionResult['refundPairs'] = [];
@@ -60,10 +60,10 @@ export function detectDuplicates(
     groupedById.get(id)!.push(transaction);
   });
 
-  console.log('📊 [DUPLICATE] Grouped transactions by ID:', {
-    totalGroups: groupedById.size,
-    groupsWithMultiple: Array.from(groupedById.entries()).filter(([_, txns]) => txns.length > 1).length
-  });
+  // // console.log('📊 [DUPLICATE] Grouped transactions by ID:', {
+  // //   totalGroups: groupedById.size,
+  // //   groupsWithMultiple: Array.from(groupedById.entries()).filter(([_, txns]) => txns.length > 1).length
+  // // });
 
   // Step 2: Detect refunds (transactions with same ID, one containing "estorno")
   groupedById.forEach((transactions, id) => {
@@ -81,12 +81,12 @@ export function detectDuplicates(
         );
         
         if (originalTransaction && refundTransaction) {
-          console.log('🔄 [REFUND] Detected refund pair:', {
-            originalId: originalTransaction.id,
-            originalDesc: originalTransaction.description,
-            refundId: refundTransaction.id,
-            refundDesc: refundTransaction.description
-          });
+          // // console.log('🔄 [REFUND] Detected refund pair:', {
+          // //   originalId: originalTransaction.id,
+          // //   originalDesc: originalTransaction.description,
+          // //   refundId: refundTransaction.id,
+          // //   refundDesc: refundTransaction.description
+          // // });
           
           refundPairs.push({
             id: `refund-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -117,10 +117,10 @@ export function detectDuplicates(
     t.type === 'expense'
   );
 
-  console.log('💳 [PIX] Found PIX and credit transactions:', {
-    pixCount: pixTransactions.length,
-    creditCount: creditTransactions.length
-  });
+  // console.log('💳 [PIX] Found PIX and credit transactions:', {
+  //   pixCount: pixTransactions.length,
+  //   creditCount: creditTransactions.length
+  // });
 
   // Match PIX with credit transactions by amount and date proximity
   pixTransactions.forEach(pixTx => {
@@ -134,13 +134,13 @@ export function detectDuplicates(
     });
 
     if (matchingCredit) {
-      console.log('🔗 [PIX] Unified PIX transaction found:', {
-        pixId: pixTx.id,
-        pixDesc: pixTx.description,
-        creditId: matchingCredit.id,
-        creditDesc: matchingCredit.description,
-        amount: pixTx.amount
-      });
+      // // console.log('🔗 [PIX] Unified PIX transaction found:', {
+      // //   pixId: pixTx.id,
+      // //   pixDesc: pixTx.description,
+      // //   creditId: matchingCredit.id,
+      // //   creditDesc: matchingCredit.description,
+      // //   amount: pixTx.amount
+      // // });
       
       pixPairs.push({
         id: `pix-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -157,10 +157,10 @@ export function detectDuplicates(
   // Step 4: Check remaining transactions for duplicates with existing data
   const remainingTransactions = newTransactions.filter(t => !hiddenTransactionIds.has(t.id));
   
-  console.log('🔍 [DUPLICATE] Checking remaining transactions for duplicates:', {
-    remaining: remainingTransactions.length,
-    hidden: hiddenTransactionIds.size
-  });
+  // // console.log('🔍 [DUPLICATE] Checking remaining transactions for duplicates:', {
+  // //   remaining: remainingTransactions.length,
+  // //   hidden: hiddenTransactionIds.size
+  // // });
 
   remainingTransactions.forEach(newTx => {
     const potentialDuplicates = existingTransactions.filter(existing => {
@@ -180,14 +180,15 @@ export function detectDuplicates(
         reasons: ['Mesmo valor', 'Mesma data', 'Descrição similar']
       });
       
-      console.log('⚠️ [DUPLICATE] Found duplicate:', {
-        newId: newTx.id,
-        newDesc: newTx.description,
-        existingId: bestMatch.id,
-        existingDesc: bestMatch.description
-      });
+      // // console.log('⚠️ [DUPLICATE] Found duplicate:', {
+      // //   newId: newTx.id,
+      // //   newDesc: newTx.description,
+      // //   existingId: bestMatch.id,
+      // //   existingDesc: bestMatch.description
+      // // });
     }
   });
+
 
   // Step 5: Prepare final results
   const finalDuplicateIds = new Set(duplicates.map(d => d.new.id));
@@ -201,13 +202,13 @@ export function detectDuplicates(
     pixPairs
   };
 
-  console.log('✅ [DUPLICATE] Detection completed:', {
-    duplicates: result.duplicates.length,
-    newTransactions: result.newTransactions.length,
-    refundPairs: result.refundPairs.length,
-    pixPairs: result.pixPairs.length,
-    totalHidden: result.hiddenTransactionIds.size
-  });
+  // // console.log('✅ [DUPLICATE] Detection completed:', {
+  // //   duplicates: result.duplicates.length,
+  // //   newTransactions: result.newTransactions.length,
+  // //   refundPairs: result.refundPairs.length,
+  // //   pixPairs: result.pixPairs.length,
+  // //   totalHidden: result.hiddenTransactionIds.size
+  // // });
 
   return result;
 }

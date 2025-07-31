@@ -26,7 +26,13 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
     color: CHART_COLORS[0],
     period_months: 12,
     transaction_type: 'expense',
-    grouping_type: 'category'
+    grouping_type: 'category',
+    chart_type: 'evolution',
+    show_values_on_points: true,
+    show_percentages: true,
+    show_trend_line: false,
+    highlight_min_max: false,
+    visual_options: {}
   });
 
   const [selectedCategoryForSubcategory, setSelectedCategoryForSubcategory] = useState('');
@@ -81,7 +87,13 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
       color: CHART_COLORS[0],
       period_months: 12,
       transaction_type: 'expense',
-      grouping_type: 'category'
+      grouping_type: 'category',
+      chart_type: 'evolution',
+      show_values_on_points: true,
+      show_percentages: true,
+      show_trend_line: false,
+      highlight_min_max: false,
+      visual_options: {}
     });
     setSelectedCategoryForSubcategory('');
   };
@@ -124,7 +136,7 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
       resetForm();
       onClose();
     } catch (error) {
-      console.error('Error in form submission:', error);
+      // console.error('Error in form submission:', error);
     }
   };
 

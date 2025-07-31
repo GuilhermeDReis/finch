@@ -25,84 +25,76 @@ interface CSVUploaderProps {
 
 // Enhanced transaction type detection with Brazilian context
 // Now prioritizing amount-based detection over pattern matching
-const detectTransactionType = (description: string, amount: number): 'income' | 'expense' => {
-  const desc = description.toLowerCase();
-  
-  console.log(`🔍 [TYPE_DETECTION] Analyzing: "${description}" (amount: ${amount})`);
-  
-  // Priority 1: Amount-based detection (highest priority)
-  if (amount === 0) {
-    console.log(`⚠️ [TYPE_DETECTION] Zero amount, defaulting to expense`);
-    return 'expense';
-  }
-  
-  const amountBasedType = amount > 0 ? 'income' : 'expense';
-  console.log(`🔢 [TYPE_DETECTION] Amount-based detection: ${amountBasedType} (${amount})`);
-  
-  // If amount clearly indicates expense (negative), return immediately
-  if (amount < 0) {
-    return 'expense';
-  }
-  
-  // Priority 2: Known Brazilian companies/services (always expense when "enviada")
-  const knownExpenseCompanies = [
-    'uber', '99', 'taxi', 'ifood', 'rappi', 'delivery', 'd market', 'd.market',
-    'emporio km', 'casa da sopa', 'navenda', 'americanas', 'magazine luiza',
-    'mercado livre', 'shopee', 'amazon', 'netshoes', 'centauro', 'ponto frio',
-    'casas bahia', 'extra', 'carrefour', 'pao de acucar', 'big', 'bompreco',
-    'posto', 'shell', 'petrobras', 'ipiranga', 'ale', 'texaco',
-    'farmacia', 'drogaria', 'drogasil', 'droga raia', 'pacheco',
-    'academia', 'smartfit', 'bioritmo', 'bodytech',
-    'netflix', 'spotify', 'amazon prime', 'disney+', 'globoplay',
-    'stone', 'pagseguro', 'mercado pago', 'paypal', 'picpay',
-    'nubank', 'inter', 'neon', 'c6 bank', 'original'
-  ];
+  const detectTransactionType = (description: string, amount: number): 'income' | 'expense' => {
+    const desc = description.toLowerCase();
+    
+    // Priority 1: Amount-based detection (highest priority)
+    if (amount === 0) {
+      return 'expense';
+    }
+    
+    const amountBasedType = amount > 0 ? 'income' : 'expense';
+    
+    // If amount clearly indicates expense (negative), return immediately
+    if (amount < 0) {
+      return 'expense';
+    }
+    
+    // Priority 2: Known Brazilian companies/services (always expense when "enviada")
+    const knownExpenseCompanies = [
+      'uber', '99', 'taxi', 'ifood', 'rappi', 'delivery', 'd market', 'd.market',
+      'emporio km', 'casa da sopa', 'navenda', 'americanas', 'magazine luiza',
+      'mercado livre', 'shopee', 'amazon', 'netshoes', 'centauro', 'ponto frio',
+      'casas bahia', 'extra', 'carrefour', 'pao de acucar', 'big', 'bompreco',
+      'posto', 'shell', 'petrobras', 'ipiranga', 'ale', 'texaco',
+      'farmacia', 'drogaria', 'drogasil', 'droga raia', 'pacheco',
+      'academia', 'smartfit', 'bioritmo', 'bodytech',
+      'netflix', 'spotify', 'amazon prime', 'disney+', 'globoplay',
+      'stone', 'pagseguro', 'mercado pago', 'paypal', 'picpay',
+      'nubank', 'inter', 'neon', 'c6 bank', 'original'
+    ];
 
-  // Priority 3: Transaction context patterns
-  const contextPatterns = {
-    income: [
-      'recebido', 'recebimento', 'entrada', 'credito em conta', 'crédito em conta',
-      'deposito', 'depósito', 'transferencia recebida', 'transferência recebida',
-      'estorno', 'devolução', 'reembolso', 'restituição', 'pix recebido',
-      'salario', 'salário', 'rendimento', 'dividendos', 'juros recebidos',
-      'freelance', 'comissão', 'venda', 'bonificação', '13º salário'
-    ],
-    expense: [
-      'enviada', 'enviado', 'pagamento', 'compra', 'debito', 'débito',
-      'saque', 'pix enviado', 'transferencia enviada', 'transferência enviada',
-      'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
-      'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa', 'cobrança',
-      'desconto em folha', 'fatura'
-    ]
+    // Priority 3: Transaction context patterns
+    const contextPatterns = {
+      income: [
+        'recebido', 'recebimento', 'entrada', 'credito em conta', 'crédito em conta',
+        'deposito', 'depósito', 'transferencia recebida', 'transferência recebida',
+        'estorno', 'devolução', 'reembolso', 'restituição', 'pix recebido',
+        'salario', 'salário', 'rendimento', 'dividendos', 'juros recebidos',
+        'freelance', 'comissão', 'venda', 'bonificação', '13º salário'
+      ],
+      expense: [
+        'enviada', 'enviado', 'pagamento', 'compra', 'debito', 'débito',
+        'saque', 'pix enviado', 'transferencia enviada', 'transferência enviada',
+        'cartao', 'cartão', 'boleto', 'financiamento', 'prestação',
+        'mensalidade', 'anuidade', 'taxa', 'tarifa', 'multa', 'cobrança',
+        'desconto em folha', 'fatura'
+      ]
+    };
+
+    // Check for known expense companies
+    for (const company of knownExpenseCompanies) {
+      if (desc.includes(company)) {
+        return 'expense';
+      }
+    }
+
+    // Check context patterns
+    for (const pattern of contextPatterns.expense) {
+      if (desc.includes(pattern)) {
+        return 'expense';
+      }
+    }
+
+    for (const pattern of contextPatterns.income) {
+      if (desc.includes(pattern)) {
+        return 'income';
+      }
+    }
+
+    // Fallback to amount-based detection
+    return amountBasedType;
   };
-
-  // Check for known expense companies
-  for (const company of knownExpenseCompanies) {
-    if (desc.includes(company)) {
-      console.log(`🏢 [TYPE_DETECTION] Known expense company "${company}" found → expense`);
-      return 'expense';
-    }
-  }
-
-  // Check context patterns
-  for (const pattern of contextPatterns.expense) {
-    if (desc.includes(pattern)) {
-      console.log(`💸 [TYPE_DETECTION] Expense context pattern "${pattern}" found → expense`);
-      return 'expense';
-    }
-  }
-
-  for (const pattern of contextPatterns.income) {
-    if (desc.includes(pattern)) {
-      console.log(`💰 [TYPE_DETECTION] Income context pattern "${pattern}" found → income`);
-      return 'income';
-    }
-  }
-
-  // Fallback to amount-based detection
-  console.log(`🔢 [TYPE_DETECTION] Final fallback to amount-based detection: ${amountBasedType}`);
-  return amountBasedType;
-};
 
 export default function CSVUploader({ onDataParsed, onError, selectedBankId }: CSVUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -123,8 +115,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
   };
 
   const parseAmount = (amountStr: string): number => {
-    console.log('💰 [PARSE_AMOUNT] Parsing:', amountStr);
-    
     // Remove espaços e normalize
     let cleanAmount = amountStr.trim();
     
@@ -155,7 +145,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
     const result = parseFloat(cleanAmount);
     const finalResult = isNegative ? -result : result;
     
-    console.log('💰 [PARSE_AMOUNT] Result:', amountStr, '->', finalResult);
     return finalResult;
   };
 
@@ -191,8 +180,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
         throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
       }
 
-      console.log('📋 [CSV] Headers found:', headers);
-
       // Find matching layout for the selected bank
       setMessage('Verificando layout do arquivo...');
       setProgress(25);
@@ -204,11 +191,9 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
       }
 
       const { layout: matchingLayout, layoutType } = layoutMatchResult;
-      console.log('✅ [CSV] Matching layout found:', matchingLayout.name, 'Type:', layoutType);
 
       // Map headers to layout columns
       const headerMapping = FileLayoutService.mapHeadersToLayout(headers, matchingLayout);
-      console.log('🔍 [CSV] Header mapping:', headerMapping);
 
       // Validate that all required columns are mapped
       if (!headerMapping.dateColumn || !headerMapping.amountColumn || 
@@ -228,8 +213,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
             if (!results.data || results.data.length === 0) {
               throw new Error('Nenhum dado encontrado no arquivo.');
             }
-
-            console.log('📋 [CSV] Full data parsed, rows:', results.data.length);
 
             setMessage('Analisando e categorizando transações...');
             setProgress(75);
@@ -266,12 +249,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
             const incomeCount = transactions.filter(t => t.type === 'income').length;
             const expenseCount = transactions.filter(t => t.type === 'expense').length;
             
-            console.log('📊 [CSV] Processing complete:', {
-              total: transactions.length,
-              income: incomeCount,
-              expense: expenseCount
-            });
-
             setProgress(100);
             setStatus('success');
             setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
@@ -280,7 +257,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
             onDataParsed(transactions, layoutType);
 
           } catch (error) {
-            console.error('❌ [CSV] Processing error:', error);
             setStatus('error');
             setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
             onError(error instanceof Error ? error.message : 'Erro desconhecido');
@@ -289,7 +265,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
           }
         },
         error: (error: any) => {
-          console.error('❌ [CSV] Parse error:', error);
           setStatus('error');
           setMessage(`Erro no parser CSV: ${error.message}`);
           onError(error.message);
@@ -298,7 +273,6 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
       });
 
     } catch (error) {
-      console.error('❌ [CSV] Processing error:', error);
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'Erro ao processar arquivo');
       onError(error instanceof Error ? error.message : 'Erro desconhecido');

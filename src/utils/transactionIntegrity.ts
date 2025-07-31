@@ -39,13 +39,13 @@ export const validateAndFixDuplicateIds = (transactions: TransactionRow[]): {
       hadDuplicates = true;
       const newId = generateUniqueId();
       
-      console.warn('🔧 [ID_VALIDATION] Found duplicate ID, generating new one:', {
-        originalId: transaction.id,
-        newId,
-        description: transaction.description,
-        index,
-        duplicateCount
-      });
+      // // console.warn('🔧 [ID_VALIDATION] Found duplicate ID, generating new one:', {
+      // //   originalId: transaction.id,
+      // //   newId,
+      // //   description: transaction.description,
+      // //   index,
+      // //   duplicateCount
+      // // });
       
       duplicateReport.push({
         originalId: transaction.id,
@@ -63,13 +63,13 @@ export const validateAndFixDuplicateIds = (transactions: TransactionRow[]): {
   });
 
   if (hadDuplicates) {
-    console.warn('🚨 [ID_VALIDATION] Duplicate IDs detected and fixed:', {
-      totalTransactions: transactions.length,
-      duplicatesFixed: duplicateReport.length,
-      duplicateReport
-    });
+    // // console.warn('🚨 [ID_VALIDATION] Duplicate IDs detected and fixed:', {
+    // //   totalTransactions: transactions.length,
+    // //   duplicatesFixed: duplicateReport.length,
+    // //   duplicateReport
+    // // });
   } else {
-    console.log('✅ [ID_VALIDATION] All transaction IDs are unique');
+    // // console.log('✅ [ID_VALIDATION] All transaction IDs are unique');
   }
 
   return {
@@ -90,7 +90,7 @@ export const createIsolatedTransaction = <T>(transaction: T): T => {
     try {
       return structuredClone(transaction);
     } catch (error) {
-      console.warn('⚠️ [ISOLATION] structuredClone failed, using fallback:', error);
+      // // console.warn('⚠️ [ISOLATION] structuredClone failed, using fallback:', error);
     }
   }
 
@@ -121,12 +121,12 @@ export const verifyTransactionIntegrity = (
   operation: string
 ): boolean => {
   if (beforeState.length !== afterState.length) {
-    console.error('🚨 [INTEGRITY] Transaction count mismatch:', {
-      before: beforeState.length,
-      after: afterState.length,
-      targetId,
-      operation
-    });
+    // // console.error('🚨 [INTEGRITY] Transaction count mismatch:', {
+    // //   before: beforeState.length,
+    // //   after: afterState.length,
+    // //   targetId,
+    // //   operation
+    // // });
     return false;
   }
 
@@ -145,48 +145,48 @@ export const verifyTransactionIntegrity = (
     // Check if non-target transaction was changed
     if (JSON.stringify(before) !== JSON.stringify(after)) {
       unintendedChanges++;
-      console.error('🚨 [INTEGRITY] Unintended change detected:', {
-        transactionId: before.id,
-        description: before.description,
-        targetId,
-        operation,
-        before: {
-          categoryId: before.categoryId,
-          subcategoryId: before.subcategoryId,
-          description: before.description
-        },
-        after: {
-          categoryId: after.categoryId,
-          subcategoryId: after.subcategoryId,
-          description: after.description
-        }
-      });
+      // // console.error('🚨 [INTEGRITY] Unintended change detected:', {
+      // //   transactionId: before.id,
+      // //   description: before.description,
+      // //   targetId,
+      // //   operation,
+      // //   before: {
+      // //     categoryId: before.categoryId,
+      // //     subcategoryId: before.subcategoryId,
+      // //     description: before.description
+      // //   },
+      // //   after: {
+      // //     categoryId: after.categoryId,
+      // //     subcategoryId: after.subcategoryId,
+      // //     description: after.description
+      // //   }
+      // // });
     }
   }
 
   if (!targetFound) {
-    console.error('🚨 [INTEGRITY] Target transaction not found:', { targetId, operation });
+    // // console.error('🚨 [INTEGRITY] Target transaction not found:', { targetId, operation });
     return false;
   }
 
   if (unintendedChanges > 0) {
-    console.error('🚨 [INTEGRITY] Integrity violation detected:', {
-      unintendedChanges,
-      targetId,
-      operation,
-      totalTransactions: beforeState.length
-    });
+    // // console.error('🚨 [INTEGRITY] Integrity violation detected:', {
+    // //   unintendedChanges,
+    // //   targetId,
+    // //   operation,
+    // //   totalTransactions: beforeState.length
+    // // });
     return false;
   }
 
-  console.log('✅ [INTEGRITY] Transaction integrity verified:', {
-    targetId,
-    operation,
-    totalTransactions: beforeState.length
-  });
+  // // console.log('✅ [INTEGRITY] Transaction integrity verified:', {
+  // //   targetId,
+  // //   operation,
+  // //   totalTransactions: beforeState.length
+  // // });
 
   return true;
-};
+}
 
 // Generate stable, unique key for React components
 export const generateStableKey = (transaction: TransactionRow, prefix: string = ''): string => {

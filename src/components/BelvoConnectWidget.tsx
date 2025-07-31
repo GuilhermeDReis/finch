@@ -41,24 +41,24 @@ export function BelvoConnectWidget() {
   useEffect(() => {
     const loadBelvoSDK = () => {
       if (window.belvoSDK) {
-        console.log('Belvo SDK already loaded');
+        // console.log('Belvo SDK already loaded');
         setSdkLoaded(true);
         return;
       }
 
       const sdkUrl = 'https://cdn.belvo.io/belvo-widget-1-stable.js';
-      console.log('Loading Belvo SDK from:', sdkUrl);
+      // console.log('Loading Belvo SDK from:', sdkUrl);
 
       const script = document.createElement('script');
       script.src = sdkUrl;
       script.async = true;
       script.onload = () => {
-        console.log('Belvo SDK loaded successfully from stable URL');
+        // console.log('Belvo SDK loaded successfully from stable URL');
         setSdkLoaded(true);
       };
       script.onerror = (event) => {
-        console.error('Failed to load Belvo SDK from stable URL:', event);
-        console.error('Script element:', script);
+        // console.error('Failed to load Belvo SDK from stable URL:', event);
+        // console.error('Script element:', script);
         setError('Falha ao carregar o SDK da Belvo');
       };
       
@@ -78,20 +78,20 @@ export function BelvoConnectWidget() {
       
       if (retryCount > 0) {
         setIsRetrying(true);
-        console.log(`Tentativa ${retryCount + 1} de ${maxRetries + 1} para obter token`);
+        // console.log(`Tentativa ${retryCount + 1} de ${maxRetries + 1} para obter token`);
       }
 
-      console.log('Solicitando token de acesso da API Belvo...');
+      // console.log('Solicitando token de acesso da API Belvo...');
       
       const { data, error: functionError } = await supabase.functions.invoke('belvo-token');
       
       if (functionError) {
-        console.error('Erro da função:', functionError);
+        // console.error('Erro da função:', functionError);
         throw new Error('Erro ao chamar função de token');
       }
 
       if (!data) {
-        console.error('Nenhum dado retornado da função');
+        // console.error('Nenhum dado retornado da função');
         throw new Error('Nenhum dado retornado');
       }
 
@@ -99,7 +99,7 @@ export function BelvoConnectWidget() {
       if (data.error && data.error.includes('blocked by security service')) {
         if (retryCount < maxRetries) {
           const delay = Math.pow(2, retryCount + 1) * 2000; // Delay maior para bloqueios
-          console.log(`Bloqueio detectado, tentando novamente em ${delay}ms...`);
+          // console.log(`Bloqueio detectado, tentando novamente em ${delay}ms...`);
           
           toast({
             title: "Serviço temporariamente bloqueado",
@@ -115,27 +115,27 @@ export function BelvoConnectWidget() {
       }
 
       if (data.error) {
-        console.error('Erro retornado pela função:', data.error);
+        // console.error('Erro retornado pela função:', data.error);
         throw new Error(data.details || data.error);
       }
 
       if (!data.access_token) {
-        console.error('Token de acesso não recebido:', data);
+        // console.error('Token de acesso não recebido:', data);
         throw new Error('Token de acesso não recebido');
       }
 
-      console.log('Token de acesso recebido com sucesso');
+      // console.log('Token de acesso recebido com sucesso');
       setAccessToken(data.access_token);
       
       return data.access_token;
     } catch (err) {
-      console.error('Erro ao obter token de acesso:', err);
+      // console.error('Erro ao obter token de acesso:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       
       // Retry logic para outros tipos de erro
       if (retryCount < maxRetries && !errorMessage.includes('temporariamente indisponível')) {
         const delay = Math.pow(2, retryCount + 1) * 1000;
-        console.log(`Erro geral, tentando novamente em ${delay}ms...`);
+        // console.log(`Erro geral, tentando novamente em ${delay}ms...`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return getAccessToken(retryCount + 1);
@@ -168,21 +168,21 @@ export function BelvoConnectWidget() {
     }
 
     try {
-      console.log('Initializing Belvo widget');
+      // console.log('Initializing Belvo widget');
 
       const widget = window.belvoSDK!.createWidget({
         callback: (link) => {
-          console.log('Belvo connection successful! Link ID:', link.id);
+          // console.log('Belvo connection successful! Link ID:', link.id);
           toast({
             title: "Conexão realizada com sucesso!",
             description: `Link ID: ${link.id}`,
           });
         },
         onExit: (link) => {
-          console.log('Belvo widget closed', link ? `Link ID: ${link.id}` : 'No link created');
+          // console.log('Belvo widget closed', link ? `Link ID: ${link.id}` : 'No link created');
         },
         onError: (error) => {
-          console.error('Belvo widget error:', error);
+          // console.error('Belvo widget error:', error);
           setError('Erro no widget da Belvo');
           toast({
             title: "Erro no widget",
@@ -197,7 +197,7 @@ export function BelvoConnectWidget() {
 
       widget.open();
     } catch (err) {
-      console.error('Error opening Belvo widget:', err);
+      // console.error('Error opening Belvo widget:', err);
       setError('Erro ao abrir widget da Belvo');
     }
   };

@@ -32,19 +32,19 @@ export class FileLayoutService {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching file layouts:', error);
+        // // console.error('Error fetching file layouts:', error);
         throw new Error('Failed to fetch file layouts');
       }
 
       // Add layout_type based on layout name for now
       const layouts = (data || []).map(layout => ({
         ...layout,
-        layout_type: layout.name.includes('Cartão') || layout.name.includes('cartão') || layout.name.includes('Credit') ? 'credit_card' : 'bank'
+        layout_type: layout.name.includes('Cartão') || layout.name.includes('cartão') || layout.name.includes('Credit') ? 'credit_card' as const : 'bank' as const
       }));
 
       return layouts;
     } catch (error) {
-      console.error('Error in getFileLayoutsByBank:', error);
+      // // console.error('Error in getFileLayoutsByBank:', error);
       throw error;
     }
   }
@@ -88,7 +88,7 @@ export class FileLayoutService {
       
       return null;
     } catch (error) {
-      console.error('Error finding matching layout:', error);
+      // // console.error('Error finding matching layout:', error);
       throw error;
     }
   }

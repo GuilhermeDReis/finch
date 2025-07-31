@@ -53,7 +53,7 @@ export const BankSelector = ({
           .order('name');
 
         if (error) {
-          console.error('Error fetching banks:', error);
+          // console.error('Error fetching banks:', error);
           // Fallback to default bank if fetch fails
           setBanks([{
             id: '00000000-0000-0000-0000-000000000001',
@@ -64,7 +64,7 @@ export const BankSelector = ({
           setBanks(data || []);
         }
       } catch (error) {
-        console.error('Error fetching banks:', error);
+        // console.error('Error fetching banks:', error);
         // Fallback to default bank if fetch fails
         setBanks([{
           id: '00000000-0000-0000-0000-000000000001',

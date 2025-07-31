@@ -41,7 +41,7 @@ export function UserProfile() {
       setEmail(user.email || '');
       setAvatarUrl(userMetadata.avatar_url || '');
     } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
+      // console.error('Erro ao carregar perfil:', error);
       toast({
         title: "Erro",
         description: "Não foi possível carregar os dados do perfil.",
@@ -106,7 +106,7 @@ export function UserProfile() {
 
       return publicUrl;
     } catch (error) {
-      console.error('Erro ao fazer upload:', error);
+      // console.error('Erro ao fazer upload:', error);
       toast({
         title: "Erro no upload",
         description: "Não foi possível fazer upload da imagem.",
@@ -149,7 +149,7 @@ export function UserProfile() {
         description: "Perfil atualizado com sucesso.",
       });
     } catch (error) {
-      console.error('Erro ao atualizar perfil:', error);
+      // console.error('Erro ao atualizar perfil:', error);
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o perfil.",

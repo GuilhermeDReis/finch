@@ -95,7 +95,7 @@ export default function TransactionManagement() {
       setSubcategories(subcategoriesData || []);
       
     } catch (error) {
-      console.error('Error:', error);
+      // console.error('Error:', error);
       toast.error('Erro ao carregar dados');
     } finally {
       setLoading(false);
@@ -234,7 +234,7 @@ export default function TransactionManagement() {
       setIsModalOpen(false);
       await fetchAllData(); // Refresh data
     } catch (error) {
-      console.error('Error saving transaction:', error);
+      // console.error('Error saving transaction:', error);
       toast.error('Erro ao salvar transação');
     }
   };
@@ -256,7 +256,7 @@ export default function TransactionManagement() {
       setTransactions(prev => prev.filter(t => t.id !== id));
       toast.success('Transação excluída com sucesso!');
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      // console.error('Error deleting transaction:', error);
       toast.error('Erro ao excluir transação');
     }
   };

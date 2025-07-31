@@ -61,7 +61,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('display_order', { ascending: true });
 
       if (chartsError) {
-        console.error('Error loading charts:', chartsError);
+        // console.error('Error loading charts:', chartsError);
         toast({
           title: 'Erro ao carregar gráficos',
           description: chartsError.message,
@@ -94,7 +94,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('date', { ascending: false });
 
       if (transactionsError) {
-        console.error('Error loading transactions:', transactionsError);
+        // console.error('Error loading transactions:', transactionsError);
         toast({
           title: 'Erro ao carregar transações',
           description: transactionsError.message,
@@ -111,7 +111,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('name');
 
       if (categoriesError) {
-        console.error('Error loading categories:', categoriesError);
+        // console.error('Error loading categories:', categoriesError);
         toast({
           title: 'Erro ao carregar categorias',
           description: categoriesError.message,
@@ -128,7 +128,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('name');
 
       if (subcategoriesError) {
-        console.error('Error loading subcategories:', subcategoriesError);
+        // console.error('Error loading subcategories:', subcategoriesError);
         toast({
           title: 'Erro ao carregar subcategorias',
           description: subcategoriesError.message,
@@ -139,7 +139,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
     } catch (error) {
-      console.error('Error in loadData:', error);
+      // console.error('Error in loadData:', error);
       toast({
         title: 'Erro ao carregar dados',
         description: 'Ocorreu um erro inesperado ao carregar os dados.',
@@ -213,7 +213,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      console.error('Error adding chart:', error);
+      // console.error('Error adding chart:', error);
       
       if (error.code === '23505') {
         toast({
@@ -286,7 +286,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      console.error('Error updating chart:', error);
+      // console.error('Error updating chart:', error);
       
       if (error.code === '23505') {
         toast({
@@ -322,7 +322,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      console.error('Error removing chart:', error);
+      // console.error('Error removing chart:', error);
       toast({
         title: 'Erro ao remover gráfico',
         description: error.message || 'Ocorreu um erro inesperado.',
@@ -380,7 +380,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      console.error('Error duplicating chart:', error);
+      // console.error('Error duplicating chart:', error);
       toast({
         title: 'Erro ao duplicar gráfico',
         description: error.message || 'Ocorreu um erro inesperado.',
@@ -421,7 +421,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      console.error('Error reordering charts:', error);
+      // console.error('Error reordering charts:', error);
       toast({
         title: 'Erro ao reordenar gráficos',
         description: error.message || 'Ocorreu um erro inesperado.',
