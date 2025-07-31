@@ -719,7 +719,21 @@ export default function TransactionImportTable({
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR');
+    // Debug logging
+    console.log('📅 [FORMAT_DATE] Input date string:', dateStr);
+    
+    // Parse the date string and add time at noon to avoid timezone issues
+    const [year, month, day] = dateStr.split('-');
+    
+    // Create date with explicit components to avoid timezone conversion
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+    
+    // Format using UTC to avoid timezone shifts
+    const formatted = `${String(parseInt(day)).padStart(2, '0')}/${String(parseInt(month)).padStart(2, '0')}/${year}`;
+    
+    console.log('📅 [FORMAT_DATE] Output formatted date:', formatted);
+    
+    return formatted;
   };
 
   return (
