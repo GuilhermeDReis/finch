@@ -115,7 +115,7 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
       await updateChart(chartConfig.id, data);
       onClose();
     } catch (error) {
-      console.error('Error updating chart:', error);
+      // console.error('Error updating chart:', error);
     } finally {
       setIsSubmitting(false);
     }

@@ -150,7 +150,7 @@ export default function AddChartModalSimple({ isOpen, onClose }: AddChartModalPr
       resetForm();
       onClose();
     } catch (error) {
-      console.error('Error in form submission:', error);
+      // console.error('Error in form submission:', error);
     }
   };
 

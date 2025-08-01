@@ -44,7 +44,7 @@ export function useDashboardTotals(year: number, month: number) {
           balance: income - expenses,
         });
       } catch (error) {
-        console.error('Error fetching dashboard totals:', error);
+        // console.error('Error fetching dashboard totals:', error);
         setTotals({
           totalIncome: 0,
           totalExpenses: 0,

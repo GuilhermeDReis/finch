@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ChartProvider } from "./contexts/ChartContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import TransactionManagement from "./pages/TransactionManagement";
@@ -19,56 +20,63 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <ChartProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Index />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <DashboardPage />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-              <Route path="/transactions" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <TransactionManagement />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-              <Route path="/import" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <ImportExtract />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-              <Route path="/profile" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <UserProfile />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </ChartProvider>
-    </AuthProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <AuthProvider>
+        <ChartProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Index />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/dashboard" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <DashboardPage />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/transactions" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TransactionManagement />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/import" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ImportExtract />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/profile" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <UserProfile />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </ChartProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

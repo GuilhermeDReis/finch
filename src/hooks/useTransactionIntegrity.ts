@@ -47,13 +47,13 @@ export const useTransactionIntegrity = (
         }
 
         if (changedCount > 1) {
-          console.warn('🚨 [INTEGRITY_MONITOR] Multiple transactions changed simultaneously:', {
-            changedCount,
-            changes,
-            previousOperation: previous.operation,
-            timeDiff: currentSnapshot.timestamp - previous.timestamp,
-            totalTransactions: transactions.length
-          });
+          // // console.warn('🚨 [INTEGRITY_MONITOR] Multiple transactions changed simultaneously:', {
+          // //   changedCount,
+          // //   changes,
+          // //   previousOperation: previous.operation,
+          // //   timeDiff: currentSnapshot.timestamp - previous.timestamp,
+          // //   totalTransactions: transactions.length
+          // // });
         }
       }
     }

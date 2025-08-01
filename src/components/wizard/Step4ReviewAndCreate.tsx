@@ -264,7 +264,7 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
       onClose();
       
     } catch (err: any) {
-      console.error('Error creating chart:', err);
+      // console.error('Error creating chart:', err);
       toast({
         title: 'Erro ao criar gráfico',
         description: err.message || 'Ocorreu um erro ao criar o gráfico. Tente novamente.',

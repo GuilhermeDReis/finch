@@ -121,12 +121,13 @@ export function AppSidebar() {
                       className="flex items-center gap-2 p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
                       title={isCollapsed ? 'Perfil' : undefined}
                     >
-                      <Avatar className={`${isCollapsed ? 'h-8 w-8' : 'h-6 w-6'}`}>
+                      <Avatar className={`${isCollapsed ? 'h-9 w-9 mx-auto rounded-full' : 'h-6 w-6'}`}>
                         <AvatarImage 
                           src={user.user_metadata?.avatar_url} 
                           alt={user.user_metadata?.first_name || user.user_metadata?.full_name || user.email} 
+                          className="object-cover"
                         />
-                        <AvatarFallback className={`${isCollapsed ? 'h-8 w-8' : 'h-6 w-6'} text-xs`}>
+                        <AvatarFallback className={`${isCollapsed ? 'h-9 w-9' : 'h-6 w-6'} text-xs`}>
                           {user.user_metadata?.first_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
@@ -140,19 +141,19 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Button
-                    variant="ghost"
-                    onClick={signOut}
-                    className={`w-full gap-2 p-2 h-12 ${isCollapsed ? 'justify-center px-2 mx-1' : 'justify-start'}`}
-                    title={isCollapsed ? 'Sair' : undefined}
-                  >
-                    <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'w-auto'}`}>
-                      <LogOut className="h-4 w-4" />
-                      {!isCollapsed && <span className="ml-2">Sair</span>}
-                    </div>
-                  </Button>
-                </SidebarMenuButton>
+                  <SidebarMenuButton asChild>
+                    <Button
+                      variant="ghost"
+                      onClick={signOut}
+                      className={`w-full gap-2 p-2 h-12 ${isCollapsed ? 'justify-center px-2 mx-1' : 'justify-start'}`}
+                      title={isCollapsed ? 'Sair' : undefined}
+                    >
+                      <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'w-auto'}`}>
+                        <LogOut className="h-5 w-5" />
+                        {!isCollapsed && <span className="ml-2">Sair</span>}
+                      </div>
+                    </Button>
+                  </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
