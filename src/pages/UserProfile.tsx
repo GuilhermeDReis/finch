@@ -6,14 +6,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Upload, User as UserIcon } from 'lucide-react';
+import { Loader2, Upload, User as UserIcon, Sun, Moon, Monitor } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
 export function UserProfile() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [firstName, setFirstName] = useState('');
@@ -247,6 +250,65 @@ export function UserProfile() {
               <p className="text-xs text-muted-foreground">
                 O email não pode ser alterado
               </p>
+            </div>
+
+            <div className="space-y-4 pt-6 border-t">
+              <div className="space-y-2">
+                <Label className="text-base font-medium">Aparência</Label>
+                <p className="text-sm text-muted-foreground">
+                  Escolha como você deseja que a interface seja exibida
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-md bg-muted">
+                      <Sun className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Modo Claro</Label>
+                      <p className="text-xs text-muted-foreground">Interface com cores claras</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={theme === 'light'}
+                    onCheckedChange={() => setTheme('light')}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-md bg-muted">
+                      <Moon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Modo Escuro</Label>
+                      <p className="text-xs text-muted-foreground">Interface com cores escuras</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={theme === 'dark'}
+                    onCheckedChange={() => setTheme('dark')}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-md bg-muted">
+                      <Monitor className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Sistema</Label>
+                      <p className="text-xs text-muted-foreground">Usar configuração do sistema</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={theme === 'system'}
+                    onCheckedChange={() => setTheme('system')}
+                  />
+                </div>
+              </div>
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
