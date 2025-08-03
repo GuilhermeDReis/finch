@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Badge } from './ui/badge';
-import { CreditCard, Smartphone, Banknote, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import type { TransactionRow } from '@/types/transaction';
 
@@ -10,19 +9,6 @@ interface TransactionIndicatorsProps {
 }
 
 export default function TransactionIndicators({ transaction }: TransactionIndicatorsProps) {
-  // Detectar método de pagamento na descrição
-  const getPaymentMethod = (description: string) => {
-    const desc = description.toLowerCase();
-    if (desc.includes('pix')) return { type: 'PIX', icon: Smartphone, color: 'bg-blue-500' };
-    if (desc.includes('crédito') || desc.includes('credito')) return { type: 'Crédito', icon: CreditCard, color: 'bg-purple-500' };
-    if (desc.includes('débito') || desc.includes('debito')) return { type: 'Débito', icon: CreditCard, color: 'bg-green-500' };
-    if (desc.includes('dinheiro') || desc.includes('espécie')) return { type: 'Dinheiro', icon: Banknote, color: 'bg-amber-500' };
-    return { type: 'Outros', icon: HelpCircle, color: 'bg-gray-500' };
-  };
-
-  const paymentMethod = getPaymentMethod(transaction.description);
-  const PaymentIcon = paymentMethod.icon;
-
   // Enhanced AI confidence color logic
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'bg-green-100 text-green-800 border-green-200';
@@ -39,24 +25,8 @@ export default function TransactionIndicators({ transaction }: TransactionIndica
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-1.5 min-w-[120px]">
-        {/* Badge do Método de Pagamento */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge 
-              variant="secondary" 
-              className={`flex items-center gap-1 text-xs font-medium ${paymentMethod.color} text-white border-0 w-fit`}
-            >
-              <PaymentIcon className="h-3 w-3" />
-              {paymentMethod.type}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Método de pagamento detectado na descrição</p>
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Badge de Confiança da IA */}
-        {transaction.aiSuggestion && (
+        {/* Badge de Confiança da IA - apenas se há categoria definida */}
+        {transaction.aiSuggestion && transaction.categoryId && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge 

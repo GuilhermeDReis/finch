@@ -19,6 +19,7 @@ export interface CreateMappingData {
   subcategoryId: string;
   confidenceScore: number;
   source: string;
+  mappingType?: 'bank' | 'credit_card';
 }
 
 export interface UpdateMappingData {
@@ -26,6 +27,7 @@ export interface UpdateMappingData {
   subcategoryId: string;
   confidenceScore: number;
   source: string;
+  mappingType?: 'bank' | 'credit_card';
 }
 
 export interface FindMappingResult {
@@ -307,7 +309,8 @@ class TransactionMappingService {
           subcategory_id: data.subcategoryId,
           confidence_score: data.confidenceScore,
           source: data.source,
-          original_description: data.standardizedIdentifier // Adicionando a descrição original
+          mapping_type: data.mappingType || 'bank',
+          original_description: data.standardizedIdentifier || '' // Garante que não seja null/undefined
         })
         .select()
         .single();
@@ -346,6 +349,7 @@ class TransactionMappingService {
           subcategory_id: data.subcategoryId,
           confidence_score: data.confidenceScore,
           source: data.source,
+          mapping_type: data.mappingType || 'bank',
           updated_at: new Date().toISOString()
         })
         .eq('id', id)

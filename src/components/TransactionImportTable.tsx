@@ -41,6 +41,7 @@ interface Subcategory {
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
+  layoutType?: 'bank' | 'credit_card';
 }
 
 // Enhanced normalization with integrity checks
@@ -257,34 +258,46 @@ const TransactionRow = React.memo(({
       </TableCell>
       
       <TableCell>
-        <Combobox
-          key={categoryKey}
-          value={transaction.categoryId || ''}
-          onValueChange={handleCategoryChange}
-          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-          searchPlaceholder="Buscar categoria..."
-          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-          width="w-60"
-          disabled={loadingCategories}
-        />
+        {isInformativeTransaction(transaction) ? (
+          <div className="text-muted-foreground text-sm italic">
+            {transaction.amount < 0 ? 'Pagamento informativo' : 'Transação informativa'}
+          </div>
+        ) : (
+          <Combobox
+            key={categoryKey}
+            value={transaction.categoryId || ''}
+            onValueChange={handleCategoryChange}
+            options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
+            placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+            searchPlaceholder="Buscar categoria..."
+            emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+            width="w-60"
+            disabled={loadingCategories}
+          />
+        )}
       </TableCell>
       
       <TableCell>
-        <Combobox
-          key={subcategoryKey}
-          value={transaction.subcategoryId || ''}
-          onValueChange={handleSubcategoryChange}
-          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-            value: sub.id,
-            label: sub.name
-          }))}
-          placeholder="Selecionar subcategoria"
-          disabled={!transaction.categoryId || loadingSubcategories}
-          searchPlaceholder="Buscar subcategoria..."
-          emptyText="Nenhuma subcategoria encontrada"
-          width="w-60"
-        />
+        {isInformativeTransaction(transaction) ? (
+          <div className="text-muted-foreground text-sm italic">
+            N/A
+          </div>
+        ) : (
+          <Combobox
+            key={subcategoryKey}
+            value={transaction.subcategoryId || ''}
+            onValueChange={handleSubcategoryChange}
+            options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+              value: sub.id,
+              label: sub.name
+            }))}
+            placeholder="Selecionar subcategoria"
+            disabled={!transaction.categoryId || loadingSubcategories}
+            searchPlaceholder="Buscar categoria..."
+            emptyText="Nenhuma subcategoria encontrada"
+            width="w-60"
+          />
+        )}
       </TableCell>
       
       <TableCell>
@@ -304,7 +317,8 @@ TransactionRow.displayName = 'TransactionRow';
 
 export default function TransactionImportTable({ 
   transactions, 
-  onTransactionsUpdate 
+  onTransactionsUpdate,
+  layoutType 
 }: TransactionImportTableProps) {
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -650,10 +664,41 @@ export default function TransactionImportTable({
     return options;
   }, [categories]);
 
+  // Helper function to check if transaction is informative (credit card only)
+  const isInformativeTransaction = useCallback((transaction: TransactionRow) => {
+    if (layoutType !== 'credit_card') return false;
+    
+    // Valores negativos (pagamentos da fatura)
+    if (transaction.amount < 0) return true;
+    
+    // Verificar descrições específicas que tornam a transação informativa
+    const descriptionLower = transaction.description.toLowerCase();
+    const informativeDescriptions = [
+      'pagamento recebido',
+      'juros de dívida encerrada', 
+      'saldo em atraso',
+      'crédito de atraso',
+      'encerramento de dívida'
+    ];
+    
+    const isInformativeDescription = informativeDescriptions.some(desc => 
+      descriptionLower.includes(desc)
+    );
+    
+    if (isInformativeDescription) return true;
+    
+    return false;
+  }, [layoutType]);
+
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
     // Estornos não precisam de atenção - são estáticos
     if (transaction.status === 'refunded') {
+      return false;
+    }
+    
+    // Registros informativos não precisam de atenção
+    if (isInformativeTransaction(transaction)) {
       return false;
     }
     
@@ -668,7 +713,7 @@ export default function TransactionImportTable({
     }
     
     return false;
-  }, []);
+  }, [layoutType, isInformativeTransaction]);
 
   // Filter handlers
   const handleFilterChange = useCallback((filterType: string, value: string) => {
@@ -700,16 +745,6 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
 
-  // Calculate payment method totals from visible transactions (excluding refunds)
-  const calculatePaymentMethodTotal = (keyword: string) => {
-    return mergedData
-      .filter(t => t.type === 'expense' && t.status !== 'refunded' && t.description.toLowerCase().includes(keyword.toLowerCase()))
-      .reduce((sum, t) => sum + t.amount, 0);
-  };
-
-  const totalPix = calculatePaymentMethodTotal('pix');
-  const totalCredito = calculatePaymentMethodTotal('crédito') + calculatePaymentMethodTotal('credito');
-  const totalDebito = calculatePaymentMethodTotal('débito') + calculatePaymentMethodTotal('debito');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -738,61 +773,58 @@ export default function TransactionImportTable({
 
   return (
     <div className="space-y-6">
-      {/* Statistics - Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-success">
-              {formatCurrency(totalEntrada)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Entrada</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-destructive">
-              {formatCurrency(totalSaida)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Saída</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {formatCurrency(diferenca)}
-            </div>
-            <div className="text-sm text-muted-foreground">Diferença</div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Statistics - Adjust for credit card imports */}
+      {layoutType === 'credit_card' ? (
+        // For credit card imports, show only Total Credit card
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-destructive">
+                {formatCurrency(
+                  mergedData.reduce((sum, transaction) => {
+                    // Excluir transações informativas do total
+                    if (isInformativeTransaction(transaction)) {
+                      return sum; // Não soma transações informativas
+                    }
+                    // Somar todas as outras transações
+                    return sum + Math.abs(transaction.amount);
+                  }, 0)
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground">Total Crédito</div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        // For bank imports, show all three cards
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-success">
+                {formatCurrency(totalEntrada)}
+              </div>
+              <div className="text-sm text-muted-foreground">Valor Entrada</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-destructive">
+                {formatCurrency(totalSaida)}
+              </div>
+              <div className="text-sm text-muted-foreground">Valor Saída</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
+                {formatCurrency(diferenca)}
+              </div>
+              <div className="text-sm text-muted-foreground">Diferença</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Payment Method Totals */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totalPix)}
-            </div>
-            <div className="text-sm text-muted-foreground">PIX</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-orange-600">
-              {formatCurrency(totalCredito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Crédito</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-purple-600">
-              {formatCurrency(totalDebito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Débito</div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Unified Transactions Summary */}
       {(mergedData.filter(t => t.status === 'refunded').length > 0 || mergedData.filter(t => t.status === 'unified-pix').length > 0) && (
@@ -953,11 +985,21 @@ export default function TransactionImportTable({
                         <div className="flex flex-col">
                           <span className={`font-semibold ${
                             isRefunded ? 'text-muted-foreground' :
-                            transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                            layoutType === 'credit_card' ? (
+                              transaction.amount < 0 ? 'text-success' : 'text-destructive'
+                            ) : (
+                              transaction.type === 'income' ? 'text-success' : 'text-destructive'
+                            )
                           }`}>
                             {isRefunded ? 
                               `${formatCurrency(transaction.amount)} (Estornado)` :
-                              `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
+                              layoutType === 'credit_card' ? (
+                                transaction.amount < 0 ?
+                                  `-${formatCurrency(Math.abs(transaction.amount))}` :
+                                  `+${formatCurrency(transaction.amount)}`
+                              ) : (
+                                `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
+                              )
                             }
                           </span>
                         </div>
@@ -984,8 +1026,11 @@ export default function TransactionImportTable({
                       </TableCell>
                       
                       <TableCell>
-                        {isRefunded ? (
-                          <span className="text-muted-foreground text-sm">-</span>
+                        {isRefunded || isInformativeTransaction(transaction) ? (
+                          <div className="text-muted-foreground text-sm italic">
+                            {isRefunded ? '-' : 
+                             transaction.amount < 0 ? 'Pagamento informativo' : 'Saldo informativo'}
+                          </div>
                         ) : (
                           <Combobox
                             key={generateStableKey(transaction, 'category-')}
@@ -1009,8 +1054,10 @@ export default function TransactionImportTable({
                       </TableCell>
                       
                       <TableCell>
-                        {isRefunded ? (
-                          <span className="text-muted-foreground text-sm">-</span>
+                        {isRefunded || isInformativeTransaction(transaction) ? (
+                          <div className="text-muted-foreground text-sm italic">
+                            {isRefunded ? '-' : 'N/A'}
+                          </div>
                         ) : (
                           <Combobox
                             key={generateStableKey(transaction, 'subcategory-')}
@@ -1032,16 +1079,20 @@ export default function TransactionImportTable({
                       </TableCell>
                       
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => updateTransaction(transaction.id, {
-                            isEditing: !transaction.isEditing,
-                            editedDescription: transaction.description
-                          })}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
+                        {isRefunded || isInformativeTransaction(transaction) ? (
+                          <div className="text-muted-foreground text-sm">-</div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateTransaction(transaction.id, {
+                              isEditing: !transaction.isEditing,
+                              editedDescription: transaction.description
+                            })}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
