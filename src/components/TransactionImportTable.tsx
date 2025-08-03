@@ -109,7 +109,9 @@ const TransactionRow = React.memo(({
   needsAttention,
   getFilteredSubcategories,
   formatCurrency,
-  formatDate
+  formatDate,
+  isInformativeTransaction,
+  layoutType
 }: {
   transaction: TransactionRow;
   categories: Category[];
@@ -124,6 +126,8 @@ const TransactionRow = React.memo(({
   getFilteredSubcategories: (categoryId: string) => Subcategory[];
   formatCurrency: (amount: number) => string;
   formatDate: (dateStr: string) => string;
+  isInformativeTransaction: (transaction: TransactionRow) => boolean;
+  layoutType?: 'bank' | 'credit_card';
 }) => {
   const requiresAttention = needsAttention(transaction);
   
@@ -349,6 +353,9 @@ export default function TransactionImportTable({
     loadCategories();
     loadSubcategories();
   }, []);
+
+  // Wait for both categories and subcategories to be loaded before showing the table
+  const isDataReady = !loadingCategories && !loadingSubcategories && categories.length > 0 && subcategories.length > 0;
 
   // Helper function to detect payment method from description
   const getPaymentMethod = (description: string): string => {
@@ -954,149 +961,26 @@ export default function TransactionImportTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {getCurrentPageData().map(transaction => {
-                  const requiresAttention = needsAttention(transaction);
-                  const isRefunded = transaction.status === 'refunded';
-                  const isUnifiedPix = transaction.status === 'unified-pix';
-                  
-                  return (
-                    <TableRow 
-                      key={generateStableKey(transaction, 'transaction-')}
-                      className={`
-                        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
-                        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
-                        ${isRefunded ? 'bg-gray-50 text-gray-600' : ''}
-                        ${isUnifiedPix ? 'bg-blue-50 text-blue-800' : ''}
-                        transition-colors duration-200
-                      `}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedRows.has(transaction.id)}
-                          onCheckedChange={() => toggleRowSelection(transaction.id)}
-                        />
-                      </TableCell>
-                      
-                      <TableCell className="font-mono text-sm">
-                        {formatDate(transaction.date)}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className={`font-semibold ${
-                            isRefunded ? 'text-muted-foreground' :
-                            layoutType === 'credit_card' ? (
-                              transaction.amount < 0 ? 'text-success' : 'text-destructive'
-                            ) : (
-                              transaction.type === 'income' ? 'text-success' : 'text-destructive'
-                            )
-                          }`}>
-                            {isRefunded ? 
-                              `${formatCurrency(transaction.amount)} (Estornado)` :
-                              layoutType === 'credit_card' ? (
-                                transaction.amount < 0 ?
-                                  `-${formatCurrency(Math.abs(transaction.amount))}` :
-                                  `+${formatCurrency(transaction.amount)}`
-                              ) : (
-                                `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
-                              )
-                            }
-                          </span>
-                        </div>
-                      </TableCell>
-                      
-                      <TableCell>
-                        <div className="max-w-xs" title={transaction.description}>
-                          <span className="block truncate">{transaction.description}</span>
-                          {requiresAttention && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <AlertCircle className="h-3 w-3 text-yellow-600" />
-                              <span className="text-xs text-yellow-600">Requer atenção</span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {/* Não mostrar indicadores para estornos */}
-                          {!isRefunded && <TransactionIndicators transaction={transaction} />}
-                          <UnifiedTransactionBadge status={transaction.status} />
-                        </div>
-                      </TableCell>
-                      
-                      <TableCell>
-                        {isRefunded || isInformativeTransaction(transaction) ? (
-                          <div className="text-muted-foreground text-sm italic">
-                            {isRefunded ? '-' : 
-                             transaction.amount < 0 ? 'Pagamento informativo' : 'Saldo informativo'}
-                          </div>
-                        ) : (
-                          <Combobox
-                            key={generateStableKey(transaction, 'category-')}
-                            value={transaction.categoryId || ''}
-                            onValueChange={(value) => updateTransaction(transaction.id, {
-                              categoryId: value,
-                              subcategoryId: undefined,
-                              aiSuggestion: transaction.aiSuggestion ? {
-                                ...transaction.aiSuggestion,
-                                isAISuggested: false
-                              } : undefined
-                            })}
-                            options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-                            placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-                            searchPlaceholder="Buscar categoria..."
-                            emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                            width="w-60"
-                            disabled={loadingCategories}
-                          />
-                        )}
-                      </TableCell>
-                      
-                      <TableCell>
-                        {isRefunded || isInformativeTransaction(transaction) ? (
-                          <div className="text-muted-foreground text-sm italic">
-                            {isRefunded ? '-' : 'N/A'}
-                          </div>
-                        ) : (
-                          <Combobox
-                            key={generateStableKey(transaction, 'subcategory-')}
-                            value={transaction.subcategoryId || ''}
-                            onValueChange={(value) => updateTransaction(transaction.id, {
-                              subcategoryId: value
-                            })}
-                            options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-                              value: sub.id,
-                              label: sub.name
-                            }))}
-                            placeholder="Selecionar subcategoria"
-                            disabled={!transaction.categoryId || loadingSubcategories}
-                            searchPlaceholder="Buscar subcategoria..."
-                            emptyText="Nenhuma subcategoria encontrada"
-                            width="w-60"
-                          />
-                        )}
-                      </TableCell>
-                      
-                      <TableCell>
-                        {isRefunded || isInformativeTransaction(transaction) ? (
-                          <div className="text-muted-foreground text-sm">-</div>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => updateTransaction(transaction.id, {
-                              isEditing: !transaction.isEditing,
-                              editedDescription: transaction.description
-                            })}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {getCurrentPageData().map(transaction => (
+                  <TransactionRow
+                    key={generateStableKey(transaction, 'transaction-')}
+                    transaction={transaction}
+                    categories={categories}
+                    subcategories={subcategories}
+                    selectedRows={selectedRows}
+                    loadingCategories={loadingCategories}
+                    loadingSubcategories={loadingSubcategories}
+                    categoryOptions={categoryOptions}
+                    onUpdateTransaction={updateTransaction}
+                    onToggleSelection={toggleRowSelection}
+                    needsAttention={needsAttention}
+                    getFilteredSubcategories={getFilteredSubcategories}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                    isInformativeTransaction={isInformativeTransaction}
+                    layoutType={layoutType}
+                  />
+                ))}
               </TableBody>
             </Table>
           </div>

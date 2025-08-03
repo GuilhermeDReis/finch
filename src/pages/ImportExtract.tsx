@@ -218,7 +218,8 @@ export default function ImportExtract() {
         
         const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
           newTransactionsOnly,
-          user.id
+          user.id,
+          'credit_card' // Use credit_card mapping type for credit transactions
         );
 
         console.log('📊 [CREDIT-MAPPING] Credit mapping results:', {
@@ -711,19 +712,23 @@ export default function ImportExtract() {
       const duplicatesWithExistingData = duplicateResults.duplicates.map(duplicate => {
         const existingTransaction = duplicate.existing;
         
-      console.log('🔄 [DUPLICATE-UPDATE] Processing duplicate with existing data:', {
-        newTransactionId: duplicate.new.id,
-        existingTransactionId: existingTransaction.id,
-        existingCategoryId: existingTransaction.category_id,
-        existingSubcategoryId: existingTransaction.subcategory_id,
-        existingDescription: existingTransaction.description
-      });
-        
+        console.log('🔄 [DUPLICATE-UPDATE] Processing duplicate with existing data:', {
+          newTransactionId: duplicate.new.id,
+          existingTransactionId: existingTransaction.id,
+          existingCategoryId: existingTransaction.category_id,
+          existingSubcategoryId: existingTransaction.subcategory_id,
+          existingDescription: existingTransaction.description,
+          categoryIdType: typeof existingTransaction.category_id,
+          subcategoryIdType: typeof existingTransaction.subcategory_id,
+          categoryIdValid: isValidUUID(existingTransaction.category_id),
+          subcategoryIdValid: isValidUUID(existingTransaction.subcategory_id)
+        });
+
         return {
           ...duplicate.new,
           // Use existing categories from database
-          categoryId: existingTransaction.category_id,
-          subcategoryId: existingTransaction.subcategory_id,
+          categoryId: existingTransaction.category_id || duplicate.new.categoryId,
+          subcategoryId: existingTransaction.subcategory_id || duplicate.new.subcategoryId,
           // Mark as using existing data
           aiSuggestion: {
             categoryId: existingTransaction.category_id,
@@ -737,10 +742,94 @@ export default function ImportExtract() {
       
       unifiedTransactions.push(...duplicatesWithExistingData);
       
-      // Skip AI processing for update mode - go directly to review
-      console.log('✅ [DUPLICATE] Skipping AI processing for update mode, going to review');
-      setTransactions(unifiedTransactions);
-      setCurrentStep('review');
+      // Skip AI processing for update mode - but ensure categories are loaded first
+      console.log('✅ [DUPLICATE] Skipping AI processing for update mode, ensuring categories are loaded');
+      
+      // Wait for categories and subcategories to be fully loaded before proceeding
+      try {
+        console.log('🔍 [DUPLICATE-UPDATE] Ensuring categories and subcategories are loaded...');
+        
+        // Force reload categories and subcategories to ensure they're available
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('*')
+          .order('name');
+          
+        const { data: subcategoriesData, error: subcategoriesError } = await supabase
+          .from('subcategories')
+          .select('*')
+          .order('name');
+          
+        if (categoriesError) {
+          console.error('❌ [DUPLICATE-UPDATE] Error loading categories:', categoriesError);
+          toast({
+            title: "Erro ao carregar categorias",
+            description: "Não foi possível carregar as categorias para exibição",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        if (subcategoriesError) {
+          console.error('❌ [DUPLICATE-UPDATE] Error loading subcategories:', subcategoriesError);
+          toast({
+            title: "Erro ao carregar subcategorias", 
+            description: "Não foi possível carregar as subcategorias para exibição",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        console.log('✅ [DUPLICATE-UPDATE] Categories and subcategories loaded successfully:', {
+          categories: categoriesData?.length || 0,
+          subcategories: subcategoriesData?.length || 0,
+          categoriesData: categoriesData?.slice(0, 3).map(c => ({ id: c.id, name: c.name })),
+          subcategoriesData: subcategoriesData?.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
+        });
+        
+        // Validate that the existing category/subcategory IDs are valid
+        const validCategoryIds = new Set(categoriesData?.map(c => c.id) || []);
+        const validSubcategoryIds = new Set(subcategoriesData?.map(s => s.id) || []);
+        
+        // Validate and clean up the unified transactions
+        const validatedTransactions = unifiedTransactions.map(transaction => {
+          const validatedTransaction = { ...transaction };
+          
+          // Validate categoryId
+          if (transaction.categoryId && !validCategoryIds.has(transaction.categoryId)) {
+            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid categoryId found:', {
+              transactionId: transaction.id,
+              categoryId: transaction.categoryId,
+              description: transaction.description
+            });
+            validatedTransaction.categoryId = undefined;
+          }
+          
+          // Validate subcategoryId
+          if (transaction.subcategoryId && !validSubcategoryIds.has(transaction.subcategoryId)) {
+            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid subcategoryId found:', {
+              transactionId: transaction.id,
+              subcategoryId: transaction.subcategoryId,
+              description: transaction.description
+            });
+            validatedTransaction.subcategoryId = undefined;
+          }
+          
+          return validatedTransaction;
+        });
+        
+        console.log('✅ [DUPLICATE-UPDATE] Transactions validated, proceeding to review');
+        setTransactions(validatedTransactions);
+        setCurrentStep('review');
+        
+      } catch (error) {
+        console.error('❌ [DUPLICATE-UPDATE] Error ensuring categories are loaded:', error);
+        toast({
+          title: "Erro ao preparar dados",
+          description: "Ocorreu um erro ao preparar os dados para edição",
+          variant: "destructive"
+        });
+      }
       
     } else if (selectedImportMode === 'import-all') {
       // For import-all mode, include duplicates but they will go through AI processing
@@ -911,7 +1000,7 @@ export default function ImportExtract() {
             const existingMapping = await transactionMappingService.findMapping(standardizedIdentifier, user.id);
             
             // Determine the source of the categorization
-            const source = transaction.aiSuggestion?.isAISuggested ? 'AI-Credit' : 'Manual-Credit';
+            const source = transaction.aiSuggestion?.isAISuggested ? 'AI' : 'Manual';
             const confidenceScore = transaction.aiSuggestion?.confidence || 1;
             
             console.log('🔍 [CREDIT-MAPPING] Mapping details:', {
