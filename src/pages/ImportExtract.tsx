@@ -50,7 +50,7 @@ interface ImportSession {
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
-  const [selectedBank, setSelectedBank] = useState<string>('nubank');
+  const [selectedBank, setSelectedBank] = useState<string>('00000000-0000-0000-0000-000000000001'); // Start with Nubank UUID instead of 'nubank'
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
 
@@ -94,6 +94,8 @@ export default function ImportExtract() {
     newTransactions: TransactionRow[];
   } | null>(null);
   const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
+  const [currentProcessingMessage, setCurrentProcessingMessage] = useState('');
+  const [currentProcessingSubMessage, setCurrentProcessingSubMessage] = useState('');
   const { toast } = useToast();
 
   // Check authentication status
@@ -124,7 +126,8 @@ export default function ImportExtract() {
     return true;
   };
 
-  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+    setProcessingProgress(0);
     // console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
     
     // Store the layout type
@@ -202,8 +205,10 @@ export default function ImportExtract() {
         console.log('💳 [IMPORT] Processing', newTransactionsOnly.length, 'new credit card transactions for AI categorization');
 
         setIsProcessing(true);
-        setProcessingProgress(25);
+setProcessingProgress(10);
         setCurrentStep('processing');
+        setCurrentProcessingMessage('Processando Transações de Crédito');
+        setCurrentProcessingSubMessage('Verificando duplicados e preparando categorização...');
 
         // Get current user for mapping lookup
         const { data: { user } } = await supabase.auth.getUser();
@@ -211,7 +216,8 @@ export default function ImportExtract() {
           throw new Error('User not authenticated');
         }
 
-        setProcessingProgress(50);
+setProcessingProgress(30);
+        setCurrentProcessingSubMessage('Aplicando mapeamentos existentes...');
 
         // First, apply existing credit card mappings to avoid unnecessary AI processing
         console.log('🔍 [CREDIT-MAPPING] Checking for existing credit card mappings...');
@@ -228,7 +234,8 @@ export default function ImportExtract() {
           total: transactionRows.length
         });
 
-        setProcessingProgress(65);
+setProcessingProgress(50);
+        setCurrentProcessingSubMessage('Categorizando com IA...');
 
         // Only process unmapped transactions with Gemini AI
         let aiCategorizedTransactions: any[] = [];
@@ -280,7 +287,8 @@ export default function ImportExtract() {
           console.log('✅ [CREDIT-MAPPING] All credit transactions already mapped, skipping AI categorization');
         }
 
-        setProcessingProgress(85);
+setProcessingProgress(70);
+        setCurrentProcessingSubMessage('Finalizando categorização...');
 
         // Combine mapped transactions with AI categorized transactions
         const fullyCategorizedTransactions = [
@@ -323,7 +331,13 @@ export default function ImportExtract() {
           })
         ];
         
-        setProcessingProgress(100);
+setProcessingProgress(100);
+        setCurrentProcessingSubMessage('Processo concluído!');
+        toast({
+        title: "Processo Concluído",
+        description: "Importação realizada com sucesso!",
+        variant: "default"
+      });
         setTransactions(fullyCategorizedTransactions);
         setCurrentStep('review');
         
@@ -502,6 +516,8 @@ export default function ImportExtract() {
     setIsProcessing(true);
     setProcessingProgress(0);
     setCurrentStep('processing');
+    setCurrentProcessingMessage('Processando Transações');
+    setCurrentProcessingSubMessage('Inicializando categorização...');
 
     try {
       // Get current user
@@ -560,7 +576,8 @@ export default function ImportExtract() {
         saveSessionToStorage(newSession);
 
         // Update progress
-        setProcessingProgress(25);
+setProcessingProgress(10);
+        setCurrentProcessingSubMessage('Criando sessão de importação...');
 
         // Process with AI categorization only for unmapped transactions
         // console.log('🤖 [AI] Calling gemini-categorize-transactions function');
@@ -575,7 +592,8 @@ export default function ImportExtract() {
 
         // console.log('✅ [AI] AI categorization completed successfully');
         categorizedTransactions = aiCategorizedTransactions || [];
-        setProcessingProgress(75);
+setProcessingProgress(80);
+        setCurrentProcessingSubMessage('Finalizando categorização...');
       } else {
         // console.log('✅ [MAPPING] All transactions already mapped, skipping AI categorization');
         setProcessingProgress(75);
@@ -939,10 +957,14 @@ export default function ImportExtract() {
         return;
       }
       
-      setIsProcessing(true);
-      setProcessingProgress(0);
+setIsProcessing(true);
+      setProcessingProgress(10);
+      setCurrentProcessingMessage('Importando Transações de Crédito');
+      setCurrentProcessingSubMessage('Validando dados...');
 
       try {
+        setProcessingProgress(20);
+        setCurrentProcessingSubMessage('Preparando transações para importação...');
         // Prepare credit card transactions for import
         const creditCardTransactionsToImport = transactions.map(transaction => ({
           date: transaction.date, // Use date as-is without time component
@@ -953,24 +975,62 @@ export default function ImportExtract() {
           type: transaction.type,
           category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
           subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
-          bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
+          bank_id: selectedBank, // Use selectedBank directly as it now contains the UUID
           import_session_id: currentSession.id,
           user_id: user.id
         }));
 
         // console.log('💾 [FINAL] Importing', creditCardTransactionsToImport.length, 'credit card transactions');
-
-        // Import to transaction_credit table
-        const { data, error } = await supabase
-          .from('transaction_credit')
-          .insert(creditCardTransactionsToImport)
-          .select();
-
-        if (error) {
-          // console.error('❌ [FINAL] Error importing credit card transactions:', error);
-          throw error;
+        
+        setProcessingProgress(40);
+        setCurrentProcessingSubMessage('Salvando no banco de dados...');
+        
+        // Import to transaction_credit table with manual duplicate handling
+        for (const transaction of creditCardTransactionsToImport) {
+          // Check if transaction already exists
+          const { data: existingTransaction, error: checkError } = await supabase
+            .from('transaction_credit')
+            .select('id')
+            .eq('external_id', transaction.external_id)
+            .maybeSingle();
+          
+          if (checkError) {
+            console.error('❌ [FINAL] Error checking existing credit card transaction:', transaction.external_id, checkError);
+            throw checkError;
+          }
+          
+          let result;
+          if (existingTransaction) {
+            // Update existing transaction
+            const { data, error } = await supabase
+              .from('transaction_credit')
+              .update(transaction)
+              .eq('external_id', transaction.external_id)
+              .select();
+            
+            if (error) {
+              console.error('❌ [FINAL] Error updating credit card transaction:', transaction.external_id, error);
+              throw error;
+            }
+            result = data;
+          } else {
+            // Insert new transaction
+            const { data, error } = await supabase
+              .from('transaction_credit')
+              .insert(transaction)
+              .select();
+            
+            if (error) {
+              console.error('❌ [FINAL] Error inserting credit card transaction:', transaction.external_id, error);
+              throw error;
+            }
+            result = data;
+          }
         }
 
+        setProcessingProgress(60);
+        setCurrentProcessingSubMessage('Criando mapeamentos para futuras importações...');
+        
         // Update transaction mappings for credit card transactions
         // This allows future imports to use the categorization decisions made during this import
         console.log('🔍 [CREDIT-MAPPING] Starting mapping process for', transactions.length, 'transactions');
@@ -1042,6 +1102,9 @@ export default function ImportExtract() {
             console.error('❌ [CREDIT-MAPPING] Error processing credit transaction mapping for transaction:', transaction.id, error);
           }
         }
+        
+        setProcessingProgress(90);
+        setCurrentProcessingSubMessage('Concluindo importação...');
 
         setImportResults({
           imported: creditCardTransactionsToImport.length,
@@ -1064,13 +1127,15 @@ export default function ImportExtract() {
       } catch (error) {
         // console.error('💥 [FINAL] Exception in credit card import:', error);
 
-        await supabase
-          .from('import_sessions')
-          .update({
-            status: 'failed',
-            error_message: error instanceof Error ? error.message : 'Unknown error'
-          })
-          .eq('id', importSession.id);
+        if (currentSession) {
+          await supabase
+            .from('import_sessions')
+            .update({
+              status: 'failed',
+              error_message: error instanceof Error ? error.message : 'Unknown error'
+            })
+            .eq('id', currentSession.id);
+        }
 
         toast({
           title: "Erro na importação",
@@ -1118,27 +1183,29 @@ export default function ImportExtract() {
         type: transaction.type,
         category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
         subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
-        bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
+        bank_id: selectedBank, // Use selectedBank directly as it now contains the UUID
         payment_method: null,
         tags: null,
         notes: null,
         is_recurring: false,
         recurring_frequency: null,
-        import_session_id: importSession.id,
+        import_session_id: currentSession.id,
         user_id: user.id
       }));
 
       // console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
 
-      // Import to database
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(transactionsToImport)
-        .select();
-
-      if (error) {
-        // console.error('❌ [FINAL] Error importing transactions:', error);
-        throw error;
+      // Import to database using upsert for update functionality
+      for (const transaction of transactionsToImport) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .upsert(transaction, { onConflict: 'external_id' })
+          .select();
+        
+        if (error) {
+          console.error('❌ [FINAL] Error upserting transaction:', transaction.external_id, error);
+          throw error;
+        }
       }
 
       // Update transaction mappings with final user decisions
@@ -1194,7 +1261,7 @@ export default function ImportExtract() {
           processed_records: transactionsToImport.length,
           completed_at: new Date().toISOString()
         })
-        .eq('id', importSession.id);
+        .eq('id', currentSession.id);
 
       setImportResults({
         imported: transactionsToImport.length,
@@ -1245,6 +1312,8 @@ export default function ImportExtract() {
     setExistingTransactions([]);
     setDuplicateAnalysis(null);
     setLayoutType(null);
+    setCurrentProcessingMessage('');
+    setCurrentProcessingSubMessage('');
     
     // Clear session from storage when resetting
     clearSessionFromStorage();
@@ -1387,7 +1456,10 @@ export default function ImportExtract() {
                   <span>Categorizando com IA...</span>
                   <span>{processingProgress}%</span>
                 </div>
-                <Progress value={processingProgress} className="w-full" />
+<Progress value={processingProgress} className="w-full" />
+                  <div className="text-sm text-muted-foreground mt-2">
+                    {processingProgress < 100 ? "Processando..." : "Concluído!"}
+                  </div>
               </div>
               
               {importSession && (
@@ -1447,7 +1519,12 @@ export default function ImportExtract() {
       )}
 
       {/* Loading Overlay */}
-      <LoadingOverlay isVisible={isProcessing} />
+      <LoadingOverlay 
+        isVisible={isProcessing} 
+        message={currentProcessingMessage}
+        progress={processingProgress}
+        subMessage={currentProcessingSubMessage}
+      />
     </div>
   );
 }

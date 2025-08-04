@@ -5,6 +5,7 @@ interface DashboardTotals {
   totalIncome: number;
   totalExpenses: number;
   balance: number;
+  totalCredit: number;
 }
 
 export function useDashboardTotals(year: number, month: number) {
@@ -12,6 +13,7 @@ export function useDashboardTotals(year: number, month: number) {
     totalIncome: 0,
     totalExpenses: 0,
     balance: 0,
+    totalCredit: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -28,7 +30,16 @@ export function useDashboardTotals(year: number, month: number) {
           .gte('date', startDate.toISOString().split('T')[0])
           .lte('date', endDate.toISOString().split('T')[0]);
 
+        // Fetch credit card transactions for the same period
+        const { data: creditTransactions, error: creditError } = await supabase
+          .from('transaction_credit')
+          .select('amount')
+          .gte('date', startDate.toISOString().split('T')[0])
+          .lte('date', endDate.toISOString().split('T')[0])
+          .gt('amount', 0); // Only positive amounts (actual expenses, not payments)
+
         if (error) throw error;
+        if (creditError) throw creditError;
 
         const income = transactions
           ?.filter(t => t.type === 'income')
@@ -38,10 +49,14 @@ export function useDashboardTotals(year: number, month: number) {
           ?.filter(t => t.type === 'expense')
           .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
+        const credit = creditTransactions
+          ?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+
         setTotals({
           totalIncome: income,
           totalExpenses: expenses,
           balance: income - expenses,
+          totalCredit: credit,
         });
       } catch (error) {
         // console.error('Error fetching dashboard totals:', error);
@@ -49,6 +64,7 @@ export function useDashboardTotals(year: number, month: number) {
           totalIncome: 0,
           totalExpenses: 0,
           balance: 0,
+          totalCredit: 0,
         });
       } finally {
         setLoading(false);
