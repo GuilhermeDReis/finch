@@ -14,6 +14,7 @@ import DashboardPage from "./pages/DashboardPage";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import { UserProfile } from "./pages/UserProfile";
+import CreditCards from "./pages/CreditCards";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,13 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <UserProfile />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/credit-cards" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CreditCards />
                   </Layout>
                 </ProtectedRoute>
               } />
