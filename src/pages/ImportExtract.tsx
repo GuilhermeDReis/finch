@@ -13,11 +13,13 @@ import DuplicateAnalysisCard from '@/components/DuplicateAnalysisCard';
 import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { BankSelector } from '@/components/BankSelector';
+import ImportCreditCardCard from '@/components/ImportCreditCardCard';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import transactionMappingService from '@/services/transactionMapping';
 import creditCardCategorizationService from '@/services/creditCardCategorization';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Define ParsedTransaction interface based on CSVUploader
 interface ParsedTransaction {
@@ -49,7 +51,7 @@ interface ImportSession {
 
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'identify' | 'processing' | 'categorization' | 'completion' | 'duplicate-analysis'>('upload');
   const [selectedBank, setSelectedBank] = useState<string>('nubank');
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
@@ -124,11 +126,56 @@ export default function ImportExtract() {
     return true;
   };
 
-  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+  const [selectedCreditCardId, setSelectedCreditCardId] = useState<string>('');
+  const [banks, setBanks] = useState<any[]>([]);
+  const [creditCards, setCreditCards] = useState<any[]>([]);
+  const [loadingCreditCards, setLoadingCreditCards] = useState(false);
+
+  // Load credit cards when identify step is reached for credit_card layout
+  useEffect(() => {
+    const loadCreditCards = async () => {
+      if (currentStep === 'identify' && layoutType === 'credit_card') {
+        setLoadingCreditCards(true);
+        
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          const { data: creditCardsData, error } = await supabase
+            .from('credit_cards')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('is_archived', false)
+            .order('description');
+
+          if (error) {
+            console.error('Error loading credit cards:', error);
+            toast({
+              title: "Erro ao carregar cartões",
+              description: "Não foi possível carregar os cartões de crédito",
+              variant: "destructive"
+            });
+            return;
+          }
+
+          setCreditCards(creditCardsData || []);
+        } catch (error) {
+          console.error('Error loading credit cards:', error);
+        } finally {
+          setLoadingCreditCards(false);
+        }
+      }
+    };
+
+    loadCreditCards();
+  }, [currentStep, layoutType, toast]);
+
+  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card', bankId?: string) => {
     // console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
     
-    // Store the layout type
+    // Store the layout type and bank ID
     setLayoutType(layoutType || null);
+    setSelectedBank(bankId || selectedBank);
     
     // Convert ParsedTransaction to TransactionRow
     const transactionRows: TransactionRow[] = parsedTransactions.map(transaction => {
@@ -146,10 +193,35 @@ export default function ImportExtract() {
       };
     });
     
-    // For credit card transactions, check for duplicates and send to Gemini for categorization before review
+    // Store transactions for processing
+    setTransactions(transactionRows);
+    
+    // Move to identify step for both bank and credit card to select the appropriate options
+    setCurrentStep('identify');
+  };
+
+  const handleIdentificationComplete = async () => {
+    // Validate selections
+    if (!selectedBank) {
+      toast({
+        title: "Seleção Necessária",
+        description: "Por favor, selecione um banco para continuar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (layoutType === 'credit_card' && !selectedCreditCardId) {
+      toast({
+        title: "Seleção Necessária",
+        description: "Por favor, selecione um cartão de crédito para continuar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Now process based on layout type
     if (layoutType === 'credit_card') {
-      // console.log('💳 [IMPORT] Credit card transactions detected, checking for duplicates first');
-      
       try {
         // Check authentication first
         const isAuthenticated = await checkAuthentication();
@@ -176,12 +248,12 @@ export default function ImportExtract() {
         setExistingTransactions(existingCreditData || []);
         
         // Detect duplicates for credit card transactions
-        const duplicateResults = detectDuplicates(transactionRows, existingCreditData || []);
+        const duplicateResults = detectDuplicates(transactions, existingCreditData || []);
         
         console.log('🔍 [CREDIT-IMPORT] Duplicate detection results:', {
           duplicates: duplicateResults.duplicates.length,
           newTransactions: duplicateResults.newTransactions.length,
-          total: transactionRows.length
+          total: transactions.length
         });
 
         // Check if we have duplicates that require user attention
@@ -225,7 +297,7 @@ export default function ImportExtract() {
         console.log('📊 [CREDIT-MAPPING] Credit mapping results:', {
           mapped: mappedTransactions.length,
           unmapped: unmappedTransactions.length,
-          total: transactionRows.length
+          total: transactions.length
         });
 
         setProcessingProgress(65);
@@ -325,7 +397,7 @@ export default function ImportExtract() {
         
         setProcessingProgress(100);
         setTransactions(fullyCategorizedTransactions);
-        setCurrentStep('review');
+        setCurrentStep('categorization');
         
       } catch (error) {
         console.error('💥 [IMPORT] Exception in credit card AI categorization:', error);
@@ -342,7 +414,9 @@ export default function ImportExtract() {
       return;
     }
     
-    try {
+    // For bank transactions, check for duplicates and send to Gemini for categorization
+    if (layoutType === 'bank') {
+      try {
       // Check authentication first
       const isAuthenticated = await checkAuthentication();
       if (!isAuthenticated) {
@@ -368,7 +442,7 @@ export default function ImportExtract() {
       setExistingTransactions(existingData || []);
       
       // Detect duplicates, refunds, and unified PIX
-      const duplicateResults = detectDuplicates(transactionRows, existingData || []);
+      const duplicateResults = detectDuplicates(transactions, existingData || []);
       
       // console.log('🔍 [IMPORT] Duplicate detection results:', {
       //   duplicates: duplicateResults.duplicates.length,
@@ -487,6 +561,7 @@ export default function ImportExtract() {
         description: "Ocorreu um erro ao processar as transações",
         variant: "destructive"
       });
+    }
     }
   };
 
@@ -618,7 +693,7 @@ export default function ImportExtract() {
 
       setTransactions(allCategorizedTransactions);
       setProcessingProgress(100);
-      setCurrentStep('review');
+      setCurrentStep('categorization');
 
     } catch (error) {
       // console.error('💥 [AI] Exception in AI categorization:', error);
@@ -820,7 +895,7 @@ export default function ImportExtract() {
         
         console.log('✅ [DUPLICATE-UPDATE] Transactions validated, proceeding to review');
         setTransactions(validatedTransactions);
-        setCurrentStep('review');
+        setCurrentStep('categorization');
         
       } catch (error) {
         console.error('❌ [DUPLICATE-UPDATE] Error ensuring categories are loaded:', error);
@@ -950,6 +1025,7 @@ export default function ImportExtract() {
           description: transaction.editedDescription || transaction.description,
           original_description: transaction.originalDescription,
           external_id: transaction.id,
+          credit_card_id: selectedCreditCardId,
           type: transaction.type,
           category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
           subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
@@ -1050,7 +1126,7 @@ export default function ImportExtract() {
         });
 
         setProcessingProgress(100);
-        setCurrentStep('results');
+        setCurrentStep('completion');
 
         // Clear session from storage after successful import
         clearSessionFromStorage();
@@ -1110,7 +1186,8 @@ export default function ImportExtract() {
 
       // Prepare transactions for final import
       const transactionsToImport = transactions.map(transaction => ({
-        external_id: transaction.id,
+external_id: transaction.id,
+      credit_card_id: selectedCreditCardId,
         date: transaction.date + 'T12:00:00', // Append noon time to avoid timezone shift
         amount: transaction.amount,
         description: transaction.editedDescription || transaction.description,
@@ -1203,7 +1280,7 @@ export default function ImportExtract() {
       });
 
       setProcessingProgress(100);
-      setCurrentStep('results');
+      setCurrentStep('completion');
 
       // Clear session from storage after successful import
       clearSessionFromStorage();
@@ -1254,7 +1331,7 @@ export default function ImportExtract() {
   const shouldShowDuplicateStep = duplicateAnalysis && duplicateAnalysis.duplicates.length > 0;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-4 md:p-6 space-y-6 overflow-x-hidden">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Importar Extrato</h1>
         {currentStep !== 'upload' && (
@@ -1265,30 +1342,25 @@ export default function ImportExtract() {
         )}
       </div>
 
-      {/* Progress Steps - Only show analysis step if there are duplicates */}
-      <div className="flex items-center space-x-4 mb-6">
+      {/* Progress Steps */}
+      <div className="flex items-center space-x-2 sm:space-x-4 mb-6 overflow-x-auto pb-2">
         <div className={`flex items-center ${currentStep === 'upload' ? 'text-primary' : 'text-muted-foreground'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
             currentStep === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
             1
           </div>
-          <span className="ml-2">Upload</span>
         </div>
         
-        {shouldShowDuplicateStep && (
-          <>
-            <div className="flex-1 h-px bg-border" />
-            <div className={`flex items-center ${currentStep === 'duplicate-analysis' ? 'text-primary' : 'text-muted-foreground'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                currentStep === 'duplicate-analysis' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-              }`}>
-                2
-              </div>
-              <span className="ml-2">Análise</span>
-            </div>
-          </>
-        )}
+        <div className="flex-1 h-px bg-border" />
+        
+        <div className={`flex items-center ${currentStep === 'identify' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            currentStep === 'identify' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}>
+            2
+          </div>
+        </div>
         
         <div className="flex-1 h-px bg-border" />
         
@@ -1296,43 +1368,63 @@ export default function ImportExtract() {
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
             currentStep === 'processing' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
-            {shouldShowDuplicateStep ? '3' : '2'}
+            3
           </div>
-          <span className="ml-2">Processamento</span>
         </div>
         
         <div className="flex-1 h-px bg-border" />
         
-        <div className={`flex items-center ${currentStep === 'review' ? 'text-primary' : 'text-muted-foreground'}`}>
+        <div className={`flex items-center ${currentStep === 'categorization' ? 'text-primary' : 'text-muted-foreground'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'review' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+            currentStep === 'categorization' ? 'bg-primary text-primary-foreground' : 'bg-muted'
           }`}>
-            {shouldShowDuplicateStep ? '4' : '3'}
+            4
           </div>
-          <span className="ml-2">Revisão</span>
-        </div>
-        
-        <div className="flex-1 h-px bg-border" />
-        
-        <div className={`flex items-center ${currentStep === 'results' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'results' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            {shouldShowDuplicateStep ? '5' : '4'}
-          </div>
-          <span className="ml-2">Resultados</span>
         </div>
       </div>
+
+      {/* Identification Step */}
+      {currentStep === 'identify' && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-medium">Selecione o banco</h2>
+          <Select onValueChange={(value) => setSelectedBank(value)} value={selectedBank}>
+            <SelectTrigger className="w-full max-w-sm border border-gray-200">
+              <SelectValue placeholder="Selecione o banco" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nubank">Nubank</SelectItem>
+              <SelectItem value="itau">Itaú</SelectItem>
+              <SelectItem value="bradesco">Bradesco</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {layoutType === 'credit_card' && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-medium">Selecione o cartão</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {creditCards.map((card) => (
+                  <ImportCreditCardCard
+                    key={card.id}
+                    card={card}
+                    isSelected={selectedCreditCardId === card.id}
+                    onClick={() => setSelectedCreditCardId(card.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Button onClick={handleIdentificationComplete}>
+            Continuar
+          </Button>
+        </div>
+      )}
 
       {/* Step Content */}
       {currentStep === 'upload' && (
         <div className="space-y-6">
-          <BankSelector 
-            value={selectedBank}
-            onValueChange={setSelectedBank}
-          />
           <CSVUploader 
-            onDataParsed={(data, layoutType) => handleDataParsed(data, layoutType)}
+            onDataParsed={(data, layoutType) => handleDataParsed(data, layoutType, selectedBank)}
             onError={(error) => {
               // console.error('CSV Upload Error:', error);
               toast({
@@ -1405,9 +1497,9 @@ export default function ImportExtract() {
         </Card>
       )}
 
-      {currentStep === 'review' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
+      {currentStep === 'categorization' && (
+        <div className="space-y-4 w-full">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h2 className="text-xl font-semibold">Revisar Transações</h2>
             <Button onClick={handleFinalImport} disabled={isProcessing}>
               {isProcessing ? (
@@ -1432,18 +1524,27 @@ export default function ImportExtract() {
         </div>
       )}
 
-      {currentStep === 'results' && importResults && (
-        <ImportResultsCard
-          result={{
-            successful: importResults.imported,
-            failed: 0,
-            skipped: importResults.skipped,
-            updated: 0,
-            total: importResults.imported + importResults.skipped,
-            errors: importResults.errors
-          }}
-          onClose={resetImport}
-        />
+      {/* Finalization Screen Outside Wizard */}
+      {currentStep === 'completion' && (
+        <div className="space-y-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-4">Importação finalizada!</h2>
+            <p className="text-muted-foreground mb-6">Suas transações foram processadas e importadas com sucesso.</p>
+          </div>
+          {importResults && (
+            <ImportResultsCard
+              result={{
+                successful: importResults.imported,
+                failed: 0,
+                skipped: importResults.skipped,
+                updated: 0,
+                total: importResults.imported + importResults.skipped,
+                errors: importResults.errors
+              }}
+              onClose={resetImport}
+            />
+          )}
+        </div>
       )}
 
       {/* Loading Overlay */}

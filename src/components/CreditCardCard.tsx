@@ -87,7 +87,7 @@ export function CreditCardCard({ creditCard, onEdit, onArchive }: CreditCardCard
             <CreditCardIcon brand={creditCard.brand} className="h-8 w-8" />
             <div>
               <h3 className="font-semibold text-lg leading-tight">{creditCard.description}</h3>
-              <p className="text-sm text-muted-foreground">{creditCard.banks.name}</p>
+              <p className="text-sm text-muted-foreground">{creditCard.banks?.name || 'Banco não informado'}</p>
             </div>
           </div>
           

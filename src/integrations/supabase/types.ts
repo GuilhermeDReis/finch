@@ -435,6 +435,7 @@ export type Database = {
           bank_id: string | null
           category_id: string | null
           created_at: string
+          credit_card_id: string | null
           date: string
           description: string
           external_id: string | null
@@ -455,6 +456,7 @@ export type Database = {
           bank_id?: string | null
           category_id?: string | null
           created_at?: string
+          credit_card_id?: string | null
           date: string
           description: string
           external_id?: string | null
@@ -475,6 +477,7 @@ export type Database = {
           bank_id?: string | null
           category_id?: string | null
           created_at?: string
+          credit_card_id?: string | null
           date?: string
           description?: string
           external_id?: string | null
@@ -510,6 +513,13 @@ export type Database = {
             columns: ["bank_id"]
             isOneToOne: false
             referencedRelation: "banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
             referencedColumns: ["id"]
           },
           {

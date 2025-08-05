@@ -8,7 +8,7 @@ export type CreditCardBrand = Enums<'credit_card_brand'>;
 
 // Extended types with relations
 export interface CreditCardWithBank extends CreditCard {
-  banks: {
+  banks?: {
     id: string;
     name: string;
     icon_url: string | null;

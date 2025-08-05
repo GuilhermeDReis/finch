@@ -8,7 +8,7 @@ import { CreditCardModal } from '@/components/CreditCardModal';
 import { CreditCardGrid } from '@/components/CreditCardGrid';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { CreditCardWithBank } from '@/types/creditCard';
+import { CreditCardWithBank, CreditCard } from '@/types/creditCard';
 
 export default function CreditCards() {
   const [creditCards, setCreditCards] = useState<CreditCardWithBank[]>([]);
@@ -24,6 +24,23 @@ export default function CreditCards() {
     try {
       setLoading(true);
       
+      // First, let's test basic connectivity
+      console.log('Testing Supabase connectivity...');
+      
+      // Test if we can connect to supabase at all
+      const { data: testData, error: testError } = await supabase
+        .from('banks')
+        .select('id, name')
+        .limit(1);
+      
+      if (testError) {
+        console.error('Basic connectivity test failed:', testError);
+        throw new Error(`Conectividade falhou: ${testError.message}`);
+      }
+      
+      
+      console.log('Basic connectivity OK, testing credit cards for user:', user.id);
+      
       const { data, error } = await supabase
         .from('credit_cards')
         .select(`
@@ -38,12 +55,21 @@ export default function CreditCards() {
         .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
 
+      console.log('Credit cards fetched successfully:', data);
       setCreditCards(data || []);
     } catch (error) {
       console.error('Error fetching credit cards:', error);
-      toast.error('Erro ao carregar cartões de crédito');
+      toast.error(`Erro ao carregar cartões de crédito: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -120,30 +146,13 @@ export default function CreditCards() {
               <p className="text-muted-foreground">Carregando cartões de crédito...</p>
             </div>
           </div>
-        ) : creditCards.length === 0 ? (
-          // Empty state
-          <Card className="max-w-2xl mx-auto">
-            <CardHeader className="text-center">
-              <CardTitle className="flex items-center justify-center gap-2">
-                💳 Nenhum cartão cadastrado
-              </CardTitle>
-              <CardDescription>
-                Comece adicionando seu primeiro cartão de crédito para acompanhar seus gastos e limites.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button onClick={handleAddNew} className="flex items-center gap-2 mx-auto">
-                <Plus className="h-4 w-4" />
-                Cadastrar Primeiro Cartão
-              </Button>
-            </CardContent>
-          </Card>
         ) : (
-          // Credit cards grid
+          // Credit cards grid - Always show with action card
           <CreditCardGrid 
             creditCards={creditCards}
             onEdit={handleEdit}
             onArchive={handleArchive}
+            onAddNew={handleAddNew}
           />
         )}
       </div>
