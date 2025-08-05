@@ -51,7 +51,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
 
   // Load banks on component mount
   useEffect(() => {
-    const loadBanks = async () => {
+      const loadBanks = async () => {
       try {
         const { data, error } = await supabase
           .from('banks')

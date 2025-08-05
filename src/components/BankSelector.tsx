@@ -50,6 +50,7 @@ export const BankSelector = ({
         const { data, error } = await supabase
           .from('banks')
           .select('id, name, icon_url')
+          .eq('is_active', true)
           .order('name');
 
         if (error) {
