@@ -234,6 +234,7 @@ export type Database = {
           confidence_score: number
           created_at: string
           id: string
+          mapping_type: string | null
           original_description: string
           source: string
           standardized_identifier: string
@@ -246,6 +247,7 @@ export type Database = {
           confidence_score: number
           created_at?: string
           id?: string
+          mapping_type?: string | null
           original_description: string
           source: string
           standardized_identifier: string

@@ -1,12 +1,12 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, CreditCard } from 'lucide-react';
 
 interface DashboardTotalCardProps {
   title: string;
   value: number;
-  type: 'income' | 'expense' | 'balance';
+  type: 'income' | 'expense' | 'balance' | 'credit';
   loading?: boolean;
 }
 
@@ -26,6 +26,8 @@ export default function DashboardTotalCard({ title, value, type, loading }: Dash
         return <TrendingDown className="h-4 w-4 text-red-600" />;
       case 'balance':
         return <DollarSign className="h-4 w-4 text-primary" />;
+      case 'credit':
+        return <CreditCard className="h-4 w-4 text-orange-600" />;
     }
   };
 
@@ -37,6 +39,8 @@ export default function DashboardTotalCard({ title, value, type, loading }: Dash
         return 'text-red-600';
       case 'balance':
         return value >= 0 ? 'text-green-600' : 'text-red-600';
+      case 'credit':
+        return 'text-orange-600';
     }
   };
 

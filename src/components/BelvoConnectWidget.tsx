@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Building2, AlertTriangle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -31,6 +32,10 @@ interface BelvoWidget {
 
 export function BelvoConnectWidget() {
   const [isLoading, setIsLoading] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState('');
   const [sdkLoaded, setSdkLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -73,8 +78,10 @@ export function BelvoConnectWidget() {
     const maxRetries = 3;
     
     try {
-      setIsLoading(true);
-      setError(null);
+setIsLoading(true);
+    setProcessingProgress(25);
+setError(null);
+      setProcessingProgress(50);
       
       if (retryCount > 0) {
         setIsRetrying(true);
@@ -125,7 +132,8 @@ export function BelvoConnectWidget() {
       }
 
       // console.log('Token de acesso recebido com sucesso');
-      setAccessToken(data.access_token);
+setAccessToken(data.access_token);
+      setProcessingProgress(100);
       
       return data.access_token;
     } catch (err) {
@@ -149,8 +157,9 @@ export function BelvoConnectWidget() {
       });
       return null;
     } finally {
-      setIsLoading(false);
+setIsLoading(false);
       setIsRetrying(false);
+      setProcessingProgress(0);
     }
   };
 
@@ -171,12 +180,15 @@ export function BelvoConnectWidget() {
       // console.log('Initializing Belvo widget');
 
       const widget = window.belvoSDK!.createWidget({
-        callback: (link) => {
+        callback: async (link) => {
           // console.log('Belvo connection successful! Link ID:', link.id);
           toast({
             title: "Conexão realizada com sucesso!",
             description: `Link ID: ${link.id}`,
           });
+          
+          // Start importing transactions automatically
+          await importBelvoTransactions(link.id);
         },
         onExit: (link) => {
           // console.log('Belvo widget closed', link ? `Link ID: ${link.id}` : 'No link created');
@@ -199,6 +211,60 @@ export function BelvoConnectWidget() {
     } catch (err) {
       // console.error('Error opening Belvo widget:', err);
       setError('Erro ao abrir widget da Belvo');
+    }
+  };
+
+  // Import transactions from Belvo
+  const importBelvoTransactions = async (linkId: string) => {
+    setIsImporting(true);
+    setImportProgress(0);
+    setCurrentStep('Iniciando importação...');
+    
+    try {
+      // Simulate progress steps
+      setImportProgress(10);
+      setCurrentStep('Buscando contas bancárias...');
+      
+      const { data, error } = await supabase.functions.invoke('belvo-import-transactions', {
+        body: { linkId }
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Simulate step progression
+      setImportProgress(50);
+      setCurrentStep('Processando transações...');
+      
+      // Simulate final steps
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setImportProgress(80);
+      setCurrentStep('Categorizando transações...');
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setImportProgress(100);
+      setCurrentStep('Importação concluída!');
+      
+      toast({
+        title: "Importação concluída!",
+        description: `${data.summary?.transactions || 0} transações importadas com sucesso`,
+        variant: "default"
+      });
+      
+    } catch (error) {
+      console.error('Error importing Belvo transactions:', error);
+      toast({
+        title: "Erro na importação",
+        description: "Ocorreu um erro ao importar as transações bancárias",
+        variant: "destructive"
+      });
+    } finally {
+      setTimeout(() => {
+        setIsImporting(false);
+        setImportProgress(0);
+        setCurrentStep('');
+      }, 2000);
     }
   };
 
@@ -261,7 +327,30 @@ export function BelvoConnectWidget() {
               Conectar Banco
             </>
           )}
-        </Button>
+          </Button>
+
+        {/* Progress indicator when loading or processing token */}
+        {isLoading && (
+          <div className="space-y-2">
+            <Progress value={processingProgress} className="w-full" />
+            <div className="text-sm text-muted-foreground text-center">
+              {processingProgress < 50 ? "Iniciando conexão..." : processingProgress < 100 ? "Obtendo token de acesso..." : "Conectando..."}
+            </div>
+          </div>
+        )}
+        
+        {/* Progress indicator when importing transactions */}
+        {isImporting && (
+          <div className="space-y-2">
+            <Progress value={importProgress} className="w-full" />
+            <div className="text-sm text-muted-foreground text-center">
+              {currentStep}
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              {importProgress}% concluído
+            </div>
+          </div>
+        )}
 
         <div className="text-xs text-muted-foreground">
           <p>✓ Ambiente sandbox (teste)</p>

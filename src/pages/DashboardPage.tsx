@@ -83,8 +83,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Total Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, index) => (
             <Card key={index}>
               <CardContent className="p-6">
                 <div className="space-y-2">
@@ -187,7 +187,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Total Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <DashboardTotalCard
+          title="Saldo"
+          value={totals.balance}
+          type="balance"
+          loading={totalsLoading}
+        />
         <DashboardTotalCard
           title="Total de Receitas"
           value={totals.totalIncome}
@@ -201,9 +207,9 @@ export default function DashboardPage() {
           loading={totalsLoading}
         />
         <DashboardTotalCard
-          title="Saldo"
-          value={totals.balance}
-          type="balance"
+          title="Crédito"
+          value={totals.totalCredit}
+          type="credit"
           loading={totalsLoading}
         />
       </div>

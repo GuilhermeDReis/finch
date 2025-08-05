@@ -16,6 +16,7 @@ import { BankSelector } from '@/components/BankSelector';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import transactionMappingService from '@/services/transactionMapping';
+import creditCardCategorizationService from '@/services/creditCardCategorization';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 
 // Define ParsedTransaction interface based on CSVUploader
@@ -49,7 +50,7 @@ interface ImportSession {
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [currentStep, setCurrentStep] = useState<'upload' | 'duplicate-analysis' | 'review' | 'processing' | 'results'>('upload');
-  const [selectedBank, setSelectedBank] = useState<string>('nubank');
+  const [selectedBank, setSelectedBank] = useState<string>('00000000-0000-0000-0000-000000000001'); // Start with Nubank UUID instead of 'nubank'
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
 
@@ -93,6 +94,8 @@ export default function ImportExtract() {
     newTransactions: TransactionRow[];
   } | null>(null);
   const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
+  const [currentProcessingMessage, setCurrentProcessingMessage] = useState('');
+  const [currentProcessingSubMessage, setCurrentProcessingSubMessage] = useState('');
   const { toast } = useToast();
 
   // Check authentication status
@@ -123,28 +126,233 @@ export default function ImportExtract() {
     return true;
   };
 
-  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => {
+    setProcessingProgress(0);
     // console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
     
     // Store the layout type
     setLayoutType(layoutType || null);
     
     // Convert ParsedTransaction to TransactionRow
-    const transactionRows: TransactionRow[] = parsedTransactions.map(transaction => ({
-      ...transaction,
-      selected: true,
-      originalDescription: transaction.originalDescription || transaction.description,
-      editedDescription: transaction.description,
-      isEditing: false,
-      status: 'normal'
-    }));
+    const transactionRows: TransactionRow[] = parsedTransactions.map(transaction => {
+      // Para cartão de crédito, definir todas as transações como expense
+      const transactionType = layoutType === 'credit_card' ? 'expense' : transaction.type;
+      
+      return {
+        ...transaction,
+        type: transactionType,
+        selected: true,
+        originalDescription: transaction.originalDescription || transaction.description,
+        editedDescription: transaction.description,
+        isEditing: false,
+        status: 'normal'
+      };
+    });
     
-    // For credit card transactions, we don't need to do duplicate detection or AI categorization
-    // We can import them directly
+    // For credit card transactions, check for duplicates and send to Gemini for categorization before review
     if (layoutType === 'credit_card') {
-      // console.log('💳 [IMPORT] Credit card transactions detected, importing directly');
-      setTransactions(transactionRows);
-      setCurrentStep('review');
+      // console.log('💳 [IMPORT] Credit card transactions detected, checking for duplicates first');
+      
+      try {
+        // Check authentication first
+        const isAuthenticated = await checkAuthentication();
+        if (!isAuthenticated) {
+          return;
+        }
+
+        // Load existing credit card transactions for duplicate detection
+        const { data: existingCreditData, error: creditError } = await supabase
+          .from('transaction_credit')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (creditError) {
+          // console.error('❌ [IMPORT] Error loading existing credit transactions:', creditError);
+          toast({
+            title: "Erro ao carregar transações de crédito",
+            description: creditError.message,
+            variant: "destructive"
+          });
+          return;
+        }
+
+        setExistingTransactions(existingCreditData || []);
+        
+        // Detect duplicates for credit card transactions
+        const duplicateResults = detectDuplicates(transactionRows, existingCreditData || []);
+        
+        console.log('🔍 [CREDIT-IMPORT] Duplicate detection results:', {
+          duplicates: duplicateResults.duplicates.length,
+          newTransactions: duplicateResults.newTransactions.length,
+          total: transactionRows.length
+        });
+
+        // Check if we have duplicates that require user attention
+        const hasDuplicates = duplicateResults.duplicates.length > 0;
+
+        if (hasDuplicates) {
+          console.log('⚠️ [CREDIT-IMPORT] Duplicates detected, showing analysis screen');
+          setDuplicateAnalysis({
+            duplicates: duplicateResults.duplicates,
+            newTransactions: duplicateResults.newTransactions
+          });
+          setCurrentStep('duplicate-analysis');
+          return;
+        }
+
+        // Use only new transactions (no duplicates) for AI processing
+        const newTransactionsOnly = duplicateResults.newTransactions;
+        console.log('💳 [IMPORT] Processing', newTransactionsOnly.length, 'new credit card transactions for AI categorization');
+
+        setIsProcessing(true);
+setProcessingProgress(10);
+        setCurrentStep('processing');
+        setCurrentProcessingMessage('Processando Transações de Crédito');
+        setCurrentProcessingSubMessage('Verificando duplicados e preparando categorização...');
+
+        // Get current user for mapping lookup
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+
+setProcessingProgress(30);
+        setCurrentProcessingSubMessage('Aplicando mapeamentos existentes...');
+
+        // First, apply existing credit card mappings to avoid unnecessary AI processing
+        console.log('🔍 [CREDIT-MAPPING] Checking for existing credit card mappings...');
+        
+        const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
+          newTransactionsOnly,
+          user.id,
+          'credit_card' // Use credit_card mapping type for credit transactions
+        );
+
+        console.log('📊 [CREDIT-MAPPING] Credit mapping results:', {
+          mapped: mappedTransactions.length,
+          unmapped: unmappedTransactions.length,
+          total: transactionRows.length
+        });
+
+setProcessingProgress(50);
+        setCurrentProcessingSubMessage('Categorizando com IA...');
+
+        // Only process unmapped transactions with Gemini AI
+        let aiCategorizedTransactions: any[] = [];
+        if (unmappedTransactions.length > 0) {
+          console.log('🤖 [CREDIT-AI] Sending', unmappedTransactions.length, 'unmapped credit transactions to AI');
+          
+          // Call the credit card specific Gemini function
+          const { data: aiResults, error: aiError } = await supabase.functions.invoke('gemini-categorize-credit', {
+            body: { transactions: unmappedTransactions }
+          });
+
+          if (aiError) {
+            console.error('❌ [IMPORT] Error in AI categorization for credit card:', aiError);
+            console.log('🔄 [CREDIT-FALLBACK] Trying local categorization as fallback...');
+            
+            try {
+              // Use local categorization as fallback
+              const localResults = await creditCardCategorizationService.categorizeCreditTransactions(
+                unmappedTransactions.map(t => ({
+                  id: t.id,
+                  description: t.description,
+                  amount: t.amount,
+                  type: t.type
+                }))
+              );
+              
+              aiCategorizedTransactions = localResults;
+              console.log('✅ [CREDIT-FALLBACK] Local categorization completed successfully');
+              
+              toast({
+                title: "Categorização local aplicada",
+                description: "Usando padrões locais para categorizar transações de crédito",
+                variant: "default"
+              });
+            } catch (localError) {
+              console.error('❌ [CREDIT-FALLBACK] Local categorization also failed:', localError);
+              toast({
+                title: "Erro na categorização",
+                description: "Não foi possível categorizar as transações. Continue manualmente.",
+                variant: "destructive"
+              });
+              // Continue without categorization
+            }
+          } else {
+            aiCategorizedTransactions = aiResults || [];
+            console.log('✅ [CREDIT-AI] AI categorization for credit card completed');
+          }
+        } else {
+          console.log('✅ [CREDIT-MAPPING] All credit transactions already mapped, skipping AI categorization');
+        }
+
+setProcessingProgress(70);
+        setCurrentProcessingSubMessage('Finalizando categorização...');
+
+        // Combine mapped transactions with AI categorized transactions
+        const fullyCategorizedTransactions = [
+          ...mappedTransactions.map(transaction => {
+            // Para valores negativos (pagamentos de fatura), remover categorias
+            if (transaction.amount < 0) {
+              return {
+                ...transaction,
+                categoryId: undefined,
+                subcategoryId: undefined,
+                aiSuggestion: undefined
+              };
+            }
+            return transaction;
+          }),
+          ...unmappedTransactions.map(transaction => {
+            // Para valores negativos (pagamentos de fatura), não categorizar
+            if (transaction.amount < 0) {
+              return {
+                ...transaction,
+                categoryId: undefined,
+                subcategoryId: undefined,
+                aiSuggestion: undefined
+              };
+            }
+            
+            const aiSuggestion = aiCategorizedTransactions.find((cat: any) => cat.id === transaction.id);
+
+            return {
+              ...transaction,
+              categoryId: aiSuggestion?.categoryId,
+              subcategoryId: aiSuggestion?.subcategoryId,
+              aiSuggestion: aiSuggestion ? {
+                categoryId: aiSuggestion.categoryId,
+                confidence: aiSuggestion.confidence,
+                reasoning: aiSuggestion.reasoning,
+                isAISuggested: true
+              } : undefined
+            };
+          })
+        ];
+        
+setProcessingProgress(100);
+        setCurrentProcessingSubMessage('Processo concluído!');
+        toast({
+        title: "Processo Concluído",
+        description: "Importação realizada com sucesso!",
+        variant: "default"
+      });
+        setTransactions(fullyCategorizedTransactions);
+        setCurrentStep('review');
+        
+      } catch (error) {
+        console.error('💥 [IMPORT] Exception in credit card AI categorization:', error);
+        toast({
+          title: "Erro na categorização",
+          description: "Ocorreu um erro ao categorizar as transações de crédito",
+          variant: "destructive"
+        });
+        setCurrentStep('upload');
+      } finally {
+        setIsProcessing(false);
+      }
+      
       return;
     }
     
@@ -308,6 +516,8 @@ export default function ImportExtract() {
     setIsProcessing(true);
     setProcessingProgress(0);
     setCurrentStep('processing');
+    setCurrentProcessingMessage('Processando Transações');
+    setCurrentProcessingSubMessage('Inicializando categorização...');
 
     try {
       // Get current user
@@ -366,7 +576,8 @@ export default function ImportExtract() {
         saveSessionToStorage(newSession);
 
         // Update progress
-        setProcessingProgress(25);
+setProcessingProgress(10);
+        setCurrentProcessingSubMessage('Criando sessão de importação...');
 
         // Process with AI categorization only for unmapped transactions
         // console.log('🤖 [AI] Calling gemini-categorize-transactions function');
@@ -381,7 +592,8 @@ export default function ImportExtract() {
 
         // console.log('✅ [AI] AI categorization completed successfully');
         categorizedTransactions = aiCategorizedTransactions || [];
-        setProcessingProgress(75);
+setProcessingProgress(80);
+        setCurrentProcessingSubMessage('Finalizando categorização...');
       } else {
         // console.log('✅ [MAPPING] All transactions already mapped, skipping AI categorization');
         setProcessingProgress(75);
@@ -470,54 +682,185 @@ export default function ImportExtract() {
     // Re-detect to get fresh pairs data
     const duplicateResults = detectDuplicates(selectedTransactions, existingTransactions);
     
-      // Create unified transactions list based on selected mode
-      const unifiedTransactions = [
-        ...duplicateResults.newTransactions,
-        // Add refund representative transactions (valor original, sem categoria)
-        ...duplicateResults.refundPairs.map(pair => {
-          // console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
-          //   originalAmount: pair.originalTransaction.amount,
-          //   originalDescription: pair.originalTransaction.description,
-          //   pairId: pair.id
-          // });
-          return {
-            id: pair.id,
-            date: pair.originalTransaction.date,
-            amount: pair.originalTransaction.amount, // Valor original (não zero)
-            description: `Estorno Total: ${pair.originalTransaction.description}`,
-            originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-            type: pair.originalTransaction.type,
-            status: 'refunded' as const,
-            selected: true,
-            categoryId: undefined, // Sem categoria
-            subcategoryId: undefined,
-            // Sem sugestão de IA para estornos
-            aiSuggestion: undefined
-          };
-        }),
-        // Add PIX Crédito representative transactions
-        ...duplicateResults.pixPairs.map(pair => ({
+    // Create unified transactions list based on selected mode
+    const unifiedTransactions = [
+      ...duplicateResults.newTransactions,
+      // Add refund representative transactions (valor original, sem categoria)
+      ...duplicateResults.refundPairs.map(pair => {
+        // console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
+        //   originalAmount: pair.originalTransaction.amount,
+        //   originalDescription: pair.originalTransaction.description,
+        //   pairId: pair.id
+        // });
+        return {
           id: pair.id,
-          date: pair.pixTransaction.date,
-          amount: pair.pixTransaction.amount, // Valor do PIX
-          description: `PIX Crédito: ${pair.pixTransaction.description}`,
-          originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
-          type: pair.pixTransaction.type,
-          status: 'unified-pix' as const,
+          date: pair.originalTransaction.date,
+          amount: pair.originalTransaction.amount, // Valor original (não zero)
+          description: `Estorno Total: ${pair.originalTransaction.description}`,
+          originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
+          type: pair.originalTransaction.type,
+          status: 'refunded' as const,
           selected: true,
-          categoryId: pair.pixTransaction.categoryId,
-          subcategoryId: pair.pixTransaction.subcategoryId
-        }))
-      ];
+          categoryId: undefined, // Sem categoria
+          subcategoryId: undefined,
+          // Sem sugestão de IA para estornos
+          aiSuggestion: undefined
+        };
+      }),
+      // Add PIX Crédito representative transactions
+      ...duplicateResults.pixPairs.map(pair => ({
+        id: pair.id,
+        date: pair.pixTransaction.date,
+        amount: pair.pixTransaction.amount, // Valor do PIX
+        description: `PIX Crédito: ${pair.pixTransaction.description}`,
+        originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
+        type: pair.pixTransaction.type,
+        status: 'unified-pix' as const,
+        selected: true,
+        categoryId: pair.pixTransaction.categoryId,
+        subcategoryId: pair.pixTransaction.subcategoryId
+      }))
+    ];
       
-        // Add duplicates based on selected mode
-        if (selectedImportMode === 'import-all' || selectedImportMode === 'update-existing') {
-          unifiedTransactions.push(...duplicateResults.duplicates.map(d => d.new));
-        }
+    // Handle duplicates based on selected mode
+    if (selectedImportMode === 'update-existing') {
+      console.log('🔄 [DUPLICATE] Update mode selected, loading existing data from database');
+      
+      // For update mode, use existing data with categories from database
+      const duplicatesWithExistingData = duplicateResults.duplicates.map(duplicate => {
+        const existingTransaction = duplicate.existing;
+        
+        console.log('🔄 [DUPLICATE-UPDATE] Processing duplicate with existing data:', {
+          newTransactionId: duplicate.new.id,
+          existingTransactionId: existingTransaction.id,
+          existingCategoryId: existingTransaction.category_id,
+          existingSubcategoryId: existingTransaction.subcategory_id,
+          existingDescription: existingTransaction.description,
+          categoryIdType: typeof existingTransaction.category_id,
+          subcategoryIdType: typeof existingTransaction.subcategory_id,
+          categoryIdValid: isValidUUID(existingTransaction.category_id),
+          subcategoryIdValid: isValidUUID(existingTransaction.subcategory_id)
+        });
 
-        // Continue with AI categorization
-        await handleAICategorization(unifiedTransactions);
+        return {
+          ...duplicate.new,
+          // Use existing categories from database
+          categoryId: existingTransaction.category_id || duplicate.new.categoryId,
+          subcategoryId: existingTransaction.subcategory_id || duplicate.new.subcategoryId,
+          // Mark as using existing data
+          aiSuggestion: {
+            categoryId: existingTransaction.category_id,
+            subcategoryId: existingTransaction.subcategory_id,
+            confidence: 1.0,
+            reasoning: 'Categorização existente do banco de dados',
+            isAISuggested: false
+          }
+        };
+      });
+      
+      unifiedTransactions.push(...duplicatesWithExistingData);
+      
+      // Skip AI processing for update mode - but ensure categories are loaded first
+      console.log('✅ [DUPLICATE] Skipping AI processing for update mode, ensuring categories are loaded');
+      
+      // Wait for categories and subcategories to be fully loaded before proceeding
+      try {
+        console.log('🔍 [DUPLICATE-UPDATE] Ensuring categories and subcategories are loaded...');
+        
+        // Force reload categories and subcategories to ensure they're available
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('*')
+          .order('name');
+          
+        const { data: subcategoriesData, error: subcategoriesError } = await supabase
+          .from('subcategories')
+          .select('*')
+          .order('name');
+          
+        if (categoriesError) {
+          console.error('❌ [DUPLICATE-UPDATE] Error loading categories:', categoriesError);
+          toast({
+            title: "Erro ao carregar categorias",
+            description: "Não foi possível carregar as categorias para exibição",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        if (subcategoriesError) {
+          console.error('❌ [DUPLICATE-UPDATE] Error loading subcategories:', subcategoriesError);
+          toast({
+            title: "Erro ao carregar subcategorias", 
+            description: "Não foi possível carregar as subcategorias para exibição",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        console.log('✅ [DUPLICATE-UPDATE] Categories and subcategories loaded successfully:', {
+          categories: categoriesData?.length || 0,
+          subcategories: subcategoriesData?.length || 0,
+          categoriesData: categoriesData?.slice(0, 3).map(c => ({ id: c.id, name: c.name })),
+          subcategoriesData: subcategoriesData?.slice(0, 3).map(s => ({ id: s.id, name: s.name }))
+        });
+        
+        // Validate that the existing category/subcategory IDs are valid
+        const validCategoryIds = new Set(categoriesData?.map(c => c.id) || []);
+        const validSubcategoryIds = new Set(subcategoriesData?.map(s => s.id) || []);
+        
+        // Validate and clean up the unified transactions
+        const validatedTransactions = unifiedTransactions.map(transaction => {
+          const validatedTransaction = { ...transaction };
+          
+          // Validate categoryId
+          if (transaction.categoryId && !validCategoryIds.has(transaction.categoryId)) {
+            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid categoryId found:', {
+              transactionId: transaction.id,
+              categoryId: transaction.categoryId,
+              description: transaction.description
+            });
+            validatedTransaction.categoryId = undefined;
+          }
+          
+          // Validate subcategoryId
+          if (transaction.subcategoryId && !validSubcategoryIds.has(transaction.subcategoryId)) {
+            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid subcategoryId found:', {
+              transactionId: transaction.id,
+              subcategoryId: transaction.subcategoryId,
+              description: transaction.description
+            });
+            validatedTransaction.subcategoryId = undefined;
+          }
+          
+          return validatedTransaction;
+        });
+        
+        console.log('✅ [DUPLICATE-UPDATE] Transactions validated, proceeding to review');
+        setTransactions(validatedTransactions);
+        setCurrentStep('review');
+        
+      } catch (error) {
+        console.error('❌ [DUPLICATE-UPDATE] Error ensuring categories are loaded:', error);
+        toast({
+          title: "Erro ao preparar dados",
+          description: "Ocorreu um erro ao preparar os dados para edição",
+          variant: "destructive"
+        });
+      }
+      
+    } else if (selectedImportMode === 'import-all') {
+      // For import-all mode, include duplicates but they will go through AI processing
+      unifiedTransactions.push(...duplicateResults.duplicates.map(d => d.new));
+      
+      // Continue with AI categorization
+      await handleAICategorization(unifiedTransactions);
+      
+    } else {
+      // For new-only mode, only process new transactions
+      await handleAICategorization(unifiedTransactions);
     }
+  }
 
   const handleTransactionsUpdate = (updatedTransactions: TransactionRow[]) => {
     // console.log('🔄 [UPDATE] handleTransactionsUpdate called with:', updatedTransactions.length, 'transactions');
@@ -588,11 +931,40 @@ export default function ImportExtract() {
 
     // Check if we're importing credit card transactions (based on the layout type)
     if (layoutType === 'credit_card') {
-      // For credit card transactions, we don't validate categories and import directly
-      setIsProcessing(true);
-      setProcessingProgress(0);
+      // For credit card transactions, validate categories but exclude informative transactions
+      const creditCardTransactionsMissingCategory = transactions.filter(t => {
+        // Skip informative transactions (negative amounts or specific descriptions)
+        const isInformative = t.amount < 0 || [
+          'pagamento recebido',
+          'juros de dívida encerrada', 
+          'saldo em atraso',
+          'crédito de atraso',
+          'encerramento de dívida'
+        ].some(desc => t.description.toLowerCase().includes(desc));
+        
+        if (isInformative) return false;
+        
+        // Check if regular transactions have categories
+        return !t.categoryId || !isValidUUID(t.categoryId) || !t.subcategoryId || !isValidUUID(t.subcategoryId);
+      });
+      
+      if (creditCardTransactionsMissingCategory.length > 0) {
+        toast({
+          title: "Erro de validação",
+          description: `Existem ${creditCardTransactionsMissingCategory.length} transações de crédito sem categoria ou subcategoria definida. Por favor, atribua categorias antes de importar (exceto pagamentos informativos).`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+setIsProcessing(true);
+      setProcessingProgress(10);
+      setCurrentProcessingMessage('Importando Transações de Crédito');
+      setCurrentProcessingSubMessage('Validando dados...');
 
       try {
+        setProcessingProgress(20);
+        setCurrentProcessingSubMessage('Preparando transações para importação...');
         // Prepare credit card transactions for import
         const creditCardTransactionsToImport = transactions.map(transaction => ({
           date: transaction.date, // Use date as-is without time component
@@ -601,23 +973,138 @@ export default function ImportExtract() {
           original_description: transaction.originalDescription,
           external_id: transaction.id,
           type: transaction.type,
-          bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
-          import_session_id: importSession.id,
+          category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
+          subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
+          bank_id: selectedBank, // Use selectedBank directly as it now contains the UUID
+          import_session_id: currentSession.id,
           user_id: user.id
         }));
 
         // console.log('💾 [FINAL] Importing', creditCardTransactionsToImport.length, 'credit card transactions');
-
-        // Import to transaction_credit table
-        const { data, error } = await supabase
-          .from('transaction_credit')
-          .insert(creditCardTransactionsToImport)
-          .select();
-
-        if (error) {
-          // console.error('❌ [FINAL] Error importing credit card transactions:', error);
-          throw error;
+        
+        setProcessingProgress(40);
+        setCurrentProcessingSubMessage('Salvando no banco de dados...');
+        
+        // Import to transaction_credit table with manual duplicate handling
+        for (const transaction of creditCardTransactionsToImport) {
+          // Check if transaction already exists
+          const { data: existingTransaction, error: checkError } = await supabase
+            .from('transaction_credit')
+            .select('id')
+            .eq('external_id', transaction.external_id)
+            .maybeSingle();
+          
+          if (checkError) {
+            console.error('❌ [FINAL] Error checking existing credit card transaction:', transaction.external_id, checkError);
+            throw checkError;
+          }
+          
+          let result;
+          if (existingTransaction) {
+            // Update existing transaction
+            const { data, error } = await supabase
+              .from('transaction_credit')
+              .update(transaction)
+              .eq('external_id', transaction.external_id)
+              .select();
+            
+            if (error) {
+              console.error('❌ [FINAL] Error updating credit card transaction:', transaction.external_id, error);
+              throw error;
+            }
+            result = data;
+          } else {
+            // Insert new transaction
+            const { data, error } = await supabase
+              .from('transaction_credit')
+              .insert(transaction)
+              .select();
+            
+            if (error) {
+              console.error('❌ [FINAL] Error inserting credit card transaction:', transaction.external_id, error);
+              throw error;
+            }
+            result = data;
+          }
         }
+
+        setProcessingProgress(60);
+        setCurrentProcessingSubMessage('Criando mapeamentos para futuras importações...');
+        
+        // Update transaction mappings for credit card transactions
+        // This allows future imports to use the categorization decisions made during this import
+        console.log('🔍 [CREDIT-MAPPING] Starting mapping process for', transactions.length, 'transactions');
+        
+        for (const transaction of transactions) {
+          console.log('🔍 [CREDIT-MAPPING] Processing transaction:', {
+            id: transaction.id,
+            description: transaction.description,
+            categoryId: transaction.categoryId,
+            subcategoryId: transaction.subcategoryId
+          });
+          
+          // Skip transactions without categories (pagamentos informativos)
+          if (!transaction.categoryId || !transaction.subcategoryId) {
+            console.log('⚠️ [CREDIT-MAPPING] Skipping transaction without categories:', transaction.id);
+            continue;
+          }
+
+          const standardizedIdentifier = transactionMappingService.standardizeIdentifier(transaction.description);
+          console.log('🔍 [CREDIT-MAPPING] Standardized identifier:', {
+            original: transaction.description,
+            standardized: standardizedIdentifier
+          });
+          
+          try {
+            // Check if mapping already exists
+            const existingMapping = await transactionMappingService.findMapping(standardizedIdentifier, user.id);
+            
+            // Determine the source of the categorization
+            const source = transaction.aiSuggestion?.isAISuggested ? 'AI' : 'Manual';
+            const confidenceScore = transaction.aiSuggestion?.confidence || 1;
+            
+            console.log('🔍 [CREDIT-MAPPING] Mapping details:', {
+              existingMapping: existingMapping.found,
+              source,
+              confidenceScore
+            });
+            
+            if (existingMapping.found) {
+              // Update existing mapping with user's final decision
+              const result = await transactionMappingService.updateMapping(existingMapping.mapping!.id, {
+                categoryId: transaction.categoryId,
+                subcategoryId: transaction.subcategoryId,
+                confidenceScore: confidenceScore,
+                source: source,
+                mappingType: 'credit_card'
+              });
+              console.log('🔄 [CREDIT-MAPPING] Updated existing mapping for credit transaction:', {
+                transactionId: transaction.id,
+                result: !!result
+              });
+            } else {
+              // Create new mapping for this credit transaction
+              const result = await transactionMappingService.createMapping({
+                standardizedIdentifier,
+                userId: user.id,
+                categoryId: transaction.categoryId,
+                subcategoryId: transaction.subcategoryId,
+                confidenceScore: confidenceScore,
+                source: source,
+                mappingType: 'credit_card'
+              });
+              console.log('🆕 [CREDIT-MAPPING] Created new mapping for credit transaction:', {
+                transactionId: transaction.id,
+                result: !!result
+              });
+            }
+          } catch (error) {
+            console.error('❌ [CREDIT-MAPPING] Error processing credit transaction mapping for transaction:', transaction.id, error);
+          }
+        }
+        
+        setProcessingProgress(90);
+        setCurrentProcessingSubMessage('Concluindo importação...');
 
         setImportResults({
           imported: creditCardTransactionsToImport.length,
@@ -640,13 +1127,15 @@ export default function ImportExtract() {
       } catch (error) {
         // console.error('💥 [FINAL] Exception in credit card import:', error);
 
-        await supabase
-          .from('import_sessions')
-          .update({
-            status: 'failed',
-            error_message: error instanceof Error ? error.message : 'Unknown error'
-          })
-          .eq('id', importSession.id);
+        if (currentSession) {
+          await supabase
+            .from('import_sessions')
+            .update({
+              status: 'failed',
+              error_message: error instanceof Error ? error.message : 'Unknown error'
+            })
+            .eq('id', currentSession.id);
+        }
 
         toast({
           title: "Erro na importação",
@@ -660,12 +1149,14 @@ export default function ImportExtract() {
       return;
     }
 
-    // Validate that all transactions have a valid categoryId before importing, excluding refunds
-    const transactionsMissingCategory = transactions.filter(t => t.status !== 'refunded' && (!t.categoryId || !isValidUUID(t.categoryId)));
+    // Validate that all transactions have a valid categoryId and subcategoryId before importing, excluding refunds
+    const transactionsMissingCategory = transactions.filter(t => 
+      t.status !== 'refunded' && (!t.categoryId || !isValidUUID(t.categoryId) || !t.subcategoryId || !isValidUUID(t.subcategoryId))
+    );
     if (transactionsMissingCategory.length > 0) {
       toast({
         title: "Erro de validação",
-        description: `Existem ${transactionsMissingCategory.length} transações sem categoria definida. Por favor, atribua categorias antes de importar.`,
+        description: `Existem ${transactionsMissingCategory.length} transações sem categoria ou subcategoria definida. Por favor, atribua categorias e subcategorias antes de importar.`,
         variant: "destructive"
       });
       return;
@@ -692,27 +1183,29 @@ export default function ImportExtract() {
         type: transaction.type,
         category_id: isValidUUID(transaction.categoryId) ? transaction.categoryId : null,
         subcategory_id: isValidUUID(transaction.subcategoryId) ? transaction.subcategoryId : null,
-        bank_id: selectedBank === 'nubank' ? '00000000-0000-0000-0000-000000000001' : null,
+        bank_id: selectedBank, // Use selectedBank directly as it now contains the UUID
         payment_method: null,
         tags: null,
         notes: null,
         is_recurring: false,
         recurring_frequency: null,
-        import_session_id: importSession.id,
+        import_session_id: currentSession.id,
         user_id: user.id
       }));
 
       // console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
 
-      // Import to database
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(transactionsToImport)
-        .select();
-
-      if (error) {
-        // console.error('❌ [FINAL] Error importing transactions:', error);
-        throw error;
+      // Import to database using upsert for update functionality
+      for (const transaction of transactionsToImport) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .upsert(transaction, { onConflict: 'external_id' })
+          .select();
+        
+        if (error) {
+          console.error('❌ [FINAL] Error upserting transaction:', transaction.external_id, error);
+          throw error;
+        }
       }
 
       // Update transaction mappings with final user decisions
@@ -768,7 +1261,7 @@ export default function ImportExtract() {
           processed_records: transactionsToImport.length,
           completed_at: new Date().toISOString()
         })
-        .eq('id', importSession.id);
+        .eq('id', currentSession.id);
 
       setImportResults({
         imported: transactionsToImport.length,
@@ -819,6 +1312,8 @@ export default function ImportExtract() {
     setExistingTransactions([]);
     setDuplicateAnalysis(null);
     setLayoutType(null);
+    setCurrentProcessingMessage('');
+    setCurrentProcessingSubMessage('');
     
     // Clear session from storage when resetting
     clearSessionFromStorage();
@@ -961,7 +1456,10 @@ export default function ImportExtract() {
                   <span>Categorizando com IA...</span>
                   <span>{processingProgress}%</span>
                 </div>
-                <Progress value={processingProgress} className="w-full" />
+<Progress value={processingProgress} className="w-full" />
+                  <div className="text-sm text-muted-foreground mt-2">
+                    {processingProgress < 100 ? "Processando..." : "Concluído!"}
+                  </div>
               </div>
               
               {importSession && (
@@ -998,10 +1496,11 @@ export default function ImportExtract() {
             </Button>
           </div>
           
-        <TransactionImportTable 
-          transactions={transactions} 
-          onTransactionsUpdate={handleTransactionsUpdate} 
-        />
+            <TransactionImportTable
+              transactions={transactions}
+              onTransactionsUpdate={setTransactions}
+              layoutType={layoutType}
+            />
         </div>
       )}
 
@@ -1020,7 +1519,12 @@ export default function ImportExtract() {
       )}
 
       {/* Loading Overlay */}
-      <LoadingOverlay isVisible={isProcessing} />
+      <LoadingOverlay 
+        isVisible={isProcessing} 
+        message={currentProcessingMessage}
+        progress={processingProgress}
+        subMessage={currentProcessingSubMessage}
+      />
     </div>
   );
 }

@@ -41,6 +41,7 @@ interface Subcategory {
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
+  layoutType?: 'bank' | 'credit_card';
 }
 
 // Enhanced normalization with integrity checks
@@ -108,7 +109,9 @@ const TransactionRow = React.memo(({
   needsAttention,
   getFilteredSubcategories,
   formatCurrency,
-  formatDate
+  formatDate,
+  isInformativeTransaction,
+  layoutType
 }: {
   transaction: TransactionRow;
   categories: Category[];
@@ -123,6 +126,8 @@ const TransactionRow = React.memo(({
   getFilteredSubcategories: (categoryId: string) => Subcategory[];
   formatCurrency: (amount: number) => string;
   formatDate: (dateStr: string) => string;
+  isInformativeTransaction: (transaction: TransactionRow) => boolean;
+  layoutType?: 'bank' | 'credit_card';
 }) => {
   const requiresAttention = needsAttention(transaction);
   
@@ -257,34 +262,46 @@ const TransactionRow = React.memo(({
       </TableCell>
       
       <TableCell>
-        <Combobox
-          key={categoryKey}
-          value={transaction.categoryId || ''}
-          onValueChange={handleCategoryChange}
-          options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-          placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-          searchPlaceholder="Buscar categoria..."
-          emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-          width="w-60"
-          disabled={loadingCategories}
-        />
+        {isInformativeTransaction(transaction) ? (
+          <div className="text-muted-foreground text-sm italic">
+            {transaction.amount < 0 ? 'Pagamento informativo' : 'Transação informativa'}
+          </div>
+        ) : (
+          <Combobox
+            key={categoryKey}
+            value={transaction.categoryId || ''}
+            onValueChange={handleCategoryChange}
+            options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
+            placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
+            searchPlaceholder="Buscar categoria..."
+            emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
+            width="w-60"
+            disabled={loadingCategories}
+          />
+        )}
       </TableCell>
       
       <TableCell>
-        <Combobox
-          key={subcategoryKey}
-          value={transaction.subcategoryId || ''}
-          onValueChange={handleSubcategoryChange}
-          options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-            value: sub.id,
-            label: sub.name
-          }))}
-          placeholder="Selecionar subcategoria"
-          disabled={!transaction.categoryId || loadingSubcategories}
-          searchPlaceholder="Buscar subcategoria..."
-          emptyText="Nenhuma subcategoria encontrada"
-          width="w-60"
-        />
+        {isInformativeTransaction(transaction) ? (
+          <div className="text-muted-foreground text-sm italic">
+            N/A
+          </div>
+        ) : (
+          <Combobox
+            key={subcategoryKey}
+            value={transaction.subcategoryId || ''}
+            onValueChange={handleSubcategoryChange}
+            options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
+              value: sub.id,
+              label: sub.name
+            }))}
+            placeholder="Selecionar subcategoria"
+            disabled={!transaction.categoryId || loadingSubcategories}
+            searchPlaceholder="Buscar categoria..."
+            emptyText="Nenhuma subcategoria encontrada"
+            width="w-60"
+          />
+        )}
       </TableCell>
       
       <TableCell>
@@ -304,7 +321,8 @@ TransactionRow.displayName = 'TransactionRow';
 
 export default function TransactionImportTable({ 
   transactions, 
-  onTransactionsUpdate 
+  onTransactionsUpdate,
+  layoutType 
 }: TransactionImportTableProps) {
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -335,6 +353,9 @@ export default function TransactionImportTable({
     loadCategories();
     loadSubcategories();
   }, []);
+
+  // Wait for both categories and subcategories to be loaded before showing the table
+  const isDataReady = !loadingCategories && !loadingSubcategories && categories.length > 0 && subcategories.length > 0;
 
   // Helper function to detect payment method from description
   const getPaymentMethod = (description: string): string => {
@@ -650,10 +671,41 @@ export default function TransactionImportTable({
     return options;
   }, [categories]);
 
+  // Helper function to check if transaction is informative (credit card only)
+  const isInformativeTransaction = useCallback((transaction: TransactionRow) => {
+    if (layoutType !== 'credit_card') return false;
+    
+    // Valores negativos (pagamentos da fatura)
+    if (transaction.amount < 0) return true;
+    
+    // Verificar descrições específicas que tornam a transação informativa
+    const descriptionLower = transaction.description.toLowerCase();
+    const informativeDescriptions = [
+      'pagamento recebido',
+      'juros de dívida encerrada', 
+      'saldo em atraso',
+      'crédito de atraso',
+      'encerramento de dívida'
+    ];
+    
+    const isInformativeDescription = informativeDescriptions.some(desc => 
+      descriptionLower.includes(desc)
+    );
+    
+    if (isInformativeDescription) return true;
+    
+    return false;
+  }, [layoutType]);
+
   // Enhanced function to check if transaction needs attention
   const needsAttention = useCallback((transaction: TransactionRow) => {
     // Estornos não precisam de atenção - são estáticos
     if (transaction.status === 'refunded') {
+      return false;
+    }
+    
+    // Registros informativos não precisam de atenção
+    if (isInformativeTransaction(transaction)) {
       return false;
     }
     
@@ -668,7 +720,7 @@ export default function TransactionImportTable({
     }
     
     return false;
-  }, []);
+  }, [layoutType, isInformativeTransaction]);
 
   // Filter handlers
   const handleFilterChange = useCallback((filterType: string, value: string) => {
@@ -700,16 +752,6 @@ export default function TransactionImportTable({
     
   const diferenca = totalEntrada - totalSaida;
 
-  // Calculate payment method totals from visible transactions (excluding refunds)
-  const calculatePaymentMethodTotal = (keyword: string) => {
-    return mergedData
-      .filter(t => t.type === 'expense' && t.status !== 'refunded' && t.description.toLowerCase().includes(keyword.toLowerCase()))
-      .reduce((sum, t) => sum + t.amount, 0);
-  };
-
-  const totalPix = calculatePaymentMethodTotal('pix');
-  const totalCredito = calculatePaymentMethodTotal('crédito') + calculatePaymentMethodTotal('credito');
-  const totalDebito = calculatePaymentMethodTotal('débito') + calculatePaymentMethodTotal('debito');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -738,61 +780,58 @@ export default function TransactionImportTable({
 
   return (
     <div className="space-y-6">
-      {/* Statistics - Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-success">
-              {formatCurrency(totalEntrada)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Entrada</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-destructive">
-              {formatCurrency(totalSaida)}
-            </div>
-            <div className="text-sm text-muted-foreground">Valor Saída</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {formatCurrency(diferenca)}
-            </div>
-            <div className="text-sm text-muted-foreground">Diferença</div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Statistics - Adjust for credit card imports */}
+      {layoutType === 'credit_card' ? (
+        // For credit card imports, show only Total Credit card
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-destructive">
+                {formatCurrency(
+                  mergedData.reduce((sum, transaction) => {
+                    // Excluir transações informativas do total
+                    if (isInformativeTransaction(transaction)) {
+                      return sum; // Não soma transações informativas
+                    }
+                    // Somar todas as outras transações
+                    return sum + Math.abs(transaction.amount);
+                  }, 0)
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground">Total Crédito</div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        // For bank imports, show all three cards
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-success">
+                {formatCurrency(totalEntrada)}
+              </div>
+              <div className="text-sm text-muted-foreground">Valor Entrada</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-destructive">
+                {formatCurrency(totalSaida)}
+              </div>
+              <div className="text-sm text-muted-foreground">Valor Saída</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className={`text-2xl font-bold ${diferenca >= 0 ? 'text-success' : 'text-destructive'}`}>
+                {formatCurrency(diferenca)}
+              </div>
+              <div className="text-sm text-muted-foreground">Diferença</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Payment Method Totals */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totalPix)}
-            </div>
-            <div className="text-sm text-muted-foreground">PIX</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-orange-600">
-              {formatCurrency(totalCredito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Crédito</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-purple-600">
-              {formatCurrency(totalDebito)}
-            </div>
-            <div className="text-sm text-muted-foreground">Débito</div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Unified Transactions Summary */}
       {(mergedData.filter(t => t.status === 'refunded').length > 0 || mergedData.filter(t => t.status === 'unified-pix').length > 0) && (
@@ -922,130 +961,26 @@ export default function TransactionImportTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {getCurrentPageData().map(transaction => {
-                  const requiresAttention = needsAttention(transaction);
-                  const isRefunded = transaction.status === 'refunded';
-                  const isUnifiedPix = transaction.status === 'unified-pix';
-                  
-                  return (
-                    <TableRow 
-                      key={generateStableKey(transaction, 'transaction-')}
-                      className={`
-                        ${requiresAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : 'bg-white'}
-                        ${selectedRows.has(transaction.id) ? 'bg-primary/5' : ''}
-                        ${isRefunded ? 'bg-gray-50 text-gray-600' : ''}
-                        ${isUnifiedPix ? 'bg-blue-50 text-blue-800' : ''}
-                        transition-colors duration-200
-                      `}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedRows.has(transaction.id)}
-                          onCheckedChange={() => toggleRowSelection(transaction.id)}
-                        />
-                      </TableCell>
-                      
-                      <TableCell className="font-mono text-sm">
-                        {formatDate(transaction.date)}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className={`font-semibold ${
-                            isRefunded ? 'text-muted-foreground' :
-                            transaction.type === 'income' ? 'text-success' : 'text-destructive'
-                          }`}>
-                            {isRefunded ? 
-                              `${formatCurrency(transaction.amount)} (Estornado)` :
-                              `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}`
-                            }
-                          </span>
-                        </div>
-                      </TableCell>
-                      
-                      <TableCell>
-                        <div className="max-w-xs" title={transaction.description}>
-                          <span className="block truncate">{transaction.description}</span>
-                          {requiresAttention && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <AlertCircle className="h-3 w-3 text-yellow-600" />
-                              <span className="text-xs text-yellow-600">Requer atenção</span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {/* Não mostrar indicadores para estornos */}
-                          {!isRefunded && <TransactionIndicators transaction={transaction} />}
-                          <UnifiedTransactionBadge status={transaction.status} />
-                        </div>
-                      </TableCell>
-                      
-                      <TableCell>
-                        {isRefunded ? (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        ) : (
-                          <Combobox
-                            key={generateStableKey(transaction, 'category-')}
-                            value={transaction.categoryId || ''}
-                            onValueChange={(value) => updateTransaction(transaction.id, {
-                              categoryId: value,
-                              subcategoryId: undefined,
-                              aiSuggestion: transaction.aiSuggestion ? {
-                                ...transaction.aiSuggestion,
-                                isAISuggested: false
-                              } : undefined
-                            })}
-                            options={getFilteredCategoriesByType(categoryOptions, transaction.type)}
-                            placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
-                            searchPlaceholder="Buscar categoria..."
-                            emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-                            width="w-60"
-                            disabled={loadingCategories}
-                          />
-                        )}
-                      </TableCell>
-                      
-                      <TableCell>
-                        {isRefunded ? (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        ) : (
-                          <Combobox
-                            key={generateStableKey(transaction, 'subcategory-')}
-                            value={transaction.subcategoryId || ''}
-                            onValueChange={(value) => updateTransaction(transaction.id, {
-                              subcategoryId: value
-                            })}
-                            options={getFilteredSubcategories(transaction.categoryId || '').map(sub => ({
-                              value: sub.id,
-                              label: sub.name
-                            }))}
-                            placeholder="Selecionar subcategoria"
-                            disabled={!transaction.categoryId || loadingSubcategories}
-                            searchPlaceholder="Buscar subcategoria..."
-                            emptyText="Nenhuma subcategoria encontrada"
-                            width="w-60"
-                          />
-                        )}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => updateTransaction(transaction.id, {
-                            isEditing: !transaction.isEditing,
-                            editedDescription: transaction.description
-                          })}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {getCurrentPageData().map(transaction => (
+                  <TransactionRow
+                    key={generateStableKey(transaction, 'transaction-')}
+                    transaction={transaction}
+                    categories={categories}
+                    subcategories={subcategories}
+                    selectedRows={selectedRows}
+                    loadingCategories={loadingCategories}
+                    loadingSubcategories={loadingSubcategories}
+                    categoryOptions={categoryOptions}
+                    onUpdateTransaction={updateTransaction}
+                    onToggleSelection={toggleRowSelection}
+                    needsAttention={needsAttention}
+                    getFilteredSubcategories={getFilteredSubcategories}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                    isInformativeTransaction={isInformativeTransaction}
+                    layoutType={layoutType}
+                  />
+                ))}
               </TableBody>
             </Table>
           </div>

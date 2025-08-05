@@ -230,10 +230,10 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
                 // Enhanced type detection with Brazilian context
                 const type = detectTransactionType(description, amount);
 
-                return {
+return {
                   id: String(row[headerMapping.identifierColumn]).trim(),
                   date: parseDate(String(row[headerMapping.dateColumn]).trim()),
-                  amount: Math.abs(amount), // Always store positive amount
+                  amount: layoutType === 'credit_card' ? amount : Math.abs(amount), // Preserve negative for credit card transactions
                   description: description,
                   originalDescription: description,
                   type: type

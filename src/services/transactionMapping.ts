@@ -19,6 +19,7 @@ export interface CreateMappingData {
   subcategoryId: string;
   confidenceScore: number;
   source: string;
+  mappingType?: 'bank' | 'credit_card';
 }
 
 export interface UpdateMappingData {
@@ -26,6 +27,7 @@ export interface UpdateMappingData {
   subcategoryId: string;
   confidenceScore: number;
   source: string;
+  mappingType?: 'bank' | 'credit_card';
 }
 
 export interface FindMappingResult {
@@ -248,25 +250,47 @@ class TransactionMappingService {
 
   /**
    * Finds an existing mapping for a given standardized identifier and user
+   * Now includes mapping_type to differentiate between credit and bank transactions
    */
-  async findMapping(standardizedIdentifier: string, userId: string): Promise<FindMappingResult> {
+  async findMapping(standardizedIdentifier: string, userId: string, mappingType: 'bank' | 'credit_card' = 'bank'): Promise<FindMappingResult> {
     try {
-      // // console.log('🔍 [MAPPING] Searching for mapping with:', { standardizedIdentifier, userId });
+      // // console.log('🔍 [MAPPING] Searching for mapping with:', { standardizedIdentifier, userId, mappingType });
       
-      const { data, error } = await supabase
+      // First, try to search with mapping_type
+      let { data, error } = await supabase
         .from('transaction_mappings')
         .select('*')
         .eq('standardized_identifier', standardizedIdentifier)
         .eq('user_id', userId)
+        .eq('mapping_type', mappingType)
         .maybeSingle();
 
+      // If error is about mapping_type field not existing, try without it
+      if (error && (error.message?.includes('mapping_type') || error.code === '42703')) {
+        console.log('🔄 [MAPPING] mapping_type field not found, searching without it');
+        const { data: retryData, error: retryError } = await supabase
+          .from('transaction_mappings')
+          .select('*')
+          .eq('standardized_identifier', standardizedIdentifier)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (retryError) {
+          console.error('❌ [MAPPING] Error finding transaction mapping (retry):', retryError);
+          return { found: false };
+        }
+
+        data = retryData;
+        error = retryError;
+      }
+
       if (error) {
-        // // console.error('Error finding transaction mapping:', error);
+        console.error('❌ [MAPPING] Error finding transaction mapping:', error);
         return { found: false };
       }
 
       if (!data) {
-        // // console.log('⚠️ [MAPPING] No mapping found for:', { standardizedIdentifier, userId });
+        // // console.log('⚠️ [MAPPING] No mapping found for:', { standardizedIdentifier, userId, mappingType });
         return { found: false };
       }
 
@@ -298,22 +322,96 @@ class TransactionMappingService {
     try {
       // // console.log('🔍 [MAPPING] Creating mapping with data:', data);
       
+      // First, check if a mapping already exists to avoid duplicate key errors
+      const existingMappingResponse = await this.findMapping(data.standardizedIdentifier, data.userId, data.mappingType);
+      if (existingMappingResponse.found) {
+        console.log('🔄 [MAPPING] Mapping already exists, updating instead of creating');
+        return this.updateMapping(existingMappingResponse.mapping!.id, {
+          categoryId: data.categoryId,
+          subcategoryId: data.subcategoryId,
+          confidenceScore: data.confidenceScore,
+          source: data.source,
+          mappingType: data.mappingType || 'bank'
+        });
+      }
+      
+      // First, try to create with mapping_type field
+      let insertData: any = {
+        standardized_identifier: data.standardizedIdentifier,
+        user_id: data.userId,
+        category_id: data.categoryId,
+        subcategory_id: data.subcategoryId,
+        confidence_score: data.confidenceScore,
+        source: data.source,
+        original_description: data.standardizedIdentifier || '' // Campo obrigatório conforme schema
+      };
+
+      // Try to add mapping_type if it exists in the schema
+      if (data.mappingType) {
+        insertData.mapping_type = data.mappingType;
+      }
+
       const { data: result, error } = await supabase
         .from('transaction_mappings')
-        .insert({
-          standardized_identifier: data.standardizedIdentifier,
-          user_id: data.userId,
-          category_id: data.categoryId,
-          subcategory_id: data.subcategoryId,
-          confidence_score: data.confidenceScore,
-          source: data.source,
-          original_description: data.standardizedIdentifier // Adicionando a descrição original
-        })
+        .insert(insertData)
         .select()
         .single();
 
       if (error) {
-        // // console.error('Error creating transaction mapping:', error);
+        // If error is about mapping_type field not existing, try without it
+        if (error.message?.includes('mapping_type') || error.code === '42703') {
+          console.log('🔄 [MAPPING] mapping_type field not found, retrying without it');
+          const { data: retryResult, error: retryError } = await supabase
+            .from('transaction_mappings')
+            .insert({
+              standardized_identifier: data.standardizedIdentifier,
+              user_id: data.userId,
+              category_id: data.categoryId,
+              subcategory_id: data.subcategoryId,
+              confidence_score: data.confidenceScore,
+              source: data.source,
+              original_description: data.standardizedIdentifier || ''
+            })
+            .select()
+            .single();
+
+          if (retryError) {
+            // Check if the error is due to duplicate key (23505)
+            if (retryError.code === '23505') {
+              console.log('🔄 [MAPPING] Duplicate key detected, finding existing mapping to update');
+              
+              // Find the existing mapping and update it instead
+              const existingMappingResponse = await this.findMapping(data.standardizedIdentifier, data.userId);
+              if (existingMappingResponse.found) {
+                console.log('🔄 [MAPPING] Found existing mapping, updating instead');
+                return this.updateMapping(existingMappingResponse.mapping!.id, {
+                  categoryId: data.categoryId,
+                  subcategoryId: data.subcategoryId,
+                  confidenceScore: data.confidenceScore,
+                  source: data.source,
+                  mappingType: data.mappingType || 'bank'
+                });
+              }
+            }
+            
+            console.error('❌ [MAPPING] Error creating transaction mapping (retry):', retryError);
+            return null;
+          }
+
+          return {
+            id: retryResult.id,
+            standardizedIdentifier: retryResult.standardized_identifier,
+            userId: retryResult.user_id,
+            categoryId: retryResult.category_id,
+            subcategoryId: retryResult.subcategory_id,
+            confidenceScore: retryResult.confidence_score,
+            source: retryResult.source,
+            createdAt: retryResult.created_at,
+            updatedAt: retryResult.updated_at
+          };
+        }
+        
+        console.error('❌ [MAPPING] Error creating transaction mapping:', error);
         return null;
       }
 
@@ -329,7 +427,7 @@ class TransactionMappingService {
         updatedAt: result.updated_at
       };
     } catch (error) {
-      // console.error('Exception in createMapping:', error);
+      console.error('Exception in createMapping:', error);
       return null;
     }
   }
@@ -346,6 +444,7 @@ class TransactionMappingService {
           subcategory_id: data.subcategoryId,
           confidence_score: data.confidenceScore,
           source: data.source,
+          mapping_type: data.mappingType || 'bank',
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -438,15 +537,17 @@ class TransactionMappingService {
    * Applies existing mappings to transactions before sending to AI
    * This function checks if transactions already have mappings in the database
    * and applies them automatically, only sending unmapped transactions to AI
+   * Now optimized with mapping_type to search only relevant mappings
    */
   async applyMappingsToTransactions(
     transactions: any[],
-    userId: string
+    userId: string,
+    mappingType: 'bank' | 'credit_card' = 'bank'
   ): Promise<{
     mappedTransactions: any[];
     unmappedTransactions: any[];
   }> {
-    // // console.log('🔍 [MAPPING] Applying mappings to', transactions.length, 'transactions');
+    // // console.log('🔍 [MAPPING] Applying mappings to', transactions.length, 'transactions with type:', mappingType);
     
     const mappedTransactions: any[] = [];
     const unmappedTransactions: any[] = [];
@@ -469,14 +570,15 @@ class TransactionMappingService {
       // // console.log('🔍 [MAPPING] Checking mapping for:', {
       // //   id: transaction.id,
       //   description: transaction.description,
-      //   standardizedIdentifier
+      //   standardizedIdentifier,
+      //   mappingType
       // });
       
-      // Check if we already have a mapping for this transaction
-      const existingMapping = await this.findMapping(standardizedIdentifier, userId);
+      // Check if we already have a mapping for this transaction with the specific mapping type
+      const existingMapping = await this.findMapping(standardizedIdentifier, userId, mappingType);
       
       if (existingMapping.found && existingMapping.mapping) {
-        // // console.log('✅ [MAPPING] Found existing mapping for transaction:', transaction.id);
+        // // console.log('✅ [MAPPING] Found existing mapping for transaction:', transaction.id, 'with type:', mappingType);
         // Apply existing mapping automatically
         mappedTransactions.push({
           ...transaction,
@@ -485,18 +587,18 @@ class TransactionMappingService {
           aiSuggestion: {
             categoryId: existingMapping.mapping.categoryId,
             confidence: existingMapping.mapping.confidenceScore,
-            reasoning: 'Mapeamento automático baseado em transações anteriores',
+            reasoning: `Mapeamento automático baseado em transações ${mappingType === 'credit_card' ? 'de crédito' : 'bancárias'} anteriores`,
             isAISuggested: false
           }
         });
       } else {
-        // // console.log('⚠️ [MAPPING] No existing mapping found for transaction:', transaction.id);
+        // // console.log('⚠️ [MAPPING] No existing mapping found for transaction:', transaction.id, 'with type:', mappingType);
         // No mapping found, send to AI for categorization
         unmappedTransactions.push(transaction);
       }
     }
     
-    // // console.log('📊 [MAPPING] Mapping results:', {
+    // // console.log('📊 [MAPPING] Mapping results for type', mappingType, ':', {
     // //   mapped: mappedTransactions.length,
     //   unmapped: unmappedTransactions.length
     // });
