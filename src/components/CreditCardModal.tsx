@@ -41,6 +41,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
     brand: 'visa',
     closing_day: 15,
     due_day: 20,
+    last_four_digits: '',
   });
   
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -78,6 +79,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
         brand: creditCard.brand,
         closing_day: creditCard.closing_day,
         due_day: creditCard.due_day,
+        last_four_digits: creditCard.last_four_digits || '',
       });
       setLimitInput(CreditCardValidationService.formatCurrency(creditCard.limit_amount));
     }
@@ -100,6 +102,12 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
       handleInputChange('limit_amount', result.value);
       setLimitInput(result.formatted);
     }
+  };
+
+  const handleLastFourDigitsChange = (value: string) => {
+    // Only allow numbers and limit to 4 digits
+    const cleanValue = value.replace(/\D/g, '').slice(0, 4);
+    handleInputChange('last_four_digits', cleanValue);
   };
 
   const handleClosingDayChange = (value: string) => {
@@ -140,6 +148,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
             brand: formData.brand,
             closing_day: formData.closing_day,
             due_day: formData.due_day,
+            last_four_digits: formData.last_four_digits,
           })
           .eq('id', creditCard.id)
           .eq('user_id', user.id);
@@ -252,6 +261,25 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
             </Select>
             {errors.brand && (
               <p className="text-sm text-red-500">{errors.brand}</p>
+            )}
+          </div>
+
+          {/* Last Four Digits */}
+          <div className="space-y-2">
+            <Label htmlFor="last_four_digits">4 Últimos Dígitos *</Label>
+            <Input
+              id="last_four_digits"
+              placeholder="1234"
+              value={formData.last_four_digits}
+              onChange={(e) => handleLastFourDigitsChange(e.target.value)}
+              maxLength={4}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Digite apenas os 4 últimos dígitos do cartão
+            </p>
+            {errors.last_four_digits && (
+              <p className="text-sm text-red-500">{errors.last_four_digits}</p>
             )}
           </div>
 

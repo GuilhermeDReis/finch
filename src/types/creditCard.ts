@@ -1,9 +1,9 @@
-import { Tables, Enums } from '@/integrations/supabase/types';
+import { Tables, TablesInsert, TablesUpdate, Enums } from '@/integrations/supabase/types';
 
 // Database types
 export type CreditCard = Tables<'credit_cards'>;
-export type CreditCardInsert = Tables<'credit_cards'>['Insert'];
-export type CreditCardUpdate = Tables<'credit_cards'>['Update'];
+export type CreditCardInsert = TablesInsert<'credit_cards'>;
+export type CreditCardUpdate = TablesUpdate<'credit_cards'>;
 export type CreditCardBrand = Enums<'credit_card_brand'>;
 
 // Extended types with relations
@@ -13,6 +13,7 @@ export interface CreditCardWithBank extends CreditCard {
     name: string;
     icon_url: string | null;
   };
+  last_four_digits?: string;
 }
 
 // Form types
@@ -23,6 +24,7 @@ export interface CreditCardFormData {
   brand: CreditCardBrand;
   closing_day: number;
   due_day: number;
+  last_four_digits: string;
 }
 
 // Credit card brand options for UI
@@ -39,6 +41,7 @@ export const CREDIT_CARD_BRANDS = [
 export interface CreditCardBill {
   credit_card_id: string;
   current_amount: number;
+  total_used: number;
   limit_amount: number;
   available_limit: number;
   usage_percentage: number;
@@ -58,6 +61,7 @@ export interface CreditCardValidation {
     closing_day?: string;
     due_day?: string;
     due_after_closing?: string;
+    last_four_digits?: string;
   };
 }
 

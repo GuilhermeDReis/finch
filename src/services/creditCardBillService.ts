@@ -63,12 +63,42 @@ export class CreditCardBillService {
         return total + (transaction.amount > 0 ? transaction.amount : 0);
       }, 0);
 
-      const availableLimit = creditCard.limit_amount - currentAmount;
-      const usagePercentage = (currentAmount / creditCard.limit_amount) * 100;
+      // Calculate total used amount (all open transactions from closing date onwards)
+      // Determine the start date for total used calculation
+      let totalUsedStartDate: Date;
+      
+      if (currentDay >= creditCard.closing_day) {
+        // We are after the closing day, so get transactions from this month's closing day onwards
+        totalUsedStartDate = new Date(currentYear, currentMonth, creditCard.closing_day);
+      } else {
+        // We are before the closing day, so get transactions from previous month's closing day onwards
+        totalUsedStartDate = new Date(currentYear, currentMonth - 1, creditCard.closing_day);
+      }
+
+      // Query all open transactions from the closing date onwards
+      const { data: openTransactions, error: openTransError } = await supabase
+        .from('transaction_credit')
+        .select('amount')
+        .eq('credit_card_id', creditCardId)
+        .eq('user_id', userId)
+        .gte('date', totalUsedStartDate.toISOString().split('T')[0]);
+
+      if (openTransError) {
+        console.error('Error fetching open transactions:', openTransError);
+      }
+
+      // Calculate total used amount (only positive amounts - purchases)
+      const totalUsed = (openTransactions || []).reduce((total, transaction) => {
+        return total + (transaction.amount > 0 ? transaction.amount : 0);
+      }, 0);
+
+      const availableLimit = creditCard.limit_amount - totalUsed;
+      const usagePercentage = (totalUsed / creditCard.limit_amount) * 100;
 
       return {
         credit_card_id: creditCardId,
         current_amount: currentAmount,
+        total_used: totalUsed,
         limit_amount: creditCard.limit_amount,
         available_limit: Math.max(0, availableLimit),
         usage_percentage: Math.min(100, Math.max(0, usagePercentage)),

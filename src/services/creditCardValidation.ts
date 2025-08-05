@@ -43,6 +43,15 @@ export class CreditCardValidationService {
       errors.due_day = 'Dia de vencimento deve estar entre 1 e 31';
     }
 
+    // Validate last_four_digits
+    if (!data.last_four_digits || data.last_four_digits.trim() === '') {
+      errors.last_four_digits = 'Os 4 últimos dígitos são obrigatórios';
+    } else if (data.last_four_digits.length !== 4) {
+      errors.last_four_digits = 'Deve conter exatamente 4 dígitos';
+    } else if (!/^\d{4}$/.test(data.last_four_digits)) {
+      errors.last_four_digits = 'Deve conter apenas números';
+    }
+
     // Business rule: due_day must be after closing_day
     if (data.closing_day && data.due_day && data.due_day <= data.closing_day) {
       errors.due_after_closing = 'Dia de vencimento deve ser posterior ao dia de fechamento';
