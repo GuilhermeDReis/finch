@@ -44,6 +44,63 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_cards: {
+        Row: {
+          id: string
+          bank_id: string
+          limit_amount: number
+          description: string
+          brand: Database["public"]["Enums"]["credit_card_brand"]
+          closing_day: number
+          due_day: number
+          is_archived: boolean
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          bank_id: string
+          limit_amount: number
+          description: string
+          brand?: Database["public"]["Enums"]["credit_card_brand"]
+          closing_day: number
+          due_day: number
+          is_archived?: boolean
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          bank_id?: string
+          limit_amount?: number
+          description?: string
+          brand?: Database["public"]["Enums"]["credit_card_brand"]
+          closing_day?: number
+          due_day?: number
+          is_archived?: boolean
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_cards_bank_id_fkey"
+            columns: ["bank_id"]
+            isOneToOne: false
+            referencedRelation: "banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_cards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       banks: {
         Row: {
           id: string
@@ -378,6 +435,7 @@ export type Database = {
           bank_id: string | null
           category_id: string | null
           created_at: string
+          credit_card_id: string | null
           date: string
           description: string
           external_id: string | null
@@ -398,6 +456,7 @@ export type Database = {
           bank_id?: string | null
           category_id?: string | null
           created_at?: string
+          credit_card_id?: string | null
           date: string
           description: string
           external_id?: string | null
@@ -418,6 +477,7 @@ export type Database = {
           bank_id?: string | null
           category_id?: string | null
           created_at?: string
+          credit_card_id?: string | null
           date?: string
           description?: string
           external_id?: string | null
@@ -453,6 +513,13 @@ export type Database = {
             columns: ["bank_id"]
             isOneToOne: false
             referencedRelation: "banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_credit_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
             referencedColumns: ["id"]
           },
           {
@@ -574,6 +641,13 @@ export type Database = {
         | "categories_same_period"
         | "category_different_periods"
         | "subcategories"
+      credit_card_brand:
+        | "visa"
+        | "mastercard"
+        | "hipercard"
+        | "american_express"
+        | "elo"
+        | "outra_bandeira"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -706,6 +780,14 @@ export const Constants = {
         "categories_same_period",
         "category_different_periods",
         "subcategories",
+      ],
+      credit_card_brand: [
+        "visa",
+        "mastercard",
+        "hipercard",
+        "american_express",
+        "elo",
+        "outra_bandeira"
       ],
     },
   },

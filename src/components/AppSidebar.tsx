@@ -23,6 +23,7 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
   { title: "Início", url: "/", icon: Home },
   { title: "Transações", url: "/transactions", icon: CreditCard },
+  { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCard },
   { title: "Importar Extrato", url: "/import", icon: Upload },
   { title: "Relatórios", url: "/reports", icon: FileText },
   { title: "Configurações", url: "/settings", icon: Settings },

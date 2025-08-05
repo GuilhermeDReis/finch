@@ -1,8 +1,24 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
 
-export interface FileLayout extends Tables<'file_layouts'> {
-  // Add a property to identify the type of layout
+export interface FileLayout {
+  id: string;
+  bank_id: string;
+  name: string;
+  description: string | null;
+  date_column: string;
+  amount_column: string;
+  identifier_column: string;
+  description_column: string;
+  date_format: string;
+  decimal_separator: string;
+  thousands_separator: string | null;
+  encoding: string;
+  delimiter: string;
+  has_header: boolean;
+  sample_file: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
   layout_type?: 'bank' | 'credit_card';
 }
 
@@ -18,12 +34,46 @@ export interface LayoutMatchResult {
   layoutType: 'bank' | 'credit_card';
 }
 
+// Bank code to UUID mapping based on the migration data
+const BANK_CODE_TO_UUID: Record<string, string> = {
+  'nubank': '00000000-0000-0000-0000-000000000001',
+  'itau': '00000000-0000-0000-0000-000000000002',
+  'bradesco': '00000000-0000-0000-0000-000000000003'
+};
+
 export class FileLayoutService {
+  /**
+   * Resolve bank code to bank UUID
+   */
+  static async resolveBankId(bankIdOrCode: string): Promise<string> {
+    try {
+      // Check if it's already a UUID (contains hyphens)
+      if (bankIdOrCode.includes('-')) {
+        return bankIdOrCode;
+      }
+
+      // Use the static mapping for known bank codes
+      const bankUuid = BANK_CODE_TO_UUID[bankIdOrCode.toLowerCase()];
+      if (bankUuid) {
+        return bankUuid;
+      }
+
+      // If not found in mapping, throw error
+      throw new Error(`Bank not found for code: ${bankIdOrCode}`);
+    } catch (error) {
+      console.error('Error resolving bank ID:', error);
+      throw error;
+    }
+  }
+
   /**
    * Fetch active file layouts for a specific bank
    */
-  static async getFileLayoutsByBank(bankId: string): Promise<FileLayout[]> {
+  static async getFileLayoutsByBank(bankIdOrCode: string): Promise<FileLayout[]> {
     try {
+      // Resolve bank code to UUID if needed
+      const bankId = await this.resolveBankId(bankIdOrCode);
+
       const { data, error } = await supabase
         .from('file_layouts')
         .select('*')
@@ -32,19 +82,29 @@ export class FileLayoutService {
         .order('created_at', { ascending: false });
 
       if (error) {
-        // // console.error('Error fetching file layouts:', error);
-        throw new Error('Failed to fetch file layouts');
+        console.error('Error fetching file layouts:', error);
+        throw new Error(`Failed to fetch file layouts: ${error.message}`);
       }
 
-      // Add layout_type based on layout name for now
-      const layouts = (data || []).map(layout => ({
-        ...layout,
-        layout_type: layout.name.includes('Cartão') || layout.name.includes('cartão') || layout.name.includes('Credit') ? 'credit_card' as const : 'bank' as const
-      }));
+      // Add layout_type based on layout name
+      const layouts: FileLayout[] = [];
+      
+      if (data) {
+        for (const layout of data) {
+          const isCredit = layout.name.includes('Cartão') || 
+                          layout.name.includes('cartão') || 
+                          layout.name.includes('Credit');
+          
+          layouts.push({
+            ...layout,
+            layout_type: isCredit ? 'credit_card' : 'bank'
+          });
+        }
+      }
 
       return layouts;
     } catch (error) {
-      // // console.error('Error in getFileLayoutsByBank:', error);
+      console.error('Error in getFileLayoutsByBank:', error);
       throw error;
     }
   }
@@ -88,7 +148,7 @@ export class FileLayoutService {
       
       return null;
     } catch (error) {
-      // // console.error('Error finding matching layout:', error);
+      console.error('Error finding matching layout:', error);
       throw error;
     }
   }

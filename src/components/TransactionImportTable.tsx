@@ -216,13 +216,14 @@ const TransactionRow = React.memo(({
         />
       </TableCell>
       
-      <TableCell className="font-mono text-sm">
-        {formatDate(transaction.date)}
+      <TableCell className="font-mono text-xs">
+        <span className="hidden sm:inline">{formatDate(transaction.date)}</span>
+        <span className="sm:hidden">{formatDate(transaction.date).substring(0, 5)}</span>
       </TableCell>
       
       <TableCell>
-        <div className="flex items-center gap-2">
-          <span className={`font-semibold ${
+        <div className="flex flex-col gap-1">
+          <span className={`font-semibold text-xs ${
             transaction.status === 'refunded' ? 'text-muted-foreground line-through' :
             transaction.type === 'income' ? 'text-success' : 'text-destructive'
           }`}>
@@ -245,19 +246,19 @@ const TransactionRow = React.memo(({
             autoFocus
           />
         ) : (
-          <div className="max-w-xs" title={transaction.description}>
-            <span className="block truncate">{transaction.description}</span>
+          <div className="max-w-[8rem] lg:max-w-xs" title={transaction.description}>
+            <span className="block truncate text-xs">{transaction.description}</span>
             {requiresAttention && (
               <div className="flex items-center gap-1 mt-1">
                 <AlertCircle className="h-3 w-3 text-yellow-600" />
-                <span className="text-xs text-yellow-600">Requer atenção</span>
+                <span className="text-xs text-yellow-600 hidden lg:inline">Atenção</span>
               </div>
             )}
           </div>
         )}
       </TableCell>
 
-      <TableCell>
+      <TableCell className="hidden md:table-cell">
         <TransactionIndicators transaction={transaction} />
       </TableCell>
       
@@ -275,7 +276,7 @@ const TransactionRow = React.memo(({
             placeholder={loadingCategories ? "Carregando..." : "Selecionar categoria"}
             searchPlaceholder="Buscar categoria..."
             emptyText={loadingCategories ? "Carregando..." : "Nenhuma categoria encontrada"}
-            width="w-60"
+            width="w-32 lg:w-60"
             disabled={loadingCategories}
           />
         )}
@@ -299,7 +300,7 @@ const TransactionRow = React.memo(({
             disabled={!transaction.categoryId || loadingSubcategories}
             searchPlaceholder="Buscar categoria..."
             emptyText="Nenhuma subcategoria encontrada"
-            width="w-60"
+            width="w-32 lg:w-60"
           />
         )}
       </TableCell>
@@ -310,7 +311,7 @@ const TransactionRow = React.memo(({
           size="sm"
           onClick={handleEditToggle}
         >
-          <Edit2 className="h-4 w-4" />
+          <Edit2 className="h-3 w-3" />
         </Button>
       </TableCell>
     </TableRow>
@@ -779,7 +780,7 @@ export default function TransactionImportTable({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-auto">
       {/* Statistics - Adjust for credit card imports */}
       {layoutType === 'credit_card' ? (
         // For credit card imports, show only Total Credit card
@@ -916,9 +917,9 @@ export default function TransactionImportTable({
         <CardHeader>
           <CardTitle>Transações para Importar</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
+        <CardContent className="p-0">
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="min-w-[720px] lg:min-w-[1200px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">
@@ -928,7 +929,7 @@ export default function TransactionImportTable({
                     />
                   </TableHead>
                   <TableHead 
-                    className="cursor-pointer w-24"
+                    className="cursor-pointer min-w-[4rem] w-16"
                     onClick={() => {
                       if (sortBy === 'date') {
                         setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -938,10 +939,12 @@ export default function TransactionImportTable({
                       }
                     }}
                   >
-                    Data {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    <span className="hidden sm:inline">Data</span>
+                    <span className="sm:hidden">Dt</span>
+                    {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </TableHead>
                   <TableHead 
-                    className="cursor-pointer w-32"
+                    className="cursor-pointer min-w-[5rem] w-20"
                     onClick={() => {
                       if (sortBy === 'amount') {
                         setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -953,11 +956,11 @@ export default function TransactionImportTable({
                   >
                     Valor {sortBy === 'amount' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </TableHead>
-                  <TableHead className="w-80">Descrição</TableHead>
-                  <TableHead className="w-40">Indicadores</TableHead>
-                  <TableHead className="w-64">Categoria</TableHead>
-                  <TableHead className="w-64">Subcategoria</TableHead>
-                  <TableHead className="w-16">Ações</TableHead>
+                  <TableHead className="min-w-[8rem] w-32">Descrição</TableHead>
+                  <TableHead className="min-w-[4rem] w-16 hidden md:table-cell">Ind.</TableHead>
+                  <TableHead className="min-w-[8rem] w-32">Categoria</TableHead>
+                  <TableHead className="min-w-[8rem] w-32">Subcategoria</TableHead>
+                  <TableHead className="min-w-[3rem] w-12">Edit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -987,7 +990,7 @@ export default function TransactionImportTable({
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4 px-4">
               <div className="text-sm text-muted-foreground">
                 Página {currentPage} de {totalPages} 
                 ({mergedData.length} transações filtradas de {tableData.length} totais)
