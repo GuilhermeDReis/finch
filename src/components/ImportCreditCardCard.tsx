@@ -82,10 +82,11 @@ export default function ImportCreditCardCard({ card, bankIconUrl, isSelected, on
   return (
     <div
       className={cn(
-        "relative w-75 h-45 rounded-lg cursor-pointer transition-all duration-300",
-        "bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200",
-        "hover:shadow-md hover:-translate-y-1",
-        isSelected && "ring-2 ring-blue-500 ring-offset-2 shadow-lg"
+        "relative w-72 h-44 rounded-xl cursor-pointer transition-all duration-300 p-4",
+        "bg-gradient-to-br from-slate-100 to-slate-200 border-2 border-slate-300",
+        "hover:shadow-lg hover:scale-105 hover:border-slate-400",
+        "shadow-sm",
+        isSelected && "ring-2 ring-blue-500 ring-offset-2 shadow-xl bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300"
       )}
       onClick={onClick}
     >

@@ -6,28 +6,34 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Separator } from './ui/separator';
-import type { DuplicateAnalysis } from '@/services/duplicateDetection';
+import type { TransactionRow } from '@/types/transaction';
 
 export type ImportMode = 'new-only' | 'update-existing' | 'import-all';
 
 interface DuplicateAnalysisCardProps {
-  analysis: DuplicateAnalysis;
+  duplicates: Array<{
+    existing: any;
+    new: TransactionRow;
+    similarity: number;
+    reasons: string[];
+  }>;
+  newTransactions: TransactionRow[];
   selectedMode: ImportMode;
   onModeChange: (mode: ImportMode) => void;
-  onProceed: () => void;
-  onCancel: () => void;
+  onComplete: (selectedTransactions: TransactionRow[], action: 'import' | 'skip' | 'overwrite') => void;
   isLoading?: boolean;
 }
 
 export default function DuplicateAnalysisCard({
-  analysis,
+  duplicates,
+  newTransactions,
   selectedMode,
   onModeChange,
-  onProceed,
-  onCancel,
+  onComplete,
   isLoading = false
 }: DuplicateAnalysisCardProps) {
-  const { totalNew, totalDuplicates } = analysis;
+  const totalNew = newTransactions.length;
+  const totalDuplicates = duplicates.length;
 
   return (
     <Card className="w-full">
@@ -137,7 +143,14 @@ export default function DuplicateAnalysisCard({
         {/* Action Buttons */}
         <div className="flex gap-3">
           <Button
-            onClick={onProceed}
+            onClick={() => {
+              // Determine which transactions to send based on selected mode
+              const transactionsToSend = selectedMode === 'new-only' 
+                ? newTransactions 
+                : [...newTransactions, ...duplicates.map(d => d.new)];
+              
+              onComplete(transactionsToSend, 'import');
+            }}
             disabled={isLoading}
             className="flex-1"
           >
@@ -146,7 +159,7 @@ export default function DuplicateAnalysisCard({
           </Button>
           <Button
             variant="outline"
-            onClick={onCancel}
+            onClick={() => onComplete([], 'skip')}
             disabled={isLoading}
           >
             Cancelar

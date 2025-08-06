@@ -101,6 +101,48 @@ export type Database = {
           }
         ]
       }
+      background_jobs: {
+        Row: {
+          id: string
+          type: string
+          status: string
+          payload: Json
+          progress: number | null
+          result: Json | null
+          error_message: string | null
+          created_at: string
+          updated_at: string
+          completed_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          type: string
+          status?: string
+          payload: Json
+          progress?: number | null
+          result?: Json | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          type?: string
+          status?: string
+          payload?: Json
+          progress?: number | null
+          result?: Json | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       banks: {
         Row: {
           id: string

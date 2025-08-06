@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import Papa from 'papaparse';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
+import { Checkbox } from './ui/checkbox';
 import { FileLayoutService } from '@/services/fileLayoutService';
 
 interface ParsedTransaction {
@@ -18,9 +19,11 @@ interface ParsedTransaction {
 }
 
 interface CSVUploaderProps {
-  onDataParsed: (data: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string) => void;
+  onDataParsed: (data: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string, useBackgroundProcessing?: boolean) => void;
   onError: (error: string) => void;
   selectedBankId?: string; // Optional: for manual override
+  useBackgroundProcessing?: boolean;
+  setUseBackgroundProcessing?: (value: boolean) => void;
 }
 
 // Enhanced transaction type detection with Brazilian context
@@ -96,11 +99,22 @@ interface CSVUploaderProps {
     return amountBasedType;
   };
 
-export default function CSVUploader({ onDataParsed, onError, selectedBankId }: CSVUploaderProps) {
+export default function CSVUploader({ 
+  onDataParsed, 
+  onError, 
+  selectedBankId, 
+  useBackgroundProcessing: propUseBackgroundProcessing = false,
+  setUseBackgroundProcessing: propSetUseBackgroundProcessing
+}: CSVUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  
+  // Use props if provided, otherwise use local state
+  const [localUseBackgroundProcessing, setLocalUseBackgroundProcessing] = useState(false);
+  const useBackgroundProcessing = propUseBackgroundProcessing !== undefined ? propUseBackgroundProcessing : localUseBackgroundProcessing;
+  const setUseBackgroundProcessing = propSetUseBackgroundProcessing || setLocalUseBackgroundProcessing;
 
   const parseDate = (dateStr: string): string => {
     // Handle different date formats
@@ -229,7 +243,7 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
                 // Enhanced type detection with Brazilian context
                 const type = detectTransactionType(description, amount);
 
-return {
+                return {
                   id: String(row[headerMapping.identifierColumn]).trim(),
                   date: parseDate(String(row[headerMapping.dateColumn]).trim()),
                   amount: layoutType === 'credit_card' ? amount : Math.abs(amount), // Preserve negative for credit card transactions
@@ -253,7 +267,7 @@ return {
             setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
             
             // Pass the layout type information to the parent component
-            onDataParsed(transactions, layoutType, bankId);
+            onDataParsed(transactions, layoutType, bankId, useBackgroundProcessing);
 
           } catch (error) {
             setStatus('error');
@@ -316,10 +330,54 @@ return {
     setMessage('');
   };
 
+  const handleBackgroundProcessingChange = (checked: boolean | 'indeterminate') => {
+    if (typeof checked === 'boolean') {
+      setUseBackgroundProcessing(checked);
+    }
+  };
+
   return (
-    <Card className="w-full">
-      <CardContent className="p-6">
-        <div
+    <div className="space-y-4">
+      {/* Background Processing Configuration */}
+      <Card className="w-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Configuração de Processamento
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex items-center space-x-3">
+            <Checkbox
+              id="backgroundProcessing"
+              checked={useBackgroundProcessing}
+              onCheckedChange={handleBackgroundProcessingChange}
+              disabled={isProcessing}
+            />
+            <label htmlFor="backgroundProcessing" className="text-sm cursor-pointer">
+              <div className="font-medium">Processar em segundo plano</div>
+              <div className="text-muted-foreground text-xs">
+                A importação e categorização serão executadas em background. Você pode sair desta tela e acompanhar o progresso.
+              </div>
+            </label>
+          </div>
+          
+          {useBackgroundProcessing && (
+            <Alert className="mt-3">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                <strong>Modo Background Ativo:</strong> Após o upload, as transações serão processadas e categorizadas automaticamente.
+                Você será notificado quando o processo estiver concluído.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* File Upload */}
+      <Card className="w-full">
+        <CardContent className="p-6">
+          <div
           {...getRootProps()}
           className={`
             border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
@@ -389,8 +447,9 @@ return {
               </div>
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

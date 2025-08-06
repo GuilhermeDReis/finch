@@ -21,7 +21,14 @@ interface ImportResultsCardProps {
 }
 
 export default function ImportResultsCard({ result, onClose }: ImportResultsCardProps) {
-  const { successful, failed, skipped, updated, total, errors } = result;
+  const { successful, failed, skipped, updated, total, errors } = result || {
+    successful: 0,
+    failed: 0,
+    skipped: 0,
+    updated: 0,
+    total: 0,
+    errors: []
+  };
 
   return (
     <Card className="w-full">

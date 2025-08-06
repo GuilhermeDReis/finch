@@ -14,10 +14,12 @@ import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { BankSelector } from '@/components/BankSelector';
 import ImportCreditCardCard from '@/components/ImportCreditCardCard';
+import { ImportStepper } from '@/components/ImportStepper';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import transactionMappingService from '@/services/transactionMapping';
 import creditCardCategorizationService from '@/services/creditCardCategorization';
+import backgroundJobService from '@/services/backgroundJobService';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -86,9 +88,10 @@ export default function ImportExtract() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [importResults, setImportResults] = useState<{
-    imported: number;
-    skipped: number;
-    errors: string[];
+    successful: number;
+    failed: number;
+    updated: number;
+    total: number;
   } | null>(null);
   const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
   const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
@@ -161,10 +164,17 @@ export default function ImportExtract() {
     loadBanks();
   }, [toast]);
 
+  // Reset credit card selection when bank changes
+  useEffect(() => {
+    if (layoutType === 'credit_card') {
+      setSelectedCreditCardId(''); // Reset card selection when bank changes
+    }
+  }, [selectedBank, layoutType]);
+
   // Load credit cards when identify step is reached for credit_card layout
   useEffect(() => {
     const loadCreditCards = async () => {
-      if (currentStep === 'identify' && layoutType === 'credit_card') {
+      if (currentStep === 'identify' && layoutType === 'credit_card' && selectedBank) {
         setLoadingCreditCards(true);
         
         try {
@@ -175,6 +185,7 @@ export default function ImportExtract() {
             .from('credit_cards')
             .select('*')
             .eq('user_id', user.id)
+            .eq('bank_id', selectedBank) // Filter by selected bank
             .eq('is_archived', false)
             .order('description');
 
@@ -198,14 +209,20 @@ export default function ImportExtract() {
     };
 
     loadCreditCards();
-  }, [currentStep, layoutType, toast]);
+  }, [currentStep, layoutType, selectedBank, toast]);
 
-  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string) => {
-    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType, 'Bank ID:', bankId);
+  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string, useBackgroundProcessing?: boolean) => {
+    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType, 'Bank ID:', bankId, 'Background processing:', useBackgroundProcessing);
+    
     
     // Store the layout type and bank ID
     setLayoutType(layoutType || null);
     setSelectedBank(bankId || selectedBank);
+    
+    // Store background processing preference
+    if (useBackgroundProcessing !== undefined) {
+      setUseBackgroundProcessing(useBackgroundProcessing);
+    }
     
     // Convert ParsedTransaction to TransactionRow
     const transactionRows: TransactionRow[] = parsedTransactions.map(transaction => {
@@ -969,8 +986,13 @@ setProcessingProgress(80);
     setTransactions(updatedTransactions);
   };
 
-  const handleFinalImport = async () => {
-    // console.log('💾 [FINAL] handleFinalImport called');
+  const [currentBackgroundJobId, setCurrentBackgroundJobId] = useState<string | null>(null);
+  const [useBackgroundProcessing, setUseBackgroundProcessing] = useState(false);
+
+  const handleFinalImport = async (useBackground?: boolean) => {
+    // Use the parameter if provided, otherwise use the state value
+    const shouldUseBackground = useBackground !== undefined ? useBackground : useBackgroundProcessing;
+    console.log('💾 [FINAL] handleFinalImport called with background mode:', shouldUseBackground);
 
     // Check authentication one more time
     const isAuthenticated = await checkAuthentication();
@@ -988,6 +1010,69 @@ setProcessingProgress(80);
       });
       return;
     }
+
+    // If background processing is enabled, trigger background import job
+    if (shouldUseBackground) {
+      console.log('🚀 [BACKGROUND] Starting background import process');
+      
+      try {
+        // Prepare transaction data for background processing
+        const backgroundJobData = {
+          transactions,
+          layoutType,
+          selectedBank,
+          selectedCreditCardId,
+          userId: user.id,
+          importSession: importSession || {
+            id: 'temp-' + Date.now(),
+            filename: 'background_import_' + Date.now(),
+            total_records: transactions.length,
+            status: 'pending' as const,
+            user_id: user.id,
+            created_at: new Date().toISOString()
+          }
+        };
+
+        // Use backgroundJobService to create the import job
+        const backgroundJob = await backgroundJobService.createImportJob(backgroundJobData);
+
+        if (!backgroundJob) {
+          throw new Error('Failed to create background job');
+        }
+
+        console.log('✅ [BACKGROUND] Background job created successfully:', backgroundJob.id);
+        
+        // Store the background job ID for tracking
+        setCurrentBackgroundJobId(backgroundJob.id);
+
+        // Show success message and redirect to home
+        toast({
+          title: "Processamento em segundo plano iniciado",
+          description: "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
+          variant: "default"
+        });
+
+        // Reset import state and redirect to home
+        resetImport();
+        
+        // Navigate to home or dashboard
+        window.location.href = '/dashboard';
+        
+        return;
+        
+      } catch (error) {
+        console.error('💥 [BACKGROUND] Exception in background processing:', error);
+        toast({
+          title: "Erro no processamento em background",
+          description: "Ocorreu um erro ao iniciar o processamento em segundo plano",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    // Continue with synchronous processing if background is disabled
+    console.log('⚡ [SYNC] Starting synchronous import process');
 
     // If no session exists, create a new one
     let currentSession = importSession;
@@ -1210,9 +1295,10 @@ setIsProcessing(true);
         setCurrentProcessingSubMessage('Concluindo importação...');
 
         setImportResults({
-          imported: creditCardTransactionsToImport.length,
-          skipped: 0,
-          errors: []
+          successful: creditCardTransactionsToImport.length,
+          failed: 0,
+          updated: 0,
+          total: creditCardTransactionsToImport.length
         });
 
         setProcessingProgress(100);
@@ -1368,9 +1454,10 @@ external_id: transaction.id,
         .eq('id', currentSession.id);
 
       setImportResults({
-        imported: transactionsToImport.length,
-        skipped: 0,
-        errors: []
+        successful: transactionsToImport.length,
+        failed: 0,
+        updated: 0,
+        total: transactionsToImport.length
       });
 
       setProcessingProgress(100);
@@ -1438,11 +1525,16 @@ external_id: transaction.id,
         )}
       </div>
 
+      {/* Import Progress Stepper */}
+      <ImportStepper currentStep={currentStep} layoutType={layoutType} />
+
       {/* Step Content */}
       {currentStep === 'upload' && (
         <div className="space-y-6">
           <CSVUploader 
             onDataParsed={handleDataParsed}
+            useBackgroundProcessing={useBackgroundProcessing}
+            setUseBackgroundProcessing={setUseBackgroundProcessing}
             onError={(error) => {
               // console.error('CSV Upload Error:', error);
               toast({
@@ -1479,20 +1571,32 @@ external_id: transaction.id,
           {layoutType === 'credit_card' && (
             <div className="space-y-4">
               <h2 className="text-xl font-medium">Selecione o cartão</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-x-1 gap-y-2">
-                {creditCards.map((card) => {
-                  const bank = banks.find(b => b.id === card.bank_id);
-                  return (
-                    <ImportCreditCardCard
-                      key={card.id}
-                      card={card}
-                      bankIconUrl={bank?.icon_url}
-                      isSelected={selectedCreditCardId === card.id}
-                      onClick={() => setSelectedCreditCardId(card.id)}
-                    />
-                  );
-                })}
-              </div>
+              
+              {loadingCreditCards ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="text-muted-foreground">Carregando cartões...</div>
+                </div>
+              ) : creditCards.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Nenhum cartão de crédito encontrado para o banco selecionado.</p>
+                  <p className="text-sm mt-2">Verifique se você possui cartões cadastrados para este banco.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {creditCards.map((card) => {
+                    const bank = banks.find(b => b.id === card.bank_id);
+                    return (
+                      <ImportCreditCardCard
+                        key={card.id}
+                        card={card}
+                        bankIconUrl={bank?.icon_url}
+                        isSelected={selectedCreditCardId === card.id}
+                        onClick={() => setSelectedCreditCardId(card.id)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -1535,6 +1639,7 @@ external_id: transaction.id,
             onTransactionsUpdate={handleTransactionsUpdate}
             onImport={handleFinalImport}
             layoutType={layoutType}
+            useBackgroundProcessing={useBackgroundProcessing}
           />
         </div>
       )}
@@ -1544,7 +1649,7 @@ external_id: transaction.id,
         <div className="space-y-6">
           <h2 className="text-xl font-medium">Importação Concluída</h2>
           <ImportResultsCard
-            results={importResults}
+            result={importResults}
             onNewImport={resetImport}
           />
         </div>

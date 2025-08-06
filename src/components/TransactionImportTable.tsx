@@ -41,7 +41,9 @@ interface Subcategory {
 interface TransactionImportTableProps {
   transactions: TransactionRow[];
   onTransactionsUpdate: (transactions: TransactionRow[]) => void;
-  layoutType?: 'bank' | 'credit_card';
+  onImport?: (useBackground?: boolean) => void;
+  layoutType?: 'bank' | 'credit_card' | null;
+  useBackgroundProcessing?: boolean;
 }
 
 // Enhanced normalization with integrity checks
@@ -323,7 +325,9 @@ TransactionRow.displayName = 'TransactionRow';
 export default function TransactionImportTable({ 
   transactions, 
   onTransactionsUpdate,
-  layoutType 
+  onImport,
+  layoutType,
+  useBackgroundProcessing = false 
 }: TransactionImportTableProps) {
   const [tableData, setTableData] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1017,6 +1021,20 @@ export default function TransactionImportTable({
           )}
         </CardContent>
       </Card>
+
+      {/* Import Button */}
+      {onImport && (
+        <div className="flex justify-end">
+          <Button 
+            onClick={() => onImport(useBackgroundProcessing)}
+            size="lg"
+            className="px-8"
+          >
+            <Check className="h-4 w-4 mr-2" />
+            Importar Transações
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
