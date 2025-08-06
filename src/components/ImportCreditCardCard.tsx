@@ -17,6 +17,7 @@ interface CreditCard {
 
 interface ImportCreditCardCardProps {
   card: CreditCard;
+  bankIconUrl?: string;
   isSelected: boolean;
   onClick: () => void;
 }
@@ -77,7 +78,7 @@ const CreditCardChip = () => (
   </div>
 );
 
-export default function ImportCreditCardCard({ card, isSelected, onClick }: ImportCreditCardCardProps) {
+export default function ImportCreditCardCard({ card, bankIconUrl, isSelected, onClick }: ImportCreditCardCardProps) {
   return (
     <div
       className={cn(
@@ -90,12 +91,16 @@ export default function ImportCreditCardCard({ card, isSelected, onClick }: Impo
     >
       {/* Header - Logo do banco (esquerda) e Emblema da bandeira (direita) */}
       <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-        {/* Logo do banco - placeholder genérico */}
-        <div className="flex items-center">
+      {/* Logo do banco - placeholder genérico ou imagem do banco */}
+      <div className="flex items-center">
+        {bankIconUrl ? (
+          <img src={bankIconUrl} alt="Bank Logo" className="w-8 h-8 rounded object-contain" />
+        ) : (
           <div className="w-8 h-8 bg-gray-300 rounded flex items-center justify-center">
             <span className="text-gray-600 text-xs font-bold">B</span>
           </div>
-        </div>
+        )}
+      </div>
         
         {/* Emblema da bandeira */}
         <div className="flex items-center">

@@ -20,6 +20,8 @@ export interface FileLayout {
   created_at: string;
   updated_at: string;
   layout_type?: 'bank' | 'credit_card';
+  file_type?: 'bank' | 'credit_card';
+  header_pattern?: string[];
 }
 
 export interface CSVHeaderMapping {
@@ -32,6 +34,9 @@ export interface CSVHeaderMapping {
 export interface LayoutMatchResult {
   layout: FileLayout;
   layoutType: 'bank' | 'credit_card';
+  bankId: string;
+  bankName?: string;
+  confidence: number;
 }
 
 // Bank code to UUID mapping based on the migration data
@@ -42,6 +47,33 @@ const BANK_CODE_TO_UUID: Record<string, string> = {
 };
 
 export class FileLayoutService {
+  /**
+   * Calculate similarity between two header arrays using Jaccard similarity
+   */
+  static calculateHeaderSimilarity(headers1: string[], headers2: string[]): number {
+    const set1 = new Set(headers1.map(h => h.toLowerCase().trim()));
+    const set2 = new Set(headers2.map(h => h.toLowerCase().trim()));
+    
+    const intersection = new Set([...set1].filter(x => set2.has(x)));
+    const union = new Set([...set1, ...set2]);
+    
+    return intersection.size / union.size;
+  }
+
+  /**
+   * Check for exact header match
+   */
+  static isExactHeaderMatch(csvHeaders: string[], patternHeaders: string[]): boolean {
+    if (csvHeaders.length !== patternHeaders.length) {
+      return false;
+    }
+    
+    const normalizedCsv = csvHeaders.map(h => h.toLowerCase().trim()).sort();
+    const normalizedPattern = patternHeaders.map(h => h.toLowerCase().trim()).sort();
+    
+    return normalizedCsv.every((header, index) => header === normalizedPattern[index]);
+  }
+
   /**
    * Resolve bank code to bank UUID
    */
@@ -149,6 +181,127 @@ export class FileLayoutService {
       return null;
     } catch (error) {
       console.error('Error finding matching layout:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Automatically detect bank and layout type from CSV headers
+   */
+  static async detectLayoutFromHeaders(csvHeaders: string[]): Promise<LayoutMatchResult | null> {
+    try {
+      console.log('🔍 [AUTO-DETECT] Starting automatic layout detection for headers:', csvHeaders);
+      
+      // Fetch all active file layouts from all banks
+      const { data: layouts, error } = await supabase
+        .from('file_layouts')
+        .select(`
+          *,
+          banks!file_layouts_bank_id_fkey(
+            id,
+            name,
+            code
+          )
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ [AUTO-DETECT] Error fetching layouts:', error);
+        throw new Error(`Failed to fetch layouts: ${error.message}`);
+      }
+
+      if (!layouts || layouts.length === 0) {
+        console.warn('⚠️ [AUTO-DETECT] No active layouts found');
+        return null;
+      }
+
+      let bestMatch: LayoutMatchResult | null = null;
+      let bestScore = 0;
+
+      // Check each layout for matches
+      for (const layout of layouts) {
+        const bank = Array.isArray(layout.banks) ? layout.banks[0] : layout.banks;
+        
+        if (!layout.header_pattern || !Array.isArray(layout.header_pattern)) {
+          console.warn('⚠️ [AUTO-DETECT] Layout has no header pattern:', layout.name);
+          
+          // Try to create a fallback header pattern based on layout columns
+          const fallbackPattern = [
+            layout.date_column,
+            layout.amount_column,
+            layout.identifier_column,
+            layout.description_column
+          ].filter(Boolean); // Remove any undefined/null values
+          
+          if (fallbackPattern.length > 0) {
+            console.log('🔄 [AUTO-DETECT] Using fallback pattern for', layout.name, ':', fallbackPattern);
+            layout.header_pattern = fallbackPattern;
+          } else {
+            continue;
+          }
+        }
+
+        // Check for exact match first (highest priority)
+        if (this.isExactHeaderMatch(csvHeaders, layout.header_pattern)) {
+          console.log('✅ [AUTO-DETECT] Exact match found:', {
+            layout: layout.name,
+            bank: bank?.name,
+            confidence: 1.0
+          });
+          
+          return {
+            layout: {
+              ...layout,
+              layout_type: layout.file_type as 'bank' | 'credit_card' || 'bank'
+            },
+            layoutType: layout.file_type as 'bank' | 'credit_card' || 'bank',
+            bankId: layout.bank_id,
+            bankName: bank?.name,
+            confidence: 1.0
+          };
+        }
+
+        // Calculate similarity score for partial matches
+        const similarity = this.calculateHeaderSimilarity(csvHeaders, layout.header_pattern);
+        
+        console.log('📊 [AUTO-DETECT] Similarity check:', {
+          layout: layout.name,
+          bank: bank?.name,
+          similarity: similarity.toFixed(3),
+          csvHeaders,
+          patternHeaders: layout.header_pattern
+        });
+
+        // Consider layouts with similarity >= 0.7 as potential matches
+        if (similarity >= 0.7 && similarity > bestScore) {
+          bestScore = similarity;
+          bestMatch = {
+            layout: {
+              ...layout,
+              layout_type: layout.file_type as 'bank' | 'credit_card' || 'bank'
+            },
+            layoutType: layout.file_type as 'bank' | 'credit_card' || 'bank',
+            bankId: layout.bank_id,
+            bankName: bank?.name,
+            confidence: similarity
+          };
+        }
+      }
+
+      if (bestMatch) {
+        console.log('✅ [AUTO-DETECT] Best match found:', {
+          layout: bestMatch.layout.name,
+          bank: bestMatch.bankName,
+          confidence: bestMatch.confidence.toFixed(3)
+        });
+      } else {
+        console.log('❌ [AUTO-DETECT] No suitable layout found for headers:', csvHeaders);
+      }
+
+      return bestMatch;
+    } catch (error) {
+      console.error('💥 [AUTO-DETECT] Exception in layout detection:', error);
       throw error;
     }
   }

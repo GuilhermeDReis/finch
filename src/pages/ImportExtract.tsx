@@ -51,7 +51,7 @@ interface ImportSession {
 
 export default function ImportExtract() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'identify' | 'duplicate-analysis' | 'processing' | 'categorization' | 'completion'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'identify' | 'duplicate-analysis' | 'processing' | 'categorization' | 'completion' | 'manual-selection'>('upload');
   const [selectedBank, setSelectedBank] = useState<string>('00000000-0000-0000-0000-000000000001'); // Start with Nubank UUID instead of 'nubank' 
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
@@ -133,6 +133,34 @@ export default function ImportExtract() {
   const [creditCards, setCreditCards] = useState<any[]>([]);
   const [loadingCreditCards, setLoadingCreditCards] = useState(false);
 
+  // Load banks on component mount
+  useEffect(() => {
+    const loadBanks = async () => {
+      try {
+        const { data: banksData, error } = await supabase
+          .from('banks')
+          .select('id, icon_url')
+          .order('name');
+
+        if (error) {
+          console.error('Error loading banks:', error);
+          toast({
+            title: "Erro ao carregar bancos",
+            description: "Não foi possível carregar os bancos",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        setBanks(banksData || []);
+      } catch (error) {
+        console.error('Error loading banks:', error);
+      }
+    };
+
+    loadBanks();
+  }, [toast]);
+
   // Load credit cards when identify step is reached for credit_card layout
   useEffect(() => {
     const loadCreditCards = async () => {
@@ -172,8 +200,8 @@ export default function ImportExtract() {
     loadCreditCards();
   }, [currentStep, layoutType, toast]);
 
-  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType?: 'bank' | 'credit_card', bankId?: string) => {
-    // console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType);
+  const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string) => {
+    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType, 'Bank ID:', bankId);
     
     // Store the layout type and bank ID
     setLayoutType(layoutType || null);
@@ -1410,74 +1438,60 @@ external_id: transaction.id,
         )}
       </div>
 
-      {/* Progress Steps */}
-      <div className="flex items-center space-x-2 sm:space-x-4 mb-6 overflow-x-auto pb-2">
-        <div className={`flex items-center ${currentStep === 'upload' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            1
-          </div>
+      {/* Step Content */}
+      {currentStep === 'upload' && (
+        <div className="space-y-6">
+          <CSVUploader 
+            onDataParsed={handleDataParsed}
+            onError={(error) => {
+              // console.error('CSV Upload Error:', error);
+              toast({
+                title: "Erro ao processar arquivo CSV",
+                description: error,
+                variant: "destructive"
+              });
+              setCurrentStep('manual-selection');
+            }}
+          />
         </div>
-        
-        <div className="flex-1 h-px bg-border" />
-        
-        <div className={`flex items-center ${currentStep === 'identify' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'identify' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            2
-          </div>
-        </div>
-        
-        <div className="flex-1 h-px bg-border" />
-        
-        <div className={`flex items-center ${currentStep === 'processing' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'processing' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            3
-          </div>
-        </div>
-        
-        <div className="flex-1 h-px bg-border" />
-        
-        <div className={`flex items-center ${currentStep === 'categorization' ? 'text-primary' : 'text-muted-foreground'}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            currentStep === 'categorization' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            4
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Identification Step */}
+      {currentStep === 'manual-selection' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Seleção Manual de Banco</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Não foi possível identificar o banco do arquivo. Por favor, selecione manualmente:</p>
+          <BankSelector onValueChange={(bankId) => {
+            setSelectedBank(bankId);
+            setCurrentStep('upload'); // Return to upload, now with a bank selected
+          }} />
+          </CardContent>
+        </Card>
+      )}
+
       {currentStep === 'identify' && (
         <div className="space-y-6">
           <h2 className="text-xl font-medium">Selecione o banco</h2>
-          <Select onValueChange={(value) => setSelectedBank(value)} value={selectedBank}>
-            <SelectTrigger className="w-full max-w-sm border border-gray-200">
-              <SelectValue placeholder="Selecione o banco" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="nubank">Nubank</SelectItem>
-              <SelectItem value="itau">Itaú</SelectItem>
-              <SelectItem value="bradesco">Bradesco</SelectItem>
-            </SelectContent>
-          </Select>
+          <BankSelector value={selectedBank} onValueChange={setSelectedBank} disabled={false} />
 
           {layoutType === 'credit_card' && (
             <div className="space-y-4">
               <h2 className="text-xl font-medium">Selecione o cartão</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {creditCards.map((card) => (
-                  <ImportCreditCardCard
-                    key={card.id}
-                    card={card}
-                    isSelected={selectedCreditCardId === card.id}
-                    onClick={() => setSelectedCreditCardId(card.id)}
-                  />
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0.5">
+                {creditCards.map((card) => {
+                  const bank = banks.find(b => b.id === card.bank_id);
+                  return (
+                    <ImportCreditCardCard
+                      key={card.id}
+                      card={card}
+                      bankIconUrl={bank?.icon_url}
+                      isSelected={selectedCreditCardId === card.id}
+                      onClick={() => setSelectedCreditCardId(card.id)}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1487,144 +1501,6 @@ external_id: transaction.id,
           </Button>
         </div>
       )}
-
-      {/* Step Content */}
-      {currentStep === 'upload' && (
-        <div className="space-y-6">
-          <CSVUploader 
-            onDataParsed={(data, layoutType) => handleDataParsed(data, layoutType, selectedBank)}
-            onError={(error) => {
-              // console.error('CSV Upload Error:', error);
-              toast({
-                title: "Erro ao processar arquivo CSV",
-                description: error,
-                variant: "destructive"
-              });
-            }}
-            selectedBankId={selectedBank}
-          />
-        </div>
-      )}
-
-      {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
-        <DuplicateAnalysisCard
-          analysis={{
-            totalNew: duplicateAnalysis.newTransactions.length,
-            totalDuplicates: duplicateAnalysis.duplicates.length,
-            duplicates: duplicateAnalysis.duplicates,
-            newTransactions: duplicateAnalysis.newTransactions,
-            refundedTransactions: [],
-            unifiedPixTransactions: []
-          }}
-          selectedMode={selectedImportMode}
-          onModeChange={setSelectedImportMode}
-          onProceed={async () => {
-            await handleDuplicateAnalysisComplete(
-              [...duplicateAnalysis.newTransactions, ...duplicateAnalysis.duplicates.map(d => d.new)],
-              selectedImportMode === 'new-only' ? 'import' : 
-              selectedImportMode === 'update-existing' ? 'overwrite' : 'import'
-            );
-          }}
-          onCancel={() => {
-            setDuplicateAnalysis(null);
-            setCurrentStep('upload');
-          }}
-        />
-      )}
-
-      {currentStep === 'processing' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 animate-spin" />
-              Processando Transações
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                  <span>Categorizando com IA...</span>
-                  <span>{processingProgress}%</span>
-                </div>
-<Progress value={processingProgress} className="w-full" />
-                  <div className="text-sm text-muted-foreground mt-2">
-                    {processingProgress < 100 ? "Processando..." : "Concluído!"}
-                  </div>
-              </div>
-              
-              {importSession && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">
-                    Sessão: {importSession.id.substring(0, 8)}
-                  </Badge>
-                  <Badge variant="outline">
-                    {importSession.total_records} transações
-                  </Badge>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {currentStep === 'categorization' && (
-        <div className="space-y-4 w-full">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-xl font-semibold">Revisar Transações</h2>
-            <Button onClick={handleFinalImport} disabled={isProcessing}>
-              {isProcessing ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Importando...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Importar Transações
-                </>
-              )}
-            </Button>
-          </div>
-          
-            <TransactionImportTable
-              transactions={transactions}
-              onTransactionsUpdate={setTransactions}
-              layoutType={layoutType}
-            />
-        </div>
-      )}
-
-      {/* Finalization Screen Outside Wizard */}
-      {currentStep === 'completion' && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-4">Importação finalizada!</h2>
-            <p className="text-muted-foreground mb-6">Suas transações foram processadas e importadas com sucesso.</p>
-          </div>
-          {importResults && (
-            <ImportResultsCard
-              result={{
-                successful: importResults.imported,
-                failed: 0,
-                skipped: importResults.skipped,
-                updated: 0,
-                total: importResults.imported + importResults.skipped,
-                errors: importResults.errors
-              }}
-              onClose={resetImport}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Loading Overlay */}
-      <LoadingOverlay 
-        isVisible={isProcessing} 
-        message={currentProcessingMessage}
-        progress={processingProgress}
-        subMessage={currentProcessingSubMessage}
-      />
     </div>
   );
 }

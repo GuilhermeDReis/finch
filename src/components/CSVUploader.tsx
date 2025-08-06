@@ -18,9 +18,9 @@ interface ParsedTransaction {
 }
 
 interface CSVUploaderProps {
-  onDataParsed: (data: ParsedTransaction[], layoutType?: 'bank' | 'credit_card') => void;
+  onDataParsed: (data: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string) => void;
   onError: (error: string) => void;
-  selectedBankId?: string;
+  selectedBankId?: string; // Optional: for manual override
 }
 
 // Enhanced transaction type detection with Brazilian context
@@ -155,23 +155,14 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
     setMessage('Processando arquivo...');
 
     try {
-      // Check if bank is selected
-      if (!selectedBankId) {
-        throw new Error('Por favor, selecione um banco antes de importar o arquivo.');
-      }
-
       // Parse CSV to get headers first
       const parseResult = await new Promise<any>((resolve, reject) => {
         Papa.parse(file, {
           header: true,
           skipEmptyLines: true,
-          preview: 1, // Just get headers and first row to check structure
-          complete: (results) => {
-            resolve(results);
-          },
-          error: (error: any) => {
-            reject(error);
-          }
+          preview: 1,
+          complete: (results) => resolve(results),
+          error: (error: any) => reject(error),
         });
       });
 
@@ -180,17 +171,25 @@ export default function CSVUploader({ onDataParsed, onError, selectedBankId }: C
         throw new Error('Não foi possível ler os cabeçalhos do arquivo.');
       }
 
-      // Find matching layout for the selected bank
       setMessage('Verificando layout do arquivo...');
       setProgress(25);
 
-      const layoutMatchResult = await FileLayoutService.findMatchingLayout(selectedBankId, headers);
-      
-      if (!layoutMatchResult) {
-        throw new Error(`O arquivo não corresponde ao padrão esperado para o banco selecionado. Cabeçalhos encontrados: ${headers.join(', ')}`);
+      let layoutMatchResult;
+      if (selectedBankId) {
+        // Manual mode: find layout for the selected bank
+        layoutMatchResult = await FileLayoutService.findMatchingLayout(selectedBankId, headers);
+        if (!layoutMatchResult) {
+          throw new Error(`O arquivo não corresponde ao padrão do banco selecionado. Cabeçalhos: ${headers.join(', ')}`);
+        }
+      } else {
+        // Automatic mode: detect layout from all banks
+        layoutMatchResult = await FileLayoutService.detectLayoutFromHeaders(headers);
+        if (!layoutMatchResult) {
+          throw new Error(`Não foi possível identificar o layout do arquivo. Selecione um banco manualmente.`);
+        }
       }
 
-      const { layout: matchingLayout, layoutType } = layoutMatchResult;
+      const { layout: matchingLayout, layoutType, bankId } = layoutMatchResult;
 
       // Map headers to layout columns
       const headerMapping = FileLayoutService.mapHeadersToLayout(headers, matchingLayout);
@@ -254,7 +253,7 @@ return {
             setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
             
             // Pass the layout type information to the parent component
-            onDataParsed(transactions, layoutType);
+            onDataParsed(transactions, layoutType, bankId);
 
           } catch (error) {
             setStatus('error');
