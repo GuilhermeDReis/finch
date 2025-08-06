@@ -1479,7 +1479,7 @@ external_id: transaction.id,
           {layoutType === 'credit_card' && (
             <div className="space-y-4">
               <h2 className="text-xl font-medium">Selecione o cartão</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-x-1 gap-y-2">
                 {creditCards.map((card) => {
                   const bank = banks.find(b => b.id === card.bank_id);
                   return (
@@ -1499,6 +1499,54 @@ external_id: transaction.id,
           <Button onClick={handleIdentificationComplete}>
             Continuar
           </Button>
+        </div>
+      )}
+
+      {/* Processing with LoadingOverlay when isProcessing is true */}
+      {isProcessing && (
+        <LoadingOverlay
+          isVisible={isProcessing}
+          message={currentProcessingMessage}
+          subMessage={currentProcessingSubMessage}
+          progress={processingProgress}
+        />
+      )}
+
+      {/* Show Duplicate Analysis when currentStep is duplicate-analysis */}
+      {currentStep === 'duplicate-analysis' && duplicateAnalysis && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-medium">Análise de Duplicatas</h2>
+          <DuplicateAnalysisCard
+            duplicates={duplicateAnalysis.duplicates}
+            newTransactions={duplicateAnalysis.newTransactions}
+            onComplete={handleDuplicateAnalysisComplete}
+            selectedMode={selectedImportMode}
+            onModeChange={setSelectedImportMode}
+          />
+        </div>
+      )}
+
+      {/* Show Transaction Import Table when currentStep is categorization */}
+      {currentStep === 'categorization' && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-medium">Revisar e Categorizar Transações</h2>
+          <TransactionImportTable
+            transactions={transactions}
+            onTransactionsUpdate={handleTransactionsUpdate}
+            onImport={handleFinalImport}
+            layoutType={layoutType}
+          />
+        </div>
+      )}
+
+      {/* Show Import Results when currentStep is completion */}
+      {currentStep === 'completion' && importResults && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-medium">Importação Concluída</h2>
+          <ImportResultsCard
+            results={importResults}
+            onNewImport={resetImport}
+          />
         </div>
       )}
     </div>
