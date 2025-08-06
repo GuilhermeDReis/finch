@@ -1045,31 +1045,56 @@ setProcessingProgress(80);
         // Store the background job ID for tracking
         setCurrentBackgroundJobId(backgroundJob.id);
 
-        // Show success message and redirect to home
-        toast({
-          title: "Processamento em segundo plano iniciado",
-          description: "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
-          variant: "default"
+      // Show success message and redirect to home
+      toast({
+        title: "Processamento em segundo plano iniciado",
+        description: "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
+        variant: "default"
+      });
+
+      // Call the Edge Function to process the background job
+      try {
+        const response = await fetch('/functions/v1/process-import-job', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ jobId: backgroundJob.id })
         });
 
-        // Reset import state and redirect to home
-        resetImport();
-        
-        // Navigate to home or dashboard
-        window.location.href = '/dashboard';
-        
-        return;
-        
-      } catch (error) {
-        console.error('💥 [BACKGROUND] Exception in background processing:', error);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to start background job processing');
+        }
+
+        console.log('✅ [BACKGROUND] Background job processing triggered successfully');
+      } catch (processError) {
+        console.error('❌ [BACKGROUND] Error triggering background job processing:', processError);
         toast({
-          title: "Erro no processamento em background",
-          description: "Ocorreu um erro ao iniciar o processamento em segundo plano",
+          title: "Erro ao iniciar processamento em segundo plano",
+          description: processError instanceof Error ? processError.message : 'Erro desconhecido',
           variant: "destructive"
         });
-        return;
       }
+
+      // Reset import state and redirect to home
+      resetImport();
+      
+      // Navigate to home or dashboard
+      window.location.href = '/dashboard';
+      
+      return;
+      
+    } catch (error) {
+      console.error('💥 [BACKGROUND] Exception in background processing:', error);
+      toast({
+        title: "Erro no processamento em background",
+        description: "Ocorreu um erro ao iniciar o processamento em segundo plano",
+        variant: "destructive"
+      });
+      return;
     }
+  }
 
     // Continue with synchronous processing if background is disabled
     console.log('⚡ [SYNC] Starting synchronous import process');

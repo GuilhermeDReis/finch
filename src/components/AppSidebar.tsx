@@ -1,5 +1,5 @@
 
-import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, LogOut } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, LogOut, ArrowRightLeft } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
   { title: "Início", url: "/", icon: Home },
-  { title: "Transações", url: "/transactions", icon: CreditCard },
+  { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
+  { title: "Transações", url: "/transactions", icon: ArrowRightLeft },
   { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCard },
   { title: "Importar Extrato", url: "/import", icon: Upload },
   { title: "Relatórios", url: "/reports", icon: FileText },

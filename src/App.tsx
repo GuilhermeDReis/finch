@@ -12,7 +12,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { FullPageLoader } from "./components/LoadingSpinner";
 
 // Lazy load pages for code splitting
-const Index = lazy(() => import("./pages/Index"));
+const Home = lazy(() => import("./pages/Home"));
 const TransactionManagement = lazy(() => import("./pages/TransactionManagement"));
 const ImportExtract = lazy(() => import("./pages/ImportExtract"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -44,7 +44,7 @@ const App = () => (
                   <Route path="/" element={
                     <ProtectedRoute>
                       <Layout>
-                        <Index />
+                        <Home />
                       </Layout>
                     </ProtectedRoute>
                   } />
