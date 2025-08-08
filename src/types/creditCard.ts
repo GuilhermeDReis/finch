@@ -11,9 +11,7 @@ export interface CreditCardWithBank extends CreditCard {
   banks?: {
     id: string;
     name: string;
-    icon_url: string | null;
   };
-  last_four_digits?: string;
 }
 
 // Form types
@@ -25,6 +23,7 @@ export interface CreditCardFormData {
   closing_day: number;
   due_day: number;
   last_four_digits: string;
+  background_image_url?: string;
 }
 
 // Credit card brand options for UI

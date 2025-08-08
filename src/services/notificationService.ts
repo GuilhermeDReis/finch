@@ -1,5 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { Tables, TablesInsert } from '@/integrations/supabase/types';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('notificationService');
 
 export type Notification = Tables<'notifications'>;
 export type NotificationInsert = TablesInsert<'notifications'>;
@@ -29,11 +32,11 @@ class NotificationService {
       const { data: user, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user?.user) {
-        console.warn('User not authenticated for notifications:', userError);
+        logger.warn('User not authenticated for notifications', { error: userError });
         throw new Error('User not authenticated');
       }
 
-      console.log('🔍 NotificationService: Fetching for user:', user.user.id);
+      logger.info('Fetching notifications for user', { userId: user.user.id });
 
       let query = supabase
         .from('notifications')
@@ -65,10 +68,10 @@ class NotificationService {
 
       const { data, error } = await query;
 
-      console.log('📊 NotificationService query result:', { data, error, userId: user.user.id });
+      logger.debug('Notification query result', { count: data?.length || 0, hasError: !!error, userId: user.user.id });
 
       if (error) {
-        console.error('Error fetching notifications:', error);
+        logger.error('Error fetching notifications', { error, errorCode: error.code });
         // Handle specific RLS errors
         if (error.code === '42501') {
           throw new Error('Access denied - notifications table not configured properly');
@@ -76,10 +79,10 @@ class NotificationService {
         throw error;
       }
 
-      console.log(`✅ NotificationService: Found ${data?.length || 0} notifications`);
+      logger.info('Successfully fetched notifications', { count: data?.length || 0 });
       return data || [];
     } catch (error) {
-      console.error('Error in getNotifications:', error);
+      logger.error('Error in getNotifications', { error });
       throw error;
     }
   }
@@ -93,11 +96,11 @@ class NotificationService {
       const { data: user, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user?.user) {
-        console.warn('User not authenticated for stats:', userError);
+        logger.warn('User not authenticated for notification stats', { error: userError });
         throw new Error('User not authenticated');
       }
 
-      console.log('📈 NotificationService: Getting stats for user:', user.user.id);
+      logger.info('Getting notification stats for user', { userId: user.user.id });
 
       const { data, error } = await supabase
         .from('notifications')
@@ -105,7 +108,7 @@ class NotificationService {
         .eq('user_id', user.user.id);
 
       if (error) {
-        console.error('Error fetching notification stats:', error);
+        logger.error('Error fetching notification stats', { error });
         throw error;
       }
 
@@ -131,7 +134,7 @@ class NotificationService {
 
       return stats;
     } catch (error) {
-      console.error('Error in getNotificationStats:', error);
+      logger.error('Error in getNotificationStats', { error });
       throw error;
     }
   }
@@ -150,11 +153,11 @@ class NotificationService {
         .eq('id', notificationId);
 
       if (error) {
-        console.error('Error marking notification as read:', error);
+        logger.error('Error marking notification as read', { error, notificationId });
         throw error;
       }
     } catch (error) {
-      console.error('Error in markAsRead:', error);
+      logger.error('Error in markAsRead', { error, notificationId });
       throw error;
     }
   }
@@ -181,13 +184,15 @@ class NotificationService {
         .select('id');
 
       if (error) {
-        console.error('Error marking all notifications as read:', error);
+        logger.error('Error marking all notifications as read', { error, userId: user.user.id });
         throw error;
       }
 
-      return data?.length || 0;
+      const updatedCount = data?.length || 0;
+      logger.info('Marked all notifications as read', { count: updatedCount, userId: user.user.id });
+      return updatedCount;
     } catch (error) {
-      console.error('Error in markAllAsRead:', error);
+      logger.error('Error in markAllAsRead', { error });
       throw error;
     }
   }
@@ -215,16 +220,17 @@ class NotificationService {
       if (error) {
         // If table doesn't exist, fail silently but log for debugging
         if (error.code === '42P01') {
-          console.warn('Notifications table not found - notification system not yet configured');
+          logger.warn('Notifications table not found - notification system not yet configured', { errorCode: error.code });
           throw new Error('Notifications table not configured');
         }
-        console.error('Error creating notification:', error);
+        logger.error('Error creating notification', { error });
         throw error;
       }
 
+      logger.info('Notification created successfully', { notificationId: data.id, type: data.type });
       return data;
     } catch (error) {
-      console.error('Error in createNotification:', error);
+      logger.error('Error in createNotification', { error });
       throw error;
     }
   }
@@ -240,11 +246,12 @@ class NotificationService {
         .eq('id', notificationId);
 
       if (error) {
-        console.error('Error deleting notification:', error);
+        logger.error('Error deleting notification', { error, notificationId });
         throw error;
       }
+      logger.info('Notification deleted successfully', { notificationId });
     } catch (error) {
-      console.error('Error in deleteNotification:', error);
+      logger.error('Error in deleteNotification', { error, notificationId });
       throw error;
     }
   }
@@ -260,11 +267,12 @@ class NotificationService {
         .in('id', notificationIds);
 
       if (error) {
-        console.error('Error deleting notifications:', error);
+        logger.error('Error deleting multiple notifications', { error, count: notificationIds.length });
         throw error;
       }
+      logger.info('Multiple notifications deleted successfully', { count: notificationIds.length });
     } catch (error) {
-      console.error('Error in deleteNotifications:', error);
+      logger.error('Error in deleteNotifications', { error, notificationIds });
       throw error;
     }
   }
@@ -281,13 +289,15 @@ class NotificationService {
         .select('id');
 
       if (error) {
-        console.error('Error deleting read notifications:', error);
+        logger.error('Error deleting read notifications', { error });
         throw error;
       }
 
-      return data?.length || 0;
+      const deletedCount = data?.length || 0;
+      logger.info('Read notifications deleted successfully', { count: deletedCount });
+      return deletedCount;
     } catch (error) {
-      console.error('Error in deleteReadNotifications:', error);
+      logger.error('Error in deleteReadNotifications', { error });
       throw error;
     }
   }
@@ -325,9 +335,12 @@ class NotificationService {
       )
       .subscribe((status, error) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to notifications');
-        } else if (error && onError) {
-          onError(error);
+          logger.info('Successfully subscribed to real-time notifications');
+        } else if (error) {
+          logger.error('Error subscribing to notifications', { error });
+          if (onError) {
+            onError(error);
+          }
         }
       });
   }
@@ -409,9 +422,10 @@ class NotificationService {
     } catch (error) {
       // If notifications table doesn't exist, return null instead of throwing
       if (error instanceof Error && error.message.includes('not configured')) {
-        console.warn('Background job notification skipped - notifications table not configured');
+        logger.warn('Background job notification skipped - notifications table not configured', { jobId });
         return null;
       }
+      logger.error('Error creating background job notification', { error, jobId, title });
       throw error;
     }
   }

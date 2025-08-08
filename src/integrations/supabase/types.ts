@@ -57,6 +57,8 @@ export type Database = {
           user_id: string
           created_at: string
           updated_at: string
+          last_four_digits: string | null
+          background_image_url: string | null
         }
         Insert: {
           id?: string
@@ -70,6 +72,8 @@ export type Database = {
           user_id: string
           created_at?: string
           updated_at?: string
+          last_four_digits?: string | null
+          background_image_url?: string | null
         }
         Update: {
           id?: string
@@ -83,6 +87,8 @@ export type Database = {
           user_id?: string
           created_at?: string
           updated_at?: string
+          last_four_digits?: string | null
+          background_image_url?: string | null
         }
         Relationships: [
           {
@@ -193,25 +199,22 @@ export type Database = {
       }
       banks: {
         Row: {
+          created_at: string | null
           id: string
           name: string
-          icon_url: string | null
-          created_at: string
-          updated_at: string
+          updated_at: string | null
         }
         Insert: {
+          created_at?: string | null
           id?: string
           name: string
-          icon_url?: string | null
-          created_at?: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Update: {
+          created_at?: string | null
           id?: string
           name?: string
-          icon_url?: string | null
-          created_at?: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Relationships: []
       }

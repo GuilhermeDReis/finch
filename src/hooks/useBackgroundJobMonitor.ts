@@ -3,6 +3,9 @@ import { useToast } from '@/hooks/use-toast';
 import backgroundJobService, { type BackgroundJob } from '@/services/backgroundJobService';
 import { notificationService } from '@/services/notificationService';
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('useBackgroundJobMonitor');
 
 interface UseBackgroundJobMonitorOptions {
   /** Se deve mostrar notificações automáticas quando jobs completarem */
@@ -88,7 +91,7 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
             result: currentJob.result
           }
         ).catch(error => {
-          console.error('Error creating success notification:', error);
+          logger.error('Error creating success notification', { error, jobId: currentJob.id, jobType: currentJob.type });
           // Fallback to toast if notification fails
           toast({
             title: "✅ Processamento Concluído!",
@@ -118,7 +121,7 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
             error: currentJob.error_message
           }
         ).catch(error => {
-          console.error('Error creating error notification:', error);
+          logger.error('Error creating error notification', { error, jobId: currentJob.id, jobType: currentJob.type });
           // Fallback to toast if notification fails
           toast({
             title: "❌ Processamento Falhou",
@@ -171,7 +174,7 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
       previousJobsRef.current = jobs;
       
     } catch (error) {
-      console.error('Error loading background jobs:', error);
+      logger.error('Error loading background jobs', { error });
       setState(prev => ({
         ...prev,
         loading: false,

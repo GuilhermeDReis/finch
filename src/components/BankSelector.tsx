@@ -7,6 +7,9 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('BankSelector');
 
 // Simple default bank icon component using SVG
 const DefaultBankIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
@@ -27,7 +30,6 @@ const DefaultBankIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
 interface Bank {
   id: string;
   name: string;
-  icon_url: string;
 }
 
 interface BankSelectorProps {
@@ -49,28 +51,26 @@ export const BankSelector = ({
       try {
         const { data, error } = await supabase
           .from('banks')
-          .select('id, name, icon_url')
+          .select('id, name')
           .eq('is_active', true)
           .order('name');
 
         if (error) {
-          // console.error('Error fetching banks:', error);
+          logger.error('Error fetching banks', { error });
           // Fallback to default bank if fetch fails
           setBanks([{
             id: '00000000-0000-0000-0000-000000000001',
-            name: 'Nubank',
-            icon_url: ''
+            name: 'Nubank'
           }]);
         } else {
           setBanks(data || []);
         }
       } catch (error) {
-        // console.error('Error fetching banks:', error);
+        logger.error('Error fetching banks', { error });
         // Fallback to default bank if fetch fails
         setBanks([{
           id: '00000000-0000-0000-0000-000000000001',
-          name: 'Nubank',
-          icon_url: ''
+          name: 'Nubank'
         }]);
       } finally {
         setLoading(false);
@@ -114,11 +114,7 @@ export const BankSelector = ({
               const selectedBank = banks.find(bank => bank.id === selectedValue);
               return selectedBank && (
                 <div className="flex items-center gap-2">
-                  {selectedBank.icon_url ? (
-                    <img src={selectedBank.icon_url} alt={selectedBank.name} className="h-4 w-4 object-contain" />
-                  ) : (
-                    <DefaultBankIcon className="h-4 w-4" />
-                  )}
+                  <DefaultBankIcon className="h-4 w-4" />
                   <span className="text-sm">{selectedBank.name}</span>
                 </div>
               );
@@ -129,11 +125,7 @@ export const BankSelector = ({
           {banks.map((bank) => (
             <SelectItem key={bank.id} value={bank.id}>
               <div className="flex items-center gap-2">
-                {bank.icon_url ? (
-                  <img src={bank.icon_url} alt={bank.name} className="h-4 w-4 object-contain" />
-                ) : (
-                  <DefaultBankIcon className="h-4 w-4" />
-                )}
+                <DefaultBankIcon className="h-4 w-4" />
                 <span>{bank.name}</span>
               </div>
             </SelectItem>

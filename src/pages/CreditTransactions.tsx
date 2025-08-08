@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditTransactions');
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -68,7 +71,7 @@ export default function CreditTransactions() {
       }
       
     } catch (error) {
-      console.error('Error:', error);
+      logger.error('Error loading credit transactions', { error: error instanceof Error ? error.message : 'Unknown error' });
       toast.error('Erro ao carregar transações de crédito');
     } finally {
       setLoading(false);

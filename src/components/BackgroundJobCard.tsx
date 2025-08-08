@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('backgroundJobCard');
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -57,7 +60,7 @@ export default function BackgroundJobCard({
       const jobStatus = await backgroundJobService.getJobStatus(jobId);
       setJob(jobStatus);
     } catch (error) {
-      console.error('Error loading job status:', error);
+      logger.error('Error loading job status', { jobId, error: error instanceof Error ? error.message : 'Unknown error' });
       toast({
         title: "Erro",
         description: "Não foi possível carregar o status do job",

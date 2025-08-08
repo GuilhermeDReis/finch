@@ -2,6 +2,26 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
+// Simulação do logger para ambiente Deno
+const getLogger = (namespace: string) => {
+  return {
+    debug: (message: string, context?: Record<string, any>) => {
+      console.log(`[DEBUG] [${namespace}] ${message}`, context || '');
+    },
+    info: (message: string, context?: Record<string, any>) => {
+      console.log(`[INFO] [${namespace}] ${message}`, context || '');
+    },
+    warn: (message: string, context?: Record<string, any>) => {
+      console.warn(`[WARN] [${namespace}] ${message}`, context || '');
+    },
+    error: (message: string, context?: Record<string, any>) => {
+      console.error(`[ERROR] [${namespace}] ${message}`, context || '');
+    }
+  };
+};
+
+const logger = getLogger('process-import-job');
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -29,13 +49,14 @@ interface ImportJobPayload {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    logger.debug('Handling CORS preflight request');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { jobId } = await req.json();
     
-    console.log('🔄 [BACKGROUND-PROCESSOR] Starting job processing:', jobId);
+    logger.info('Starting job processing', { jobId });
     
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -50,10 +71,11 @@ serve(async (req) => {
       .single();
 
     if (jobError || !job) {
+      logger.error('Job not found', { jobId, error: jobError });
       throw new Error(`Job not found: ${jobError?.message}`);
     }
 
-    console.log('📋 [BACKGROUND-PROCESSOR] Processing job type:', job.type);
+    logger.info('Processing job', { jobId, jobType: job.type });
 
     // Update job status to processing
     await updateJobProgress(supabase, jobId, 'processing', 5, 'Iniciando processamento...');
@@ -72,7 +94,7 @@ serve(async (req) => {
     // Ensure notification is created - backup mechanism in case trigger fails
     await ensureCompletionNotification(supabase, job, result);
 
-    console.log('✅ [BACKGROUND-PROCESSOR] Job completed successfully:', jobId);
+    logger.info('Job completed successfully', { jobId, result });
 
     return new Response(
       JSON.stringify({ success: true, result }),
@@ -80,7 +102,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ [BACKGROUND-PROCESSOR] Error processing job:', error);
+    logger.error('Error processing job', { error: error instanceof Error ? error.message : 'Unknown error' });
     
     // Try to update job status to failed
     if (req.json && (await req.json()).jobId) {
@@ -138,7 +160,7 @@ async function updateJobProgress(
     updates.completed_at = new Date().toISOString();
   }
 
-  console.log('📝 [BACKGROUND-PROCESSOR] Updating job with:', JSON.stringify(updates, null, 2));
+  logger.debug('Updating job', { jobId, updates });
   
   const { error } = await supabase
     .from('background_jobs')
@@ -146,27 +168,27 @@ async function updateJobProgress(
     .eq('id', jobId);
 
   if (error) {
-    console.error('❌ [BACKGROUND-PROCESSOR] Error updating job progress:', error);
+    logger.error('Error updating job progress', { jobId, error });
   } else {
-    console.log('✅ [BACKGROUND-PROCESSOR] Job updated successfully, trigger should fire for notifications');
+    logger.info('Job updated successfully', { jobId, status });
   }
 }
 
 async function processImportJob(supabase: any, job: BackgroundJob) {
   const payload = job.payload as ImportJobPayload;
-  console.log('💾 [BACKGROUND-PROCESSOR] Processing import with', payload.transactions.length, 'transactions');
+  logger.info('Processing import job', { jobId: job.id, transactionCount: payload.transactions.length });
 
   await updateJobProgress(supabase, job.id, 'processing', 10, 'Verificando duplicados...');
 
   // Step 1: Apply existing mappings (10-30%)
-  console.log('🔍 [BACKGROUND-PROCESSOR] Applying existing mappings...');
+  logger.info('Applying existing mappings', { jobId: job.id });
   await updateJobProgress(supabase, job.id, 'processing', 20, 'Aplicando mapeamentos existentes...');
 
   // Here you would implement the mapping logic similar to your current code
   // For now, we'll simulate the process
 
   // Step 2: Categorize with AI (30-70%)
-  console.log('🤖 [BACKGROUND-PROCESSOR] Categorizing with AI...');
+  logger.info('Categorizing with AI', { jobId: job.id });
   await updateJobProgress(supabase, job.id, 'processing', 40, 'Categorizando com IA...');
 
   // Call Gemini AI for categorization (simulate)
@@ -175,7 +197,7 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
   // });
 
   // Step 3: Save to database (70-90%)
-  console.log('💾 [BACKGROUND-PROCESSOR] Saving to database...');
+  logger.info('Saving to database', { jobId: job.id });
   await updateJobProgress(supabase, job.id, 'processing', 70, 'Salvando no banco de dados...');
 
   // Implement database save logic based on layoutType
@@ -203,13 +225,17 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
           }, { onConflict: 'external_id' });
 
         if (error) {
-          console.error('❌ [BACKGROUND-PROCESSOR] Error saving credit transaction:', error);
+          logger.error('Error saving credit transaction', { jobId: job.id, transactionId: transaction.id, error });
           errors.push(`Error saving transaction ${transaction.id}: ${error.message}`);
         } else {
           imported++;
         }
       } catch (error) {
-        console.error('❌ [BACKGROUND-PROCESSOR] Exception saving credit transaction:', error);
+        logger.error('Exception saving credit transaction', { 
+          jobId: job.id, 
+          transactionId: transaction.id, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
         errors.push(`Exception saving transaction ${transaction.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
@@ -233,20 +259,24 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
           }, { onConflict: 'external_id' });
 
         if (error) {
-          console.error('❌ [BACKGROUND-PROCESSOR] Error saving bank transaction:', error);
+          logger.error('Error saving bank transaction', { jobId: job.id, transactionId: transaction.id, error });
           errors.push(`Error saving transaction ${transaction.id}: ${error.message}`);
         } else {
           imported++;
         }
       } catch (error) {
-        console.error('❌ [BACKGROUND-PROCESSOR] Exception saving bank transaction:', error);
+        logger.error('Exception saving bank transaction', { 
+          jobId: job.id, 
+          transactionId: transaction.id, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
         errors.push(`Exception saving transaction ${transaction.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
   }
 
   // Step 4: Update mappings (90-100%)
-  console.log('🔄 [BACKGROUND-PROCESSOR] Updating mappings...');
+  logger.info('Updating mappings', { jobId: job.id });
   await updateJobProgress(supabase, job.id, 'processing', 90, 'Atualizando mapeamentos...');
 
   // Here you would update transaction mappings for future use
@@ -259,14 +289,14 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
     total: payload.transactions.length
   };
 
-  console.log('✅ [BACKGROUND-PROCESSOR] Import job completed:', result);
+  logger.info('Import job completed', { jobId: job.id, result });
   return result;
 }
 
 // Function to ensure completion notification is created (backup in case trigger fails)
 async function ensureCompletionNotification(supabase: any, job: BackgroundJob, result: any) {
   try {
-    console.log('🔔 [BACKGROUND-PROCESSOR] Ensuring completion notification exists...');
+    logger.info('Ensuring completion notification exists', { jobId: job.id });
     
     // Wait a moment to let the trigger fire first
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -281,11 +311,11 @@ async function ensureCompletionNotification(supabase: any, job: BackgroundJob, r
       .maybeSingle();
     
     if (existingNotification) {
-      console.log('✅ [BACKGROUND-PROCESSOR] Notification already exists from trigger');
+      logger.info('Notification already exists from trigger', { jobId: job.id, notificationId: existingNotification.id });
       return;
     }
     
-    console.log('⚠️ [BACKGROUND-PROCESSOR] No notification found, creating backup notification...');
+    logger.warn('No notification found, creating backup notification', { jobId: job.id });
     
     // Create backup notification
     const title = job.type === 'transaction_import' ? 'Importação Concluída' : 'Processamento Concluído';
@@ -313,11 +343,14 @@ async function ensureCompletionNotification(supabase: any, job: BackgroundJob, r
       });
     
     if (insertError) {
-      console.error('❌ [BACKGROUND-PROCESSOR] Failed to create backup notification:', insertError);
+      logger.error('Failed to create backup notification', { jobId: job.id, error: insertError });
     } else {
-      console.log('✅ [BACKGROUND-PROCESSOR] Backup notification created successfully');
+      logger.info('Backup notification created successfully', { jobId: job.id });
     }
   } catch (error) {
-    console.error('❌ [BACKGROUND-PROCESSOR] Error in ensureCompletionNotification:', error);
+    logger.error('Error in ensureCompletionNotification', { 
+      jobId: job.id, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 }

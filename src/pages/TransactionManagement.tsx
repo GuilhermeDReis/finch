@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PlusCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('TransactionManagement');
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,7 +98,7 @@ export default function TransactionManagement() {
       setSubcategories(subcategoriesData || []);
       
     } catch (error) {
-      // console.error('Error:', error);
+      logger.error('Error loading data', { error });
       toast.error('Erro ao carregar dados');
     } finally {
       setLoading(false);
@@ -234,7 +237,7 @@ export default function TransactionManagement() {
       setIsModalOpen(false);
       await fetchAllData(); // Refresh data
     } catch (error) {
-      // console.error('Error saving transaction:', error);
+      logger.error('Error saving transaction', { error });
       toast.error('Erro ao salvar transação');
     }
   };
@@ -256,7 +259,7 @@ export default function TransactionManagement() {
       setTransactions(prev => prev.filter(t => t.id !== id));
       toast.success('Transação excluída com sucesso!');
     } catch (error) {
-      // console.error('Error deleting transaction:', error);
+      logger.error('Error deleting transaction', { error });
       toast.error('Erro ao excluir transação');
     }
   };

@@ -1,4 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('TransactionMappingService');
 
 export interface TransactionMapping {
   id: string;
@@ -51,7 +54,7 @@ class TransactionMappingService {
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
 
-    // // console.log('🔍 [EXTRACT] Cleaned description:', cleanDescription);
+    // logger.debug('Cleaned description for extraction', { description: cleanDescription });
 
     // 1. Try to extract CPF/CNPJ (highest priority)
     // CPF pattern: XXX.XXX.XXX-XX or XXXXXXXXXXX
@@ -64,7 +67,7 @@ class TransactionMappingService {
         // Extract name (text before CPF/CNPJ)
         const nameMatch = cleanDescription.substring(0, cpfCnpjMatch.index).match(/([A-Za-zÀ-ÿ\s]+)$/);
         const name = nameMatch ? nameMatch[1].trim() : null;
-        // // console.log('✅ [EXTRACT] Found CPF/CNPJ:', { cpfCnpj, name });
+        // logger.debug('Found CPF/CNPJ identifier', { cpfCnpj, name });
         return { 
           identifier: cpfCnpj, 
           name: name ? this.normalizeString(name) : null,
@@ -80,7 +83,7 @@ class TransactionMappingService {
       // Extract name (text before UUID)
       const nameMatch = cleanDescription.substring(0, uuidMatch.index).match(/([A-Za-zÀ-ÿ\s]+)$/);
       const name = nameMatch ? nameMatch[1].trim() : null;
-      // // console.log('✅ [EXTRACT] Found UUID PIX:', { uuid: uuidMatch[0].toLowerCase(), name });
+      // logger.debug('Found UUID PIX identifier', { uuid: uuidMatch[0].toLowerCase(), name });
       return { 
         identifier: uuidMatch[0].toLowerCase(), 
         name: name ? this.normalizeString(name) : null,
@@ -98,7 +101,7 @@ class TransactionMappingService {
         // Extract name (text before phone)
         const nameMatch = cleanDescription.substring(0, phoneMatch.index).match(/([A-Za-zÀ-ÿ\s]+)$/);
         const name = nameMatch ? nameMatch[1].trim() : null;
-        // // console.log('✅ [EXTRACT] Found Phone PIX:', { phone: phoneClean, name });
+        // logger.debug('Found Phone PIX identifier', { phone: phoneClean, name });
         return { 
           identifier: phoneClean, 
           name: name ? this.normalizeString(name) : null,
@@ -114,7 +117,7 @@ class TransactionMappingService {
       // Extract name (text before email)
       const nameMatch = cleanDescription.substring(0, emailMatch.index).match(/([A-Za-zÀ-ÿ\s]+)$/);
       const name = nameMatch ? nameMatch[1].trim() : null;
-      // // console.log('✅ [EXTRACT] Found Email PIX:', { email: emailMatch[0].toLowerCase(), name });
+      // logger.debug('Found Email PIX identifier', { email: emailMatch[0].toLowerCase(), name });
       return { 
         identifier: emailMatch[0].toLowerCase(), 
         name: name ? this.normalizeString(name) : null,
@@ -134,7 +137,7 @@ class TransactionMappingService {
       // Extract name (text before bank details)
       const nameMatch = cleanDescription.substring(0, bankDetailsMatch.index).match(/([A-Za-zÀ-ÿ\s]+)$/);
       const name = nameMatch ? nameMatch[1].trim() : null;
-      // // console.log('✅ [EXTRACT] Found Bank Details:', { bankDetails, name });
+      // logger.debug('Found Bank Details identifier', { bankDetails, name });
       return { 
         identifier: bankDetails, 
         name: name ? this.normalizeString(name) : null,
@@ -148,7 +151,7 @@ class TransactionMappingService {
     const nameMatch = nameRegex.exec(cleanDescription);
     if (nameMatch) {
       const name = nameMatch[1].trim();
-      // // console.log('✅ [EXTRACT] Found Counterparty Name:', name);
+      // logger.debug('Found Counterparty Name', { name });
       return { 
         identifier: null, 
         name: this.normalizeString(name),
@@ -156,7 +159,7 @@ class TransactionMappingService {
       };
     }
 
-    // // console.log('⚠️ [EXTRACT] No counterparty identifier found');
+    // logger.debug('No counterparty identifier found');
     return { identifier: null, name: null, bankDetails: null };
   }
 
@@ -235,9 +238,9 @@ class TransactionMappingService {
     
     // Filter out empty components and join
     const result = components.filter(c => c && c.length > 0).join(' - ');
-    // // console.log('🔍 [MAPPING] Standardized identifier for:', { 
-    // //   original: description, 
-    // //   standardized: result,
+    // logger.debug('Standardized identifier created', { 
+    //   original: description, 
+    //   standardized: result,
     //   components: {
     //     transactionType,
     //     name: counterpartyInfo.name,
@@ -254,7 +257,7 @@ class TransactionMappingService {
    */
   async findMapping(standardizedIdentifier: string, userId: string, mappingType: 'bank' | 'credit_card' = 'bank'): Promise<FindMappingResult> {
     try {
-      // // console.log('🔍 [MAPPING] Searching for mapping with:', { standardizedIdentifier, userId, mappingType });
+      logger.debug('Searching for mapping', { standardizedIdentifier, userId, mappingType });
       
       // First, try to search with mapping_type
       let { data, error } = await supabase
@@ -267,7 +270,7 @@ class TransactionMappingService {
 
       // If error is about mapping_type field not existing, try without it
       if (error && (error.message?.includes('mapping_type') || error.code === '42703')) {
-        console.log('🔄 [MAPPING] mapping_type field not found, searching without it');
+        logger.info('mapping_type field not found, searching without it', { context: 'findMapping' });
         const { data: retryData, error: retryError } = await supabase
           .from('transaction_mappings')
           .select('*')
@@ -276,7 +279,7 @@ class TransactionMappingService {
           .maybeSingle();
 
         if (retryError) {
-          console.error('❌ [MAPPING] Error finding transaction mapping (retry):', retryError);
+          logger.error('Error finding transaction mapping (retry)', { error: retryError, context: 'findMapping' });
           return { found: false };
         }
 
@@ -285,16 +288,16 @@ class TransactionMappingService {
       }
 
       if (error) {
-        console.error('❌ [MAPPING] Error finding transaction mapping:', error);
+        logger.error('Error finding transaction mapping', { error, context: 'findMapping' });
         return { found: false };
       }
 
       if (!data) {
-        // // console.log('⚠️ [MAPPING] No mapping found for:', { standardizedIdentifier, userId, mappingType });
+        // logger.debug('No mapping found', { standardizedIdentifier, userId, mappingType });
         return { found: false };
       }
 
-      // // console.log('✅ [MAPPING] Found mapping:', data);
+      // logger.debug('Found mapping', { mapping: data });
       return {
         found: true,
         mapping: {
@@ -310,7 +313,7 @@ class TransactionMappingService {
         }
       };
     } catch (error) {
-      console.error('Exception in findMapping:', error);
+      logger.error('Exception in findMapping', { error });
       return { found: false };
     }
   }
@@ -320,12 +323,12 @@ class TransactionMappingService {
    */
   async createMapping(data: CreateMappingData): Promise<TransactionMapping | null> {
     try {
-      // // console.log('🔍 [MAPPING] Creating mapping with data:', data);
+      // logger.debug('Creating mapping', { data });
       
       // First, check if a mapping already exists to avoid duplicate key errors
       const existingMappingResponse = await this.findMapping(data.standardizedIdentifier, data.userId, data.mappingType);
       if (existingMappingResponse.found) {
-        console.log('🔄 [MAPPING] Mapping already exists, updating instead of creating');
+        logger.info('Mapping already exists, updating instead of creating', { context: 'createMapping' });
         return this.updateMapping(existingMappingResponse.mapping!.id, {
           categoryId: data.categoryId,
           subcategoryId: data.subcategoryId,
@@ -360,7 +363,7 @@ class TransactionMappingService {
       if (error) {
         // If error is about mapping_type field not existing, try without it
         if (error.message?.includes('mapping_type') || error.code === '42703') {
-          console.log('🔄 [MAPPING] mapping_type field not found, retrying without it');
+          logger.info('mapping_type field not found, retrying without it', { context: 'createMapping' });
           const { data: retryResult, error: retryError } = await supabase
             .from('transaction_mappings')
             .insert({
@@ -378,12 +381,12 @@ class TransactionMappingService {
           if (retryError) {
             // Check if the error is due to duplicate key (23505)
             if (retryError.code === '23505') {
-              console.log('🔄 [MAPPING] Duplicate key detected, finding existing mapping to update');
+              logger.info('Duplicate key detected, finding existing mapping to update', { context: 'createMapping' });
               
               // Find the existing mapping and update it instead
               const existingMappingResponse = await this.findMapping(data.standardizedIdentifier, data.userId);
               if (existingMappingResponse.found) {
-                console.log('🔄 [MAPPING] Found existing mapping, updating instead');
+                logger.info('Found existing mapping, updating instead', { context: 'createMapping' });
                 return this.updateMapping(existingMappingResponse.mapping!.id, {
                   categoryId: data.categoryId,
                   subcategoryId: data.subcategoryId,
@@ -394,7 +397,7 @@ class TransactionMappingService {
               }
             }
             
-            console.error('❌ [MAPPING] Error creating transaction mapping (retry):', retryError);
+            logger.error('Error creating transaction mapping (retry)', { error: retryError, context: 'createMapping' });
             return null;
           }
 
@@ -411,7 +414,7 @@ class TransactionMappingService {
           };
         }
         
-        console.error('❌ [MAPPING] Error creating transaction mapping:', error);
+        logger.error('Error creating transaction mapping', { error, context: 'createMapping' });
         return null;
       }
 
@@ -427,7 +430,7 @@ class TransactionMappingService {
         updatedAt: result.updated_at
       };
     } catch (error) {
-      console.error('Exception in createMapping:', error);
+      logger.error('Exception in createMapping', { error, context: 'createMapping' });
       return null;
     }
   }
@@ -452,7 +455,7 @@ class TransactionMappingService {
         .single();
 
       if (error) {
-        // console.error('Error updating transaction mapping:', error);
+        // logger.error('Error updating transaction mapping', { error, context: 'updateMapping' });
         return null;
       }
 
@@ -468,7 +471,7 @@ class TransactionMappingService {
         updatedAt: result.updated_at
       };
     } catch (error) {
-      // console.error('Exception in updateMapping:', error);
+      // logger.error('Exception in updateMapping', { error });
       return null;
     }
   }
@@ -490,7 +493,7 @@ class TransactionMappingService {
       const { data, error } = await query.order('updated_at', { ascending: false });
 
       if (error) {
-        // // console.error('Error getting user mappings:', error);
+        // logger.error('Error getting user mappings', { error, context: 'getUserMappings' });
         return [];
       }
 
@@ -506,7 +509,7 @@ class TransactionMappingService {
         updatedAt: item.updated_at
       }));
     } catch (error) {
-      // console.error('Exception in getUserMappings:', error);
+      // logger.error('Exception in getUserMappings', { error });
       return [];
     }
   }
@@ -522,13 +525,13 @@ class TransactionMappingService {
         .eq('id', id);
 
       if (error) {
-        // // console.error('Error deleting transaction mapping:', error);
+        // logger.error('Error deleting transaction mapping', { error, context: 'deleteMapping' });
         return false;
       }
 
       return true;
     } catch (error) {
-      // console.error('Exception in deleteMapping:', error);
+      // logger.error('Exception in deleteMapping', { error });
       return false;
     }
   }
@@ -547,7 +550,7 @@ class TransactionMappingService {
     mappedTransactions: any[];
     unmappedTransactions: any[];
   }> {
-    // // console.log('🔍 [MAPPING] Applying mappings to', transactions.length, 'transactions with type:', mappingType);
+    logger.info('Applying mappings to transactions', { count: transactions.length, mappingType });
     
     const mappedTransactions: any[] = [];
     const unmappedTransactions: any[] = [];
@@ -567,18 +570,18 @@ class TransactionMappingService {
       
       // Generate standardized identifier for this transaction
       const standardizedIdentifier = this.standardizeIdentifier(transaction.description);
-      // // console.log('🔍 [MAPPING] Checking mapping for:', {
-      // //   id: transaction.id,
-      //   description: transaction.description,
-      //   standardizedIdentifier,
-      //   mappingType
-      // });
+      logger.debug('Checking mapping for transaction', {
+        id: transaction.id,
+        description: transaction.description,
+        standardizedIdentifier,
+        mappingType
+      });
       
       // Check if we already have a mapping for this transaction with the specific mapping type
       const existingMapping = await this.findMapping(standardizedIdentifier, userId, mappingType);
       
       if (existingMapping.found && existingMapping.mapping) {
-        // // console.log('✅ [MAPPING] Found existing mapping for transaction:', transaction.id, 'with type:', mappingType);
+        logger.debug('Found existing mapping for transaction', { id: transaction.id, mappingType });
         // Apply existing mapping automatically
         mappedTransactions.push({
           ...transaction,
@@ -592,16 +595,17 @@ class TransactionMappingService {
           }
         });
       } else {
-        // // console.log('⚠️ [MAPPING] No existing mapping found for transaction:', transaction.id, 'with type:', mappingType);
+        logger.debug('No existing mapping found for transaction', { id: transaction.id, mappingType });
         // No mapping found, send to AI for categorization
         unmappedTransactions.push(transaction);
       }
     }
     
-    // // console.log('📊 [MAPPING] Mapping results for type', mappingType, ':', {
-    // //   mapped: mappedTransactions.length,
-    //   unmapped: unmappedTransactions.length
-    // });
+    logger.info('Mapping results', {
+      mappingType,
+      mapped: mappedTransactions.length,
+      unmapped: unmappedTransactions.length
+    });
     
     return {
       mappedTransactions,
@@ -622,11 +626,10 @@ export function testStandardizeIdentifier() {
   // Test case from user example
   const testDescription = "TransferÃªncia enviada pelo Pix - Lucas Anderson Silva - â€¢â€¢â€¢.060.689-â€¢â€¢ - ITAÃš UNIBANCO S.A. (0341) AgÃªncia: 6305 Conta: 41155-2";
   
-  // console.log('=== Testing standardizeIdentifier ===');
-  // console.log('Input:', testDescription);
+  logger.debug('Testing standardizeIdentifier', { input: testDescription });
   
   const result = service.standardizeIdentifier(testDescription);
-  // console.log('Output:', result);
+  logger.debug('standardizeIdentifier result', { output: result });
   
   return result;
 }

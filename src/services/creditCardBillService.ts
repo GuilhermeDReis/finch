@@ -1,4 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditCardBillService');
 import { CreditCardBill } from '@/types/creditCard';
 
 export class CreditCardBillService {
@@ -16,7 +19,7 @@ export class CreditCardBillService {
         .single();
 
       if (cardError || !creditCard) {
-        console.error('Error fetching credit card:', cardError);
+        logger.error('Error fetching credit card', { creditCardId, userId, error: cardError });
         return null;
       }
 
@@ -53,7 +56,7 @@ export class CreditCardBillService {
         .lte('date', billingEndDate.toISOString().split('T')[0]);
 
       if (transError) {
-        console.error('Error fetching transactions:', transError);
+        logger.error('Error fetching transactions', { creditCardId, userId, error: transError });
         return null;
       }
 
@@ -84,7 +87,7 @@ export class CreditCardBillService {
         .gte('date', totalUsedStartDate.toISOString().split('T')[0]);
 
       if (openTransError) {
-        console.error('Error fetching open transactions:', openTransError);
+        logger.error('Error fetching open transactions', { creditCardId, userId, error: openTransError });
       }
 
       // Calculate total used amount (only positive amounts - purchases)
@@ -108,7 +111,7 @@ export class CreditCardBillService {
       };
 
     } catch (error) {
-      console.error('Error calculating credit card bill:', error);
+      logger.error('Error calculating credit card bill', { creditCardId, userId, error: error instanceof Error ? error.message : 'Unknown error' });
       return null;
     }
   }

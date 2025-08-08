@@ -6,6 +6,9 @@ import { ChevronLeft, Sparkles } from 'lucide-react';
 import { useCharts } from '@/contexts/ChartContext';
 import { useToast } from '@/hooks/use-toast';
 import type { WizardData, ChartFormData } from '@/types/chart';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('Step4ReviewAndCreate');
 
 interface Step4ReviewAndCreateProps {
   wizardData: WizardData;
@@ -264,7 +267,7 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
       onClose();
       
     } catch (err: any) {
-      // console.error('Error creating chart:', err);
+      logger.error('Error creating chart', { error: err });
       toast({
         title: 'Erro ao criar gráfico',
         description: err.message || 'Ocorreu um erro ao criar o gráfico. Tente novamente.',

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Edit2, Trash2 } from 'lucide-react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('EditChartModal');
 import {
   Dialog,
   DialogContent,
@@ -115,7 +118,7 @@ export default function EditChartModal({ isOpen, onClose, chartConfig }: EditCha
       await updateChart(chartConfig.id, data);
       onClose();
     } catch (error) {
-      // console.error('Error updating chart:', error);
+      logger.error('Error updating chart', { error });
     } finally {
       setIsSubmitting(false);
     }

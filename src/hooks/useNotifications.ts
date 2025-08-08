@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('useNotifications');
 import { notificationService, type Notification, type NotificationFilters, type NotificationStats } from '@/services/notificationService';
 
 interface UseNotificationsOptions {
@@ -82,7 +85,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       setHasMore(hasMoreItems);
 
     } catch (err) {
-      console.error('Error fetching notifications:', err);
+      logger.error('Error fetching notifications', { error: err instanceof Error ? err.message : 'Unknown error' });
       setError(err instanceof Error ? err.message : 'Erro ao carregar notificações');
     } finally {
       setLoading(false);
@@ -95,7 +98,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       const statsData = await notificationService.getNotificationStats();
       setStats(statsData);
     } catch (err) {
-      console.error('Error fetching notification stats:', err);
+      logger.error('Error fetching notification stats', { error: err instanceof Error ? err.message : 'Unknown error' });
     }
   }, []);
 
@@ -133,7 +136,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       // Update stats
       await fetchStats();
     } catch (err) {
-      console.error('Error marking notification as read:', err);
+      logger.error('Error marking notification as read', { notificationId, error: err instanceof Error ? err.message : 'Unknown error' });
       throw err;
     }
   }, [fetchStats]);
@@ -155,7 +158,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       // Update stats
       await fetchStats();
     } catch (err) {
-      console.error('Error marking all notifications as read:', err);
+      logger.error('Error marking all notifications as read', { error: err instanceof Error ? err.message : 'Unknown error' });
       throw err;
     }
   }, [fetchStats]);
@@ -172,7 +175,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       // Update stats
       await fetchStats();
     } catch (err) {
-      console.error('Error deleting notification:', err);
+      logger.error('Error deleting notification', { notificationId, error: err instanceof Error ? err.message : 'Unknown error' });
       throw err;
     }
   }, [fetchStats]);
@@ -189,7 +192,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       // Update stats
       await fetchStats();
     } catch (err) {
-      console.error('Error deleting multiple notifications:', err);
+      logger.error('Error deleting multiple notifications', { count: notificationIds.length, error: err instanceof Error ? err.message : 'Unknown error' });
       throw err;
     }
   }, [fetchStats]);
@@ -206,7 +209,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       await fetchStats();
       setTotalLoaded(prev => notifications.filter(n => !n.is_read).length);
     } catch (err) {
-      console.error('Error deleting read notifications:', err);
+      logger.error('Error deleting read notifications', { error: err instanceof Error ? err.message : 'Unknown error' });
       throw err;
     }
   }, [fetchStats, notifications]);
@@ -242,7 +245,7 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
         fetchStats();
       },
       (error) => {
-        console.error('Realtime notification error:', error);
+        logger.error('Realtime notification error', { error: error instanceof Error ? error.message : 'Unknown error' });
       }
     );
 

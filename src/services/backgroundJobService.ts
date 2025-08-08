@@ -1,10 +1,13 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { TransactionRow } from '@/types/transaction';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('backgroundJobService');
 
 export interface BackgroundJob {
   id: string;
   type: 'transaction_import' | 'transaction_categorization';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   payload: any;
   progress: number;
   result?: any;
@@ -47,14 +50,14 @@ class BackgroundJobService {
         .single();
 
       if (error) {
-        console.error('❌ [BACKGROUND-JOB] Error creating import job:', error);
+        logger.error('Error creating import job', { error });
         return null;
       }
 
-      console.log('✅ [BACKGROUND-JOB] Import job created:', job.id);
-      return job;
+      logger.info('Import job created', { jobId: job.id });
+      return job as BackgroundJob;
     } catch (error) {
-      console.error('💥 [BACKGROUND-JOB] Exception creating import job:', error);
+      logger.error('Exception creating import job', { error });
       return null;
     }
   }
@@ -71,13 +74,13 @@ class BackgroundJobService {
         .single();
 
       if (error) {
-        console.error('❌ [BACKGROUND-JOB] Error fetching job status:', error);
+        logger.error('Error fetching job status', { jobId, error });
         return null;
       }
 
-      return job;
+      return job as BackgroundJob;
     } catch (error) {
-      console.error('💥 [BACKGROUND-JOB] Exception fetching job status:', error);
+      logger.error('Exception fetching job status', { jobId, error });
       return null;
     }
   }
@@ -93,13 +96,13 @@ class BackgroundJobService {
         .eq('id', jobId);
 
       if (error) {
-        console.error('❌ [BACKGROUND-JOB] Error cancelling job:', error);
+        logger.error('Error cancelling job', { jobId, error });
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('💥 [BACKGROUND-JOB] Exception cancelling job:', error);
+      logger.error('Exception cancelling job', { jobId, error });
       return false;
     }
   }
@@ -132,7 +135,7 @@ class BackgroundJobService {
    */
   async processImportJob(job: BackgroundJob): Promise<void> {
     try {
-      console.log('🔄 [BACKGROUND-JOB] Starting processing job:', job.id);
+      logger.info('Starting processing job', { jobId: job.id });
       
       // Atualizar status para processing
       await supabase
@@ -161,16 +164,16 @@ class BackgroundJobService {
         })
         .eq('id', job.id);
 
-      console.log('✅ [BACKGROUND-JOB] Job completed successfully:', job.id);
+      logger.info('Job completed successfully', { jobId: job.id });
       
     } catch (error) {
-      console.error('❌ [BACKGROUND-JOB] Error processing job:', error);
+      logger.error('Error processing job', { jobId: job.id, error });
       
       await supabase
         .from('background_jobs')
         .update({ 
           status: 'failed',
-          error_message: error instanceof Error ? error.message : 'Unknown error',
+          error_message: error instanceof Error ? error.message : String(error),
           updated_at: new Date().toISOString()
         })
         .eq('id', job.id);
@@ -209,13 +212,13 @@ class BackgroundJobService {
         .limit(limit);
 
       if (error) {
-        console.error('❌ [BACKGROUND-JOB] Error fetching user jobs:', error);
+        logger.error('Error fetching user jobs', { userId: user.id, error });
         return [];
       }
 
-      return jobs || [];
+      return (jobs || []) as BackgroundJob[];
     } catch (error) {
-      console.error('💥 [BACKGROUND-JOB] Exception fetching user jobs:', error);
+      logger.error('Exception fetching user jobs', { error });
       return [];
     }
   }

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('ImportExtract');
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -69,7 +72,7 @@ export default function ImportExtract() {
       const stored = localStorage.getItem('currentImportSession');
       return stored ? JSON.parse(stored) : null;
     } catch (error) {
-      // console.error('Error loading session from storage:', error);
+      logger.error('Error loading session from storage', { error });
       return null;
     }
   };
@@ -82,7 +85,7 @@ export default function ImportExtract() {
   useEffect(() => {
     const storedSession = loadSessionFromStorage();
     if (storedSession) {
-      // console.log('🔄 [SESSION] Loaded session from storage:', storedSession.id);
+      logger.info('Loaded session from storage', { sessionId: storedSession.id });
       setImportSession(storedSession);
     }
   }, []);
@@ -111,7 +114,7 @@ export default function ImportExtract() {
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error) {
-      // console.error('❌ [AUTH] Error checking authentication:', error);
+      logger.error('Error checking authentication', { error });
       toast({
         title: "Erro de autenticação",
         description: "Não foi possível verificar a autenticação. Por favor, faça login novamente.",
@@ -121,7 +124,7 @@ export default function ImportExtract() {
     }
 
     if (!user) {
-      // console.warn('⚠️ [AUTH] User not authenticated');
+      logger.warn('User not authenticated');
       toast({
         title: "Não autenticado",
         description: "Por favor, faça login para importar transações.",
@@ -130,7 +133,7 @@ export default function ImportExtract() {
       return false;
     }
 
-    // console.log('✅ [AUTH] User authenticated:', user.id);
+    logger.info('User authenticated', { userId: user.id });
     return true;
   };
 
@@ -145,11 +148,11 @@ export default function ImportExtract() {
       try {
         const { data: banksData, error } = await supabase
           .from('banks')
-          .select('id, icon_url')
+          .select('id, name')
           .order('name');
 
         if (error) {
-          console.error('Error loading banks:', error);
+          logger.error('Error loading banks', { error });
           toast({
             title: "Erro ao carregar bancos",
             description: "Não foi possível carregar os bancos",
@@ -160,7 +163,7 @@ export default function ImportExtract() {
 
         setBanks(banksData || []);
       } catch (error) {
-        console.error('Error loading banks:', error);
+        logger.error('Error loading banks', { error });
       }
     };
 
@@ -193,7 +196,7 @@ export default function ImportExtract() {
             .order('description');
 
           if (error) {
-            console.error('Error loading credit cards:', error);
+            logger.error('Error loading credit cards', { error });
             toast({
               title: "Erro ao carregar cartões",
               description: "Não foi possível carregar os cartões de crédito",
@@ -204,7 +207,7 @@ export default function ImportExtract() {
 
           setCreditCards(creditCardsData || []);
         } catch (error) {
-          console.error('Error loading credit cards:', error);
+          logger.error('Error loading credit cards', { error });
         } finally {
           setLoadingCreditCards(false);
         }
@@ -215,7 +218,12 @@ export default function ImportExtract() {
   }, [currentStep, layoutType, selectedBank, toast]);
 
   const handleDataParsed = async (parsedTransactions: ParsedTransaction[], layoutType: 'bank' | 'credit_card', bankId: string, useBackgroundProcessing?: boolean) => {
-    console.log('📊 [IMPORT] handleDataParsed called with:', parsedTransactions.length, 'transactions', 'Layout type:', layoutType, 'Bank ID:', bankId, 'Background processing:', useBackgroundProcessing);
+    logger.info('Import process started', { 
+      transactionCount: parsedTransactions.length, 
+      layoutType, 
+      bankId, 
+      useBackgroundProcessing 
+    });
     
     
     // Store the layout type and bank ID
@@ -300,7 +308,7 @@ export default function ImportExtract() {
         // Detect duplicates for credit card transactions
         const duplicateResults = detectDuplicates(transactions, existingCreditData || []);
         
-        console.log('🔍 [CREDIT-IMPORT] Duplicate detection results:', {
+        logger.debug('Credit import duplicate detection results', {
           duplicates: duplicateResults.duplicates.length,
           newTransactions: duplicateResults.newTransactions.length,
           total: transactions.length
@@ -310,7 +318,9 @@ export default function ImportExtract() {
         const hasDuplicates = duplicateResults.duplicates.length > 0;
 
         if (hasDuplicates) {
-          console.log('⚠️ [CREDIT-IMPORT] Duplicates detected, showing analysis screen');
+          logger.warn('Credit import duplicates detected, showing analysis screen', {
+            duplicateCount: duplicateResults.duplicates.length
+          });
           setDuplicateAnalysis({
             duplicates: duplicateResults.duplicates,
             newTransactions: duplicateResults.newTransactions
@@ -321,7 +331,9 @@ export default function ImportExtract() {
 
         // Use only new transactions (no duplicates) for AI processing
         const newTransactionsOnly = duplicateResults.newTransactions;
-        console.log('💳 [IMPORT] Processing', newTransactionsOnly.length, 'new credit card transactions for AI categorization');
+        logger.info('Processing new credit card transactions for AI categorization', {
+          transactionCount: newTransactionsOnly.length
+        });
 
         setIsProcessing(true);
 setProcessingProgress(10);
@@ -339,7 +351,7 @@ setProcessingProgress(30);
         setCurrentProcessingSubMessage('Aplicando mapeamentos existentes...');
 
         // First, apply existing credit card mappings to avoid unnecessary AI processing
-        console.log('🔍 [CREDIT-MAPPING] Checking for existing credit card mappings...');
+        logger.info('Checking for existing credit card mappings');
         
         const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
           newTransactionsOnly,
@@ -347,7 +359,7 @@ setProcessingProgress(30);
           'credit_card' // Use credit_card mapping type for credit transactions
         );
 
-        console.log('📊 [CREDIT-MAPPING] Credit mapping results:', {
+        logger.debug('Credit mapping results', {
           mapped: mappedTransactions.length,
           unmapped: unmappedTransactions.length,
           total: transactions.length
@@ -359,7 +371,9 @@ setProcessingProgress(50);
         // Only process unmapped transactions with Gemini AI
         let aiCategorizedTransactions: any[] = [];
         if (unmappedTransactions.length > 0) {
-          console.log('🤖 [CREDIT-AI] Sending', unmappedTransactions.length, 'unmapped credit transactions to AI');
+          logger.info('Sending unmapped credit transactions to AI', {
+            transactionCount: unmappedTransactions.length
+          });
           
           // Call the credit card specific Gemini function
           const { data: aiResults, error: aiError } = await supabase.functions.invoke('gemini-categorize-credit', {
@@ -367,8 +381,8 @@ setProcessingProgress(50);
           });
 
           if (aiError) {
-            console.error('❌ [IMPORT] Error in AI categorization for credit card:', aiError);
-            console.log('🔄 [CREDIT-FALLBACK] Trying local categorization as fallback...');
+            logger.error('Error in AI categorization for credit card', { error: aiError });
+            logger.info('Trying local categorization as fallback');
             
             try {
               // Use local categorization as fallback
@@ -382,7 +396,7 @@ setProcessingProgress(50);
               );
               
               aiCategorizedTransactions = localResults;
-              console.log('✅ [CREDIT-FALLBACK] Local categorization completed successfully');
+              logger.info('Local categorization completed successfully');
               
               toast({
                 title: "Categorização local aplicada",
@@ -390,7 +404,7 @@ setProcessingProgress(50);
                 variant: "default"
               });
             } catch (localError) {
-              console.error('❌ [CREDIT-FALLBACK] Local categorization also failed:', localError);
+              logger.error('Local categorization also failed', { error: localError });
               toast({
                 title: "Erro na categorização",
                 description: "Não foi possível categorizar as transações. Continue manualmente.",
@@ -400,10 +414,10 @@ setProcessingProgress(50);
             }
           } else {
             aiCategorizedTransactions = aiResults || [];
-            console.log('✅ [CREDIT-AI] AI categorization for credit card completed');
+            logger.info('AI categorization for credit card completed');
           }
         } else {
-          console.log('✅ [CREDIT-MAPPING] All credit transactions already mapped, skipping AI categorization');
+          logger.info('All credit transactions already mapped, skipping AI categorization');
         }
 
 setProcessingProgress(70);
@@ -461,7 +475,7 @@ setProcessingProgress(100);
         setCurrentStep('categorization');
         
       } catch (error) {
-        console.error('💥 [IMPORT] Exception in credit card AI categorization:', error);
+        logger.error('Exception in credit card AI categorization', { error });
         toast({
           title: "Erro na categorização",
           description: "Ocorreu um erro ao categorizar as transações de crédito",
@@ -846,13 +860,13 @@ setProcessingProgress(80);
       
     // Handle duplicates based on selected mode
     if (selectedImportMode === 'update-existing') {
-      console.log('🔄 [DUPLICATE] Update mode selected, loading existing data from database');
+      logger.info('Update mode selected, loading existing data from database');
       
       // For update mode, use existing data with categories from database
       const duplicatesWithExistingData = duplicateResults.duplicates.map(duplicate => {
         const existingTransaction = duplicate.existing;
         
-        console.log('🔄 [DUPLICATE-UPDATE] Processing duplicate with existing data:', {
+        logger.debug('Processing duplicate with existing data', {
           newTransactionId: duplicate.new.id,
           existingTransactionId: existingTransaction.id,
           existingCategoryId: existingTransaction.category_id,
@@ -883,11 +897,11 @@ setProcessingProgress(80);
       unifiedTransactions.push(...duplicatesWithExistingData);
       
       // Skip AI processing for update mode - but ensure categories are loaded first
-      console.log('✅ [DUPLICATE] Skipping AI processing for update mode, ensuring categories are loaded');
+      logger.info('Skipping AI processing for update mode, ensuring categories are loaded');
       
       // Wait for categories and subcategories to be fully loaded before proceeding
       try {
-        console.log('🔍 [DUPLICATE-UPDATE] Ensuring categories and subcategories are loaded...');
+        logger.info('Ensuring categories and subcategories are loaded');
         
         // Force reload categories and subcategories to ensure they're available
         const { data: categoriesData, error: categoriesError } = await supabase
@@ -901,7 +915,7 @@ setProcessingProgress(80);
           .order('name');
           
         if (categoriesError) {
-          console.error('❌ [DUPLICATE-UPDATE] Error loading categories:', categoriesError);
+          logger.error('Error loading categories', { error: categoriesError });
           toast({
             title: "Erro ao carregar categorias",
             description: "Não foi possível carregar as categorias para exibição",
@@ -911,7 +925,7 @@ setProcessingProgress(80);
         }
         
         if (subcategoriesError) {
-          console.error('❌ [DUPLICATE-UPDATE] Error loading subcategories:', subcategoriesError);
+          logger.error('Error loading subcategories', { error: subcategoriesError });
           toast({
             title: "Erro ao carregar subcategorias", 
             description: "Não foi possível carregar as subcategorias para exibição",
@@ -920,7 +934,7 @@ setProcessingProgress(80);
           return;
         }
         
-        console.log('✅ [DUPLICATE-UPDATE] Categories and subcategories loaded successfully:', {
+        logger.debug('Categories and subcategories loaded successfully', {
           categories: categoriesData?.length || 0,
           subcategories: subcategoriesData?.length || 0,
           categoriesData: categoriesData?.slice(0, 3).map(c => ({ id: c.id, name: c.name })),
@@ -937,7 +951,7 @@ setProcessingProgress(80);
           
           // Validate categoryId
           if (transaction.categoryId && !validCategoryIds.has(transaction.categoryId)) {
-            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid categoryId found:', {
+            logger.warn('Invalid categoryId found', {
               transactionId: transaction.id,
               categoryId: transaction.categoryId,
               description: transaction.description
@@ -947,7 +961,7 @@ setProcessingProgress(80);
           
           // Validate subcategoryId
           if (transaction.subcategoryId && !validSubcategoryIds.has(transaction.subcategoryId)) {
-            console.warn('⚠️ [DUPLICATE-UPDATE] Invalid subcategoryId found:', {
+            logger.warn('Invalid subcategoryId found', {
               transactionId: transaction.id,
               subcategoryId: transaction.subcategoryId,
               description: transaction.description
@@ -958,12 +972,12 @@ setProcessingProgress(80);
           return validatedTransaction;
         });
         
-        console.log('✅ [DUPLICATE-UPDATE] Transactions validated, proceeding to review');
+        logger.info('Transactions validated, proceeding to review');
         setTransactions(validatedTransactions);
         setCurrentStep('categorization');
         
       } catch (error) {
-        console.error('❌ [DUPLICATE-UPDATE] Error ensuring categories are loaded:', error);
+        logger.error('Error ensuring categories are loaded', { error });
         toast({
           title: "Erro ao preparar dados",
           description: "Ocorreu um erro ao preparar os dados para edição",
@@ -995,7 +1009,7 @@ setProcessingProgress(80);
   const handleFinalImport = async (useBackground?: boolean) => {
     // Use the parameter if provided, otherwise use the state value
     const shouldUseBackground = useBackground !== undefined ? useBackground : useBackgroundProcessing;
-    console.log('💾 [FINAL] handleFinalImport called with background mode:', shouldUseBackground);
+    logger.info('Final import started', { backgroundMode: shouldUseBackground });
 
     // Check authentication one more time
     const isAuthenticated = await checkAuthentication();
@@ -1016,7 +1030,7 @@ setProcessingProgress(80);
 
     // If background processing is enabled, trigger background import job
     if (shouldUseBackground) {
-      console.log('🚀 [BACKGROUND] Starting background import process');
+      logger.info('Starting background import process');
       
       try {
         // Prepare transaction data for background processing
@@ -1044,7 +1058,7 @@ setProcessingProgress(80);
           throw new Error('Failed to create background job');
         }
 
-        console.log('✅ [BACKGROUND] Background job created successfully:', backgroundJob.id);
+        logger.info('Background job created successfully', { jobId: backgroundJob.id });
         
         // Store the background job ID for tracking
         setCurrentBackgroundJobId(backgroundJob.id);
@@ -1062,7 +1076,7 @@ setProcessingProgress(80);
             }
           );
         } catch (notificationError) {
-          console.error('Error creating notification:', notificationError);
+          logger.error('Error creating notification', { error: notificationError });
           // Fallback to toast if notification fails
           toast({
             title: "Processamento em segundo plano iniciado",
@@ -1081,9 +1095,9 @@ setProcessingProgress(80);
           throw new Error(error.message || 'Failed to start background job processing');
         }
 
-        console.log('✅ [BACKGROUND] Background job processing triggered successfully:', data);
+        logger.info('Background job processing triggered successfully', { data });
       } catch (processError) {
-        console.error('❌ [BACKGROUND] Error triggering background job processing:', processError);
+        logger.error('Error triggering background job processing', { error: processError });
         
         // Create error notification in notification center
         try {
@@ -1097,7 +1111,7 @@ setProcessingProgress(80);
             }
           );
         } catch (notificationError) {
-          console.error('Error creating error notification:', notificationError);
+          logger.error('Error creating error notification', { error: notificationError });
           // Fallback to toast if notification fails
           toast({
             title: "Erro ao iniciar processamento em segundo plano",
@@ -1118,7 +1132,7 @@ setProcessingProgress(80);
       return;
       
     } catch (error) {
-      console.error('💥 [BACKGROUND] Exception in background processing:', error);
+      logger.error('Exception in background processing', { error });
       
       // Create error notification in notification center
       try {
@@ -1132,7 +1146,7 @@ setProcessingProgress(80);
           }
         );
       } catch (notificationError) {
-        console.error('Error creating error notification:', notificationError);
+        logger.error('Error creating error notification', { error: notificationError });
         // Fallback to toast if notification fails
         toast({
           title: "Erro no processamento em background",
@@ -1145,7 +1159,7 @@ setProcessingProgress(80);
   }
 
     // Continue with synchronous processing if background is disabled
-    console.log('⚡ [SYNC] Starting synchronous import process');
+    logger.info('Starting synchronous import process');
 
     // If no session exists, create a new one
     let currentSession = importSession;
@@ -1256,7 +1270,7 @@ setIsProcessing(true);
             .maybeSingle();
           
           if (checkError) {
-            console.error('❌ [FINAL] Error checking existing credit card transaction:', transaction.external_id, checkError);
+            logger.error('Error checking existing credit card transaction', { externalId: transaction.external_id, error: checkError });
             throw checkError;
           }
           
@@ -1270,7 +1284,7 @@ setIsProcessing(true);
               .select();
             
             if (error) {
-              console.error('❌ [FINAL] Error updating credit card transaction:', transaction.external_id, error);
+              logger.error('Error updating credit card transaction', { externalId: transaction.external_id, error });
               throw error;
             }
             result = data;
@@ -1282,7 +1296,7 @@ setIsProcessing(true);
               .select();
             
             if (error) {
-              console.error('❌ [FINAL] Error inserting credit card transaction:', transaction.external_id, error);
+              logger.error('Error inserting credit card transaction', { externalId: transaction.external_id, error });
               throw error;
             }
             result = data;
@@ -1294,10 +1308,10 @@ setIsProcessing(true);
         
         // Update transaction mappings for credit card transactions
         // This allows future imports to use the categorization decisions made during this import
-        console.log('🔍 [CREDIT-MAPPING] Starting mapping process for', transactions.length, 'transactions');
+        logger.info('Starting credit card transaction mapping process', { transactionCount: transactions.length });
         
         for (const transaction of transactions) {
-          console.log('🔍 [CREDIT-MAPPING] Processing transaction:', {
+          logger.debug('Processing credit card transaction for mapping', {
             id: transaction.id,
             description: transaction.description,
             categoryId: transaction.categoryId,
@@ -1306,12 +1320,12 @@ setIsProcessing(true);
           
           // Skip transactions without categories (pagamentos informativos)
           if (!transaction.categoryId || !transaction.subcategoryId) {
-            console.log('⚠️ [CREDIT-MAPPING] Skipping transaction without categories:', transaction.id);
+            logger.debug('Skipping credit card transaction without categories', { id: transaction.id });
             continue;
           }
 
           const standardizedIdentifier = transactionMappingService.standardizeIdentifier(transaction.description);
-          console.log('🔍 [CREDIT-MAPPING] Standardized identifier:', {
+          logger.debug('Standardized credit card transaction identifier', {
             original: transaction.description,
             standardized: standardizedIdentifier
           });
@@ -1324,7 +1338,7 @@ setIsProcessing(true);
             const source = transaction.aiSuggestion?.isAISuggested ? 'AI' : 'Manual';
             const confidenceScore = transaction.aiSuggestion?.confidence || 1;
             
-            console.log('🔍 [CREDIT-MAPPING] Mapping details:', {
+            logger.debug('Credit card transaction mapping details', {
               existingMapping: existingMapping.found,
               source,
               confidenceScore
@@ -1339,7 +1353,7 @@ setIsProcessing(true);
                 source: source,
                 mappingType: 'credit_card'
               });
-              console.log('🔄 [CREDIT-MAPPING] Updated existing mapping for credit transaction:', {
+              logger.info('Updated existing mapping for credit card transaction', {
                 transactionId: transaction.id,
                 result: !!result
               });
@@ -1354,13 +1368,13 @@ setIsProcessing(true);
                 source: source,
                 mappingType: 'credit_card'
               });
-              console.log('🆕 [CREDIT-MAPPING] Created new mapping for credit transaction:', {
+              logger.info('Created new mapping for credit card transaction', {
                 transactionId: transaction.id,
                 result: !!result
               });
             }
           } catch (error) {
-            console.error('❌ [CREDIT-MAPPING] Error processing credit transaction mapping for transaction:', transaction.id, error);
+            logger.error('Error processing credit card transaction mapping', { transactionId: transaction.id, error });
           }
         }
         
@@ -1468,7 +1482,7 @@ external_id: transaction.id,
           .select();
         
         if (error) {
-          console.error('❌ [FINAL] Error upserting transaction:', transaction.external_id, error);
+          logger.error('Error upserting transaction', { externalId: transaction.external_id, error });
           throw error;
         }
       }
@@ -1661,12 +1675,10 @@ external_id: transaction.id,
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {creditCards.map((card) => {
-                    const bank = banks.find(b => b.id === card.bank_id);
                     return (
                       <ImportCreditCardCard
                         key={card.id}
                         card={card}
-                        bankIconUrl={bank?.icon_url}
                         isSelected={selectedCreditCardId === card.id}
                         onClick={() => setSelectedCreditCardId(card.id)}
                       />

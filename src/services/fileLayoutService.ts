@@ -1,4 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('fileLayoutService');
 
 export interface FileLayout {
   id: string;
@@ -93,7 +96,7 @@ export class FileLayoutService {
       // If not found in mapping, throw error
       throw new Error(`Bank not found for code: ${bankIdOrCode}`);
     } catch (error) {
-      console.error('Error resolving bank ID:', error);
+      logger.error('Error resolving bank ID', { bankIdOrCode, error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }
@@ -114,7 +117,7 @@ export class FileLayoutService {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching file layouts:', error);
+        logger.error('Error fetching file layouts', { bankId, error });
         throw new Error(`Failed to fetch file layouts: ${error.message}`);
       }
 
@@ -136,7 +139,7 @@ export class FileLayoutService {
 
       return layouts;
     } catch (error) {
-      console.error('Error in getFileLayoutsByBank:', error);
+      logger.error('Error in getFileLayoutsByBank', { bankIdOrCode, error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }
@@ -180,7 +183,7 @@ export class FileLayoutService {
       
       return null;
     } catch (error) {
-      console.error('Error finding matching layout:', error);
+      logger.error('Error finding matching layout', { bankId, error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }
@@ -190,7 +193,7 @@ export class FileLayoutService {
    */
   static async detectLayoutFromHeaders(csvHeaders: string[]): Promise<LayoutMatchResult | null> {
     try {
-      console.log('🔍 [AUTO-DETECT] Starting automatic layout detection for headers:', csvHeaders);
+      logger.info('Starting automatic layout detection', { headerCount: csvHeaders.length });
       
       // Fetch all active file layouts from all banks
       const { data: layouts, error } = await supabase
@@ -207,12 +210,12 @@ export class FileLayoutService {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ [AUTO-DETECT] Error fetching layouts:', error);
+        logger.error('Error fetching layouts for detection', { error });
         throw new Error(`Failed to fetch layouts: ${error.message}`);
       }
 
       if (!layouts || layouts.length === 0) {
-        console.warn('⚠️ [AUTO-DETECT] No active layouts found');
+        logger.warn('No active layouts found for detection');
         return null;
       }
 
@@ -224,7 +227,7 @@ export class FileLayoutService {
         const bank = Array.isArray(layout.banks) ? layout.banks[0] : layout.banks;
         
         if (!layout.header_pattern || !Array.isArray(layout.header_pattern)) {
-          console.warn('⚠️ [AUTO-DETECT] Layout has no header pattern:', layout.name);
+          logger.warn('Layout has no header pattern', { layoutName: layout.name });
           
           // Try to create a fallback header pattern based on layout columns
           const fallbackPattern = [
@@ -235,7 +238,7 @@ export class FileLayoutService {
           ].filter(Boolean); // Remove any undefined/null values
           
           if (fallbackPattern.length > 0) {
-            console.log('🔄 [AUTO-DETECT] Using fallback pattern for', layout.name, ':', fallbackPattern);
+            logger.debug('Using fallback pattern', { layoutName: layout.name, fallbackPattern });
             layout.header_pattern = fallbackPattern;
           } else {
             continue;
@@ -244,9 +247,9 @@ export class FileLayoutService {
 
         // Check for exact match first (highest priority)
         if (this.isExactHeaderMatch(csvHeaders, layout.header_pattern)) {
-          console.log('✅ [AUTO-DETECT] Exact match found:', {
-            layout: layout.name,
-            bank: bank?.name,
+          logger.info('Exact layout match found', {
+            layoutName: layout.name,
+            bankName: bank?.name,
             confidence: 1.0
           });
           
@@ -265,12 +268,10 @@ export class FileLayoutService {
         // Calculate similarity score for partial matches
         const similarity = this.calculateHeaderSimilarity(csvHeaders, layout.header_pattern);
         
-        console.log('📊 [AUTO-DETECT] Similarity check:', {
-          layout: layout.name,
-          bank: bank?.name,
-          similarity: similarity.toFixed(3),
-          csvHeaders,
-          patternHeaders: layout.header_pattern
+        logger.debug('Layout similarity check', {
+          layoutName: layout.name,
+          bankName: bank?.name,
+          similarity: parseFloat(similarity.toFixed(3))
         });
 
         // Consider layouts with similarity >= 0.7 as potential matches
@@ -290,18 +291,18 @@ export class FileLayoutService {
       }
 
       if (bestMatch) {
-        console.log('✅ [AUTO-DETECT] Best match found:', {
-          layout: bestMatch.layout.name,
-          bank: bestMatch.bankName,
-          confidence: bestMatch.confidence.toFixed(3)
+        logger.info('Best layout match found', {
+          layoutName: bestMatch.layout.name,
+          bankName: bestMatch.bankName,
+          confidence: parseFloat(bestMatch.confidence.toFixed(3))
         });
       } else {
-        console.log('❌ [AUTO-DETECT] No suitable layout found for headers:', csvHeaders);
+        logger.warn('No suitable layout found', { headerCount: csvHeaders.length });
       }
 
       return bestMatch;
     } catch (error) {
-      console.error('💥 [AUTO-DETECT] Exception in layout detection:', error);
+      logger.error('Exception in layout detection', { error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }

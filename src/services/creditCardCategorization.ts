@@ -1,4 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditCardCategorization');
 
 interface Category {
   id: string;
@@ -80,7 +83,7 @@ class CreditCardCategorizationService {
         .select('*');
 
       if (categoriesError) {
-        console.error('❌ [CREDIT-LOCAL] Error loading categories:', categoriesError);
+        logger.error('Error loading categories', { error: categoriesError });
         throw categoriesError;
       }
 
@@ -90,16 +93,16 @@ class CreditCardCategorizationService {
         .select('*');
 
       if (subcategoriesError) {
-        console.error('❌ [CREDIT-LOCAL] Error loading subcategories:', subcategoriesError);
+        logger.error('Error loading subcategories', { error: subcategoriesError });
         throw subcategoriesError;
       }
 
       this.categories = categoriesData || [];
       this.subcategories = subcategoriesData || [];
 
-      console.log('📊 [CREDIT-LOCAL] Loaded', this.categories.length, 'categories and', this.subcategories.length, 'subcategories');
+      logger.info('Loaded categories and subcategories', { categoryCount: this.categories.length, subcategoryCount: this.subcategories.length });
     } catch (error) {
-      console.error('💥 [CREDIT-LOCAL] Exception loading categories:', error);
+      logger.error('Exception loading categories', { error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }
@@ -112,7 +115,7 @@ class CreditCardCategorizationService {
     
     // Skip categorization for negative amounts (bill payments)
     if (transaction.amount < 0) {
-      console.log('💰 [CREDIT-LOCAL] Negative amount detected - skipping categorization for bill payment:', transaction.description);
+      logger.debug('Negative amount detected - skipping categorization for bill payment', { transactionId: transaction.id, description: transaction.description });
       return {
         id: transaction.id,
         categoryId: undefined,
@@ -133,7 +136,12 @@ class CreditCardCategorizationService {
         );
         
         if (category && subcategory) {
-          console.log('✅ [CREDIT-LOCAL] Credit fallback match for', transaction.description, '→', pattern.category, '/', pattern.subcategory);
+          logger.debug('Credit fallback match found', { 
+            transactionId: transaction.id, 
+            description: transaction.description, 
+            category: pattern.category, 
+            subcategory: pattern.subcategory 
+          });
           return {
             id: transaction.id,
             categoryId: category.id,
@@ -168,7 +176,7 @@ class CreditCardCategorizationService {
    * Categorize multiple credit card transactions
    */
   async categorizeCreditTransactions(transactions: CreditTransaction[]): Promise<CreditCategorization[]> {
-    console.log('💳 [CREDIT-LOCAL] Starting local credit card categorization for', transactions.length, 'transactions');
+    logger.info('Starting local credit card categorization', { transactionCount: transactions.length });
     
     try {
       // Load categories and subcategories
@@ -179,11 +187,11 @@ class CreditCardCategorizationService {
         this.categorizeWithCreditFallback(transaction)
       );
 
-      console.log('✅ [CREDIT-LOCAL] Local credit card categorization completed for', categorizedTransactions.length, 'transactions');
+      logger.info('Local credit card categorization completed', { transactionCount: categorizedTransactions.length });
       
       return categorizedTransactions;
     } catch (error) {
-      console.error('💥 [CREDIT-LOCAL] Error in local credit card categorization:', error);
+      logger.error('Error in local credit card categorization', { error: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }
   }

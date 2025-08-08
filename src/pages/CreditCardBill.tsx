@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditCardBill');
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, CreditCard, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,8 +104,7 @@ export default function CreditCardBill() {
             *,
             banks (
               id,
-              name,
-              icon_url
+              name
             )
           `)
           .eq('id', cardId)
@@ -110,13 +112,13 @@ export default function CreditCardBill() {
           .single();
 
         if (error) {
-          console.error('Error loading credit card:', error);
+          logger.error('Error loading credit card', { cardId, error: error.message });
           return;
         }
 
         setCreditCard(data);
       } catch (error) {
-        console.error('Error loading credit card:', error);
+        logger.error('Error loading credit card', { cardId, error: error instanceof Error ? error.message : 'Unknown error' });
       }
     };
 
@@ -166,7 +168,7 @@ export default function CreditCardBill() {
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('Error loading transactions:', error);
+        logger.error('Error loading transactions', { cardId, error: error.message });
         return;
       }
 
@@ -174,7 +176,7 @@ export default function CreditCardBill() {
       setTotalPages(Math.ceil((data?.length || 0) / itemsPerPage));
       setCurrentPage(1);
     } catch (error) {
-      console.error('Error loading transactions:', error);
+      logger.error('Error loading transactions', { cardId, error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
       setLoading(false);
     }
@@ -206,7 +208,7 @@ export default function CreditCardBill() {
       if (categoriesResponse.data) setCategories(categoriesResponse.data);
       if (subcategoriesResponse.data) setSubcategories(subcategoriesResponse.data);
     } catch (error) {
-      console.error('Error loading categories:', error);
+      logger.error('Error loading categories', { error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
       setLoadingCategories(false);
     }
@@ -240,7 +242,7 @@ export default function CreditCardBill() {
         });
 
       if (error) {
-        console.error('Error creating transaction:', error);
+        logger.error('Error creating transaction', { cardId, error: error.message });
         return;
       }
 
@@ -257,7 +259,7 @@ export default function CreditCardBill() {
       // Reload transactions
       loadTransactions();
     } catch (error) {
-      console.error('Error submitting transaction:', error);
+      logger.error('Error submitting transaction', { cardId, error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
       setIsSubmitting(false);
     }

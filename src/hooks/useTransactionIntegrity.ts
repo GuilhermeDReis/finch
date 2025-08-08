@@ -2,6 +2,9 @@
 import { useEffect, useRef } from 'react';
 import type { TransactionRow } from '@/types/transaction';
 import { deepCompare } from '@/utils/transactionIntegrity';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('TransactionIntegrity');
 
 interface IntegritySnapshot {
   timestamp: number;
@@ -47,13 +50,13 @@ export const useTransactionIntegrity = (
         }
 
         if (changedCount > 1) {
-          // // console.warn('🚨 [INTEGRITY_MONITOR] Multiple transactions changed simultaneously:', {
-          // //   changedCount,
-          // //   changes,
-          // //   previousOperation: previous.operation,
-          // //   timeDiff: currentSnapshot.timestamp - previous.timestamp,
-          // //   totalTransactions: transactions.length
-          // // });
+          logger.warn('Multiple transactions changed simultaneously', {
+            changedCount,
+            changes,
+            previousOperation: previous.operation,
+            timeDiff: currentSnapshot.timestamp - previous.timestamp,
+            totalTransactions: transactions.length
+          });
         }
       }
     }

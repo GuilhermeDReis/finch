@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditCardModal');
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -42,6 +45,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
     closing_day: 15,
     due_day: 20,
     last_four_digits: '',
+    background_image_url: '',
   });
   
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -61,7 +65,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
         if (error) throw error;
         setBanks(data || []);
       } catch (error) {
-        console.error('Error loading banks:', error);
+        logger.error('Error loading banks', { error: error instanceof Error ? error.message : 'Unknown error' });
         toast.error('Erro ao carregar bancos');
       }
     };
@@ -80,6 +84,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
         closing_day: creditCard.closing_day,
         due_day: creditCard.due_day,
         last_four_digits: creditCard.last_four_digits || '',
+        background_image_url: creditCard.background_image_url || '',
       });
       setLimitInput(CreditCardValidationService.formatCurrency(creditCard.limit_amount));
     }
@@ -169,7 +174,7 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
 
       onSave();
     } catch (error) {
-      console.error('Error saving credit card:', error);
+      logger.error('Error saving credit card', { isEditing, error: error instanceof Error ? error.message : 'Unknown error' });
       toast.error('Erro ao salvar cartão de crédito');
     } finally {
       setLoading(false);
@@ -281,6 +286,20 @@ export function CreditCardModal({ creditCard, onClose, onSave }: CreditCardModal
             {errors.last_four_digits && (
               <p className="text-sm text-red-500">{errors.last_four_digits}</p>
             )}
+          </div>
+
+          {/* Background Image URL */}
+          <div className="space-y-2">
+            <Label htmlFor="background_image_url">URL da Imagem de Fundo</Label>
+            <Input
+              id="background_image_url"
+              placeholder="https://exemplo.com/imagem-cartao.jpg"
+              value={formData.background_image_url}
+              onChange={(e) => handleInputChange('background_image_url', e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              URL da imagem que será exibida como fundo do cartão
+            </p>
           </div>
 
           {/* Limit Amount */}

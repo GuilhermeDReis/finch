@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('creditCards');
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,7 +28,7 @@ export default function CreditCards() {
       setLoading(true);
       
       // First, let's test basic connectivity
-      console.log('Testing Supabase connectivity...');
+      logger.info('Testing Supabase connectivity');
       
       // Test if we can connect to supabase at all
       const { data: testData, error: testError } = await supabase
@@ -34,12 +37,12 @@ export default function CreditCards() {
         .limit(1);
       
       if (testError) {
-        console.error('Basic connectivity test failed:', testError);
+        logger.error('Basic connectivity test failed', { error: testError });
         throw new Error(`Conectividade falhou: ${testError.message}`);
       }
       
       
-      console.log('Basic connectivity OK, testing credit cards for user:', user.id);
+      logger.info('Basic connectivity OK, testing credit cards for user', { userId: user.id });
       
       const { data, error } = await supabase
         .from('credit_cards')
@@ -47,8 +50,7 @@ export default function CreditCards() {
           *,
           banks (
             id,
-            name,
-            icon_url
+            name
           )
         `)
         .eq('user_id', user.id)
@@ -56,7 +58,7 @@ export default function CreditCards() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Supabase error details:', {
+        logger.error('Supabase error details', {
           message: error.message,
           details: error.details,
           hint: error.hint,
@@ -65,10 +67,10 @@ export default function CreditCards() {
         throw error;
       }
 
-      console.log('Credit cards fetched successfully:', data);
+      logger.info('Credit cards fetched successfully', { count: data?.length || 0 });
       setCreditCards(data || []);
     } catch (error) {
-      console.error('Error fetching credit cards:', error);
+      logger.error('Error fetching credit cards', { error: error instanceof Error ? error.message : 'Unknown error' });
       toast.error(`Erro ao carregar cartões de crédito: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
@@ -113,7 +115,7 @@ export default function CreditCards() {
       setCreditCards(prev => prev.filter(card => card.id !== cardId));
       toast.success('Cartão arquivado com sucesso!');
     } catch (error) {
-      console.error('Error archiving credit card:', error);
+      logger.error('Error archiving credit card', { cardId, error: error instanceof Error ? error.message : 'Unknown error' });
       toast.error('Erro ao arquivar cartão');
     }
   };

@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('notificationCenter');
 import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
@@ -64,7 +67,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     try {
       await markAsRead(notificationId);
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      logger.error('Error marking notification as read', { error: error instanceof Error ? error.message : 'Unknown error' });
     }
   };
 
@@ -72,7 +75,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     try {
       await markAllAsRead();
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      logger.error('Error marking all notifications as read', { error: error instanceof Error ? error.message : 'Unknown error' });
     }
   };
 

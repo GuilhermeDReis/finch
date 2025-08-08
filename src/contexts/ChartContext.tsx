@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { ChartConfig, ChartFormData } from '@/types/chart';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('ChartContext');
 
 interface Category {
   id: string;
@@ -61,7 +64,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('display_order', { ascending: true });
 
       if (chartsError) {
-        // console.error('Error loading charts:', chartsError);
+        logger.error('Error loading charts', { error: chartsError });
         toast({
           title: 'Erro ao carregar gráficos',
           description: chartsError.message,
@@ -94,7 +97,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('date', { ascending: false });
 
       if (transactionsError) {
-        // console.error('Error loading transactions:', transactionsError);
+        logger.error('Error loading transactions', { error: transactionsError });
         toast({
           title: 'Erro ao carregar transações',
           description: transactionsError.message,
@@ -111,7 +114,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('name');
 
       if (categoriesError) {
-        // console.error('Error loading categories:', categoriesError);
+        logger.error('Error loading categories', { error: categoriesError });
         toast({
           title: 'Erro ao carregar categorias',
           description: categoriesError.message,
@@ -128,7 +131,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .order('name');
 
       if (subcategoriesError) {
-        // console.error('Error loading subcategories:', subcategoriesError);
+        logger.error('Error loading subcategories', { error: subcategoriesError });
         toast({
           title: 'Erro ao carregar subcategorias',
           description: subcategoriesError.message,
@@ -139,7 +142,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
     } catch (error) {
-      // console.error('Error in loadData:', error);
+      logger.error('Error in loadData', { error });
       toast({
         title: 'Erro ao carregar dados',
         description: 'Ocorreu um erro inesperado ao carregar os dados.',
@@ -213,7 +216,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      // console.error('Error adding chart:', error);
+      logger.error('Error adding chart', { error, code: error.code });
       
       if (error.code === '23505') {
         toast({
@@ -286,7 +289,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      // console.error('Error updating chart:', error);
+      logger.error('Error updating chart', { error, code: error.code });
       
       if (error.code === '23505') {
         toast({
@@ -322,7 +325,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      // console.error('Error removing chart:', error);
+      logger.error('Error removing chart', { error });
       toast({
         title: 'Erro ao remover gráfico',
         description: error.message || 'Ocorreu um erro inesperado.',
@@ -380,7 +383,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      // console.error('Error duplicating chart:', error);
+      logger.error('Error duplicating chart', { error });
       toast({
         title: 'Erro ao duplicar gráfico',
         description: error.message || 'Ocorreu um erro inesperado.',
@@ -421,7 +424,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      // console.error('Error reordering charts:', error);
+      logger.error('Error reordering charts', { error });
       toast({
         title: 'Erro ao reordenar gráficos',
         description: error.message || 'Ocorreu um erro inesperado.',

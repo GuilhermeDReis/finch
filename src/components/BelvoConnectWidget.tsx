@@ -6,6 +6,9 @@ import { Loader2, Building2, AlertTriangle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('BelvoConnectWidget');
 
 // Belvo Widget types
 declare global {
@@ -46,24 +49,23 @@ export function BelvoConnectWidget() {
   useEffect(() => {
     const loadBelvoSDK = () => {
       if (window.belvoSDK) {
-        // console.log('Belvo SDK already loaded');
+        logger.debug('Belvo SDK already loaded');
         setSdkLoaded(true);
         return;
       }
 
       const sdkUrl = 'https://cdn.belvo.io/belvo-widget-1-stable.js';
-      // console.log('Loading Belvo SDK from:', sdkUrl);
+      logger.debug('Loading Belvo SDK from', { sdkUrl });
 
       const script = document.createElement('script');
       script.src = sdkUrl;
       script.async = true;
       script.onload = () => {
-        // console.log('Belvo SDK loaded successfully from stable URL');
+        logger.debug('Belvo SDK loaded successfully from stable URL');
         setSdkLoaded(true);
       };
       script.onerror = (event) => {
-        // console.error('Failed to load Belvo SDK from stable URL:', event);
-        // console.error('Script element:', script);
+        logger.error('Failed to load Belvo SDK from stable URL', { event, script });
         setError('Falha ao carregar o SDK da Belvo');
       };
       
@@ -85,20 +87,20 @@ setError(null);
       
       if (retryCount > 0) {
         setIsRetrying(true);
-        // console.log(`Tentativa ${retryCount + 1} de ${maxRetries + 1} para obter token`);
+        logger.debug(`Tentativa ${retryCount + 1} de ${maxRetries + 1} para obter token`);
       }
 
-      // console.log('Solicitando token de acesso da API Belvo...');
+      logger.debug('Solicitando token de acesso da API Belvo...');
       
       const { data, error: functionError } = await supabase.functions.invoke('belvo-token');
       
       if (functionError) {
-        // console.error('Erro da função:', functionError);
+        logger.error('Erro da função', { functionError });
         throw new Error('Erro ao chamar função de token');
       }
 
       if (!data) {
-        // console.error('Nenhum dado retornado da função');
+        logger.error('Nenhum dado retornado da função');
         throw new Error('Nenhum dado retornado');
       }
 
@@ -106,7 +108,7 @@ setError(null);
       if (data.error && data.error.includes('blocked by security service')) {
         if (retryCount < maxRetries) {
           const delay = Math.pow(2, retryCount + 1) * 2000; // Delay maior para bloqueios
-          // console.log(`Bloqueio detectado, tentando novamente em ${delay}ms...`);
+          logger.debug(`Bloqueio detectado, tentando novamente em ${delay}ms...`);
           
           toast({
             title: "Serviço temporariamente bloqueado",
@@ -122,28 +124,28 @@ setError(null);
       }
 
       if (data.error) {
-        // console.error('Erro retornado pela função:', data.error);
+        logger.error('Erro retornado pela função', { error: data.error });
         throw new Error(data.details || data.error);
       }
 
       if (!data.access_token) {
-        // console.error('Token de acesso não recebido:', data);
+        logger.error('Token de acesso não recebido', { data });
         throw new Error('Token de acesso não recebido');
       }
 
-      // console.log('Token de acesso recebido com sucesso');
+      logger.debug('Token de acesso recebido com sucesso');
 setAccessToken(data.access_token);
       setProcessingProgress(100);
       
       return data.access_token;
     } catch (err) {
-      // console.error('Erro ao obter token de acesso:', err);
+      logger.error('Erro ao obter token de acesso', { err });
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       
       // Retry logic para outros tipos de erro
       if (retryCount < maxRetries && !errorMessage.includes('temporariamente indisponível')) {
         const delay = Math.pow(2, retryCount + 1) * 1000;
-        // console.log(`Erro geral, tentando novamente em ${delay}ms...`);
+        logger.debug(`Erro geral, tentando novamente em ${delay}ms...`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return getAccessToken(retryCount + 1);
@@ -177,11 +179,11 @@ setIsLoading(false);
     }
 
     try {
-      // console.log('Initializing Belvo widget');
+      logger.debug('Initializing Belvo widget');
 
       const widget = window.belvoSDK!.createWidget({
         callback: async (link) => {
-          // console.log('Belvo connection successful! Link ID:', link.id);
+          logger.info('Belvo connection successful!', { linkId: link.id });
           toast({
             title: "Conexão realizada com sucesso!",
             description: `Link ID: ${link.id}`,
@@ -191,10 +193,10 @@ setIsLoading(false);
           await importBelvoTransactions(link.id);
         },
         onExit: (link) => {
-          // console.log('Belvo widget closed', link ? `Link ID: ${link.id}` : 'No link created');
+          logger.debug('Belvo widget closed', { linkId: link ? link.id : null });
         },
         onError: (error) => {
-          // console.error('Belvo widget error:', error);
+          logger.error('Belvo widget error', { error });
           setError('Erro no widget da Belvo');
           toast({
             title: "Erro no widget",
@@ -209,7 +211,7 @@ setIsLoading(false);
 
       widget.open();
     } catch (err) {
-      // console.error('Error opening Belvo widget:', err);
+      logger.error('Error opening Belvo widget', { err });
       setError('Erro ao abrir widget da Belvo');
     }
   };
@@ -253,7 +255,7 @@ setIsLoading(false);
       });
       
     } catch (error) {
-      console.error('Error importing Belvo transactions:', error);
+      logger.error('Error importing Belvo transactions', { error });
       toast({
         title: "Erro na importação",
         description: "Ocorreu um erro ao importar as transações bancárias",

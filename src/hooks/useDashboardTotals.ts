@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getLogger } from '@/utils/logger';
+
+const logger = getLogger('DashboardTotals');
 
 interface DashboardTotals {
   totalIncome: number;
@@ -59,7 +62,7 @@ export function useDashboardTotals(year: number, month: number) {
           totalCredit: credit,
         });
       } catch (error) {
-        // console.error('Error fetching dashboard totals:', error);
+        logger.error('Error fetching dashboard totals', { error });
         setTotals({
           totalIncome: 0,
           totalExpenses: 0,

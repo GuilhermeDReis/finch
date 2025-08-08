@@ -13,6 +13,10 @@ import { ptBR } from 'date-fns/locale';
 import { notificationService } from '@/services/notificationService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { getLogger } from '@/utils/logger';
+
+// Criar uma instância do logger para este componente
+const logger = getLogger('NotificationCenterHybrid');
 
 interface HybridNotification {
   id: string;
@@ -71,14 +75,18 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
   const checkAuthStatus = async (): Promise<boolean> => {
     try {
       const { data: user, error } = await supabase.auth.getUser();
-      return !error && !!user?.user;
-    } catch {
+      const isAuthenticated = !error && !!user?.user;
+      logger.debug('Verificação de status de autenticação', { isAuthenticated, hasError: !!error });
+      return isAuthenticated;
+    } catch (error) {
+      logger.error('Erro ao verificar status de autenticação', { error });
       return false;
     }
   };
 
   // Try to connect to Supabase and fetch notifications
   const tryConnectToSupabase = async () => {
+    logger.info('Tentando conectar ao Supabase');
     setLoading(true);
     setError(null);
     
@@ -86,21 +94,25 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
       const isAuthenticated = await checkAuthStatus();
       
       if (!isAuthenticated) {
+        logger.warn('Usuário não autenticado, usando modo offline');
         setError('Usuário não autenticado');
         setIsOnlineMode(false);
         return;
       }
 
+      logger.info('Buscando notificações do Supabase');
       const notifications = await notificationService.getNotifications({ limit: 20 });
       
       setOnlineNotifications(notifications as HybridNotification[]);
       setIsOnlineMode(true);
       setError(null);
       
+      logger.info('Modo online ativado com sucesso', { notificationCount: notifications.length });
       setupRealtimeSubscription();
-    } catch (err: any) {
+    } catch (error: any) {
+      logger.error('Falha ao conectar com Supabase', { error });
       setIsOnlineMode(false);
-      setError(err.message || 'Erro ao conectar');
+      setError(error.message || 'Erro ao conectar');
     } finally {
       setLoading(false);
     }
@@ -109,10 +121,15 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
   // Setup real-time subscription for notifications
   const setupRealtimeSubscription = async () => {
     try {
+      logger.debug('Configurando subscrição em tempo real para notificações');
       const { data: user } = await supabase.auth.getUser();
-      if (!user?.user) return;
+      if (!user?.user) {
+        logger.warn('Usuário não autenticado, não é possível configurar subscrição');
+        return;
+      }
 
       if (realtimeSubscription) {
+        logger.debug('Cancelando subscrição anterior');
         realtimeSubscription.unsubscribe();
       }
 
@@ -128,6 +145,10 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
           },
           (payload) => {
             const newNotification = payload.new as HybridNotification;
+            logger.info('Nova notificação recebida em tempo real', { 
+              notificationId: newNotification.id,
+              type: newNotification.type 
+            });
             setOnlineNotifications(prev => [newNotification, ...prev]);
           }
         )
@@ -135,7 +156,7 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
 
       setRealtimeSubscription(subscription);
     } catch (error) {
-      console.error('Erro ao configurar real-time subscription:', error);
+      logger.error('Erro ao configurar real-time subscription', { error });
     }
   };
 
@@ -152,7 +173,9 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
         
         if (minutesSinceRead >= 60) {
           if (isOnlineMode) {
-            notificationService.deleteNotification(notification.id).catch(console.error);
+            notificationService.deleteNotification(notification.id).catch(error => {
+              logger.error('Erro ao deletar notificação durante limpeza automática', { notificationId: notification.id, error });
+            });
           } else {
             setLocalNotifications(prev => prev.filter(n => n.id !== notification.id));
           }
@@ -186,6 +209,7 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
 
   // Handle actions - online mode uses Supabase, offline uses local state
   const handleMarkAsRead = async (notificationId: string) => {
+    logger.debug('Marcando notificação como lida', { notificationId, isOnlineMode });
     if (isOnlineMode) {
       try {
         await notificationService.markAsRead(notificationId);
@@ -194,7 +218,9 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
             n.id === notificationId ? { ...n, is_read: true } : n
           )
         );
-      } catch (err) {
+        logger.info('Notificação marcada como lida com sucesso', { notificationId });
+      } catch (error) {
+        logger.error('Erro ao marcar notificação como lida', { notificationId, error });
         toast.error('Erro ao marcar como lida');
       }
     } else {
@@ -203,32 +229,41 @@ const NotificationCenterHybrid: React.FC<NotificationCenterHybridProps> = ({
           n.id === notificationId ? { ...n, is_read: true } : n
         )
       );
+      logger.info('Notificação local marcada como lida', { notificationId });
     }
   };
 
   const handleMarkAllAsRead = async () => {
+    logger.info('Marcando todas as notificações como lidas', { isOnlineMode });
     if (isOnlineMode) {
       try {
         await notificationService.markAllAsRead();
         setOnlineNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      } catch (err) {
+        logger.info('Todas as notificações marcadas como lidas com sucesso');
+      } catch (error) {
+        logger.error('Erro ao marcar todas as notificações como lidas', { error });
         toast.error('Erro ao marcar todas como lidas');
       }
     } else {
       setLocalNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      logger.info('Todas as notificações locais marcadas como lidas');
     }
   };
 
   const handleDeleteNotification = async (notificationId: string) => {
+    logger.debug('Deletando notificação', { notificationId, isOnlineMode });
     if (isOnlineMode) {
       try {
         await notificationService.deleteNotification(notificationId);
         setOnlineNotifications(prev => prev.filter(n => n.id !== notificationId));
-      } catch (err) {
+        logger.info('Notificação deletada com sucesso', { notificationId });
+      } catch (error) {
+        logger.error('Erro ao deletar notificação', { notificationId, error });
         toast.error('Erro ao deletar notificação');
       }
     } else {
       setLocalNotifications(prev => prev.filter(n => n.id !== notificationId));
+      logger.info('Notificação local deletada', { notificationId });
     }
   };
 
