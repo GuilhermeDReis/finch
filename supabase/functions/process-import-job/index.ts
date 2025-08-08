@@ -68,6 +68,9 @@ serve(async (req) => {
 
     // Mark job as completed
     await updateJobProgress(supabase, jobId, 'completed', 100, 'Processamento concluído', result);
+    
+    // Ensure notification is created - backup mechanism in case trigger fails
+    await ensureCompletionNotification(supabase, job, result);
 
     console.log('✅ [BACKGROUND-PROCESSOR] Job completed successfully:', jobId);
 
@@ -135,6 +138,8 @@ async function updateJobProgress(
     updates.completed_at = new Date().toISOString();
   }
 
+  console.log('📝 [BACKGROUND-PROCESSOR] Updating job with:', JSON.stringify(updates, null, 2));
+  
   const { error } = await supabase
     .from('background_jobs')
     .update(updates)
@@ -142,6 +147,8 @@ async function updateJobProgress(
 
   if (error) {
     console.error('❌ [BACKGROUND-PROCESSOR] Error updating job progress:', error);
+  } else {
+    console.log('✅ [BACKGROUND-PROCESSOR] Job updated successfully, trigger should fire for notifications');
   }
 }
 
@@ -254,4 +261,63 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
 
   console.log('✅ [BACKGROUND-PROCESSOR] Import job completed:', result);
   return result;
+}
+
+// Function to ensure completion notification is created (backup in case trigger fails)
+async function ensureCompletionNotification(supabase: any, job: BackgroundJob, result: any) {
+  try {
+    console.log('🔔 [BACKGROUND-PROCESSOR] Ensuring completion notification exists...');
+    
+    // Wait a moment to let the trigger fire first
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Check if notification already exists (created by trigger)
+    const { data: existingNotification, error: checkError } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('related_entity_id', job.id)
+      .eq('related_entity_type', 'background_job')
+      .eq('type', 'success')
+      .maybeSingle();
+    
+    if (existingNotification) {
+      console.log('✅ [BACKGROUND-PROCESSOR] Notification already exists from trigger');
+      return;
+    }
+    
+    console.log('⚠️ [BACKGROUND-PROCESSOR] No notification found, creating backup notification...');
+    
+    // Create backup notification
+    const title = job.type === 'transaction_import' ? 'Importação Concluída' : 'Processamento Concluído';
+    const message = job.type === 'transaction_import' 
+      ? `Suas transações foram importadas com sucesso. ${result.imported || 0} transações processadas.`
+      : 'Seu processamento foi concluído com sucesso.';
+    
+    const { error: insertError } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: job.user_id,
+        title: title,
+        message: message,
+        type: 'success',
+        category: 'background_job',
+        related_entity_type: 'background_job',
+        related_entity_id: job.id,
+        data: {
+          job_type: job.type,
+          job_status: 'completed',
+          progress: 100,
+          result: result,
+          created_by: 'edge_function_backup'
+        }
+      });
+    
+    if (insertError) {
+      console.error('❌ [BACKGROUND-PROCESSOR] Failed to create backup notification:', insertError);
+    } else {
+      console.log('✅ [BACKGROUND-PROCESSOR] Backup notification created successfully');
+    }
+  } catch (error) {
+    console.error('❌ [BACKGROUND-PROCESSOR] Error in ensureCompletionNotification:', error);
+  }
 }

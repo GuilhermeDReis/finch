@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS public.background_jobs (
     progress INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
     result JSONB,
     error_message TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT (now() AT TIME ZONE 'America/Sao_Paulo'),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT (now() AT TIME ZONE 'America/Sao_Paulo'),
     completed_at TIMESTAMP WITH TIME ZONE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
 );
@@ -23,7 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_created_at ON public.background_j
 CREATE OR REPLACE FUNCTION update_background_jobs_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = now();
+    NEW.updated_at = (now() AT TIME ZONE 'America/Sao_Paulo');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

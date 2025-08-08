@@ -143,6 +143,54 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          message: string
+          type: string
+          category: string
+          is_read: boolean
+          data: Json
+          related_entity_type: string | null
+          related_entity_id: string | null
+          created_at: string
+          read_at: string | null
+          expires_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          message: string
+          type?: string
+          category?: string
+          is_read?: boolean
+          data?: Json
+          related_entity_type?: string | null
+          related_entity_id?: string | null
+          created_at?: string
+          read_at?: string | null
+          expires_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          message?: string
+          type?: string
+          category?: string
+          is_read?: boolean
+          data?: Json
+          related_entity_type?: string | null
+          related_entity_id?: string | null
+          created_at?: string
+          read_at?: string | null
+          expires_at?: string | null
+        }
+        Relationships: []
+      }
       banks: {
         Row: {
           id: string

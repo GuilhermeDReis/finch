@@ -20,6 +20,7 @@ import { detectDuplicates } from '@/services/duplicateDetection';
 import transactionMappingService from '@/services/transactionMapping';
 import creditCardCategorizationService from '@/services/creditCardCategorization';
 import backgroundJobService from '@/services/backgroundJobService';
+import { notificationService } from '@/services/notificationService';
 import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -90,8 +91,10 @@ export default function ImportExtract() {
   const [importResults, setImportResults] = useState<{
     successful: number;
     failed: number;
+    skipped: number;
     updated: number;
     total: number;
+    errors: string[];
   } | null>(null);
   const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
   const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
@@ -1022,6 +1025,7 @@ setProcessingProgress(80);
           layoutType,
           selectedBank,
           selectedCreditCardId,
+          importMode: selectedImportMode,
           userId: user.id,
           importSession: importSession || {
             id: 'temp-' + Date.now(),
@@ -1045,53 +1049,97 @@ setProcessingProgress(80);
         // Store the background job ID for tracking
         setCurrentBackgroundJobId(backgroundJob.id);
 
-      // Show success message and redirect to home
-      toast({
-        title: "Processamento em segundo plano iniciado",
-        description: "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
-        variant: "default"
-      });
+        // Create notification in notification center instead of toast
+        try {
+          await notificationService.createBackgroundJobNotification(
+            "Importação iniciada",
+            "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
+            "info",
+            backgroundJob.id,
+            {
+              jobType: "transaction_import",
+              transactionCount: transactions.length
+            }
+          );
+        } catch (notificationError) {
+          console.error('Error creating notification:', notificationError);
+          // Fallback to toast if notification fails
+          toast({
+            title: "Processamento em segundo plano iniciado",
+            description: "Sua importação está sendo processada em segundo plano. Você será notificado quando concluída.",
+            variant: "default"
+          });
+        }
 
       // Call the Edge Function to process the background job
       try {
-        const response = await fetch('/functions/v1/process-import-job', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ jobId: backgroundJob.id })
+        const { data, error } = await supabase.functions.invoke('process-import-job', {
+          body: { jobId: backgroundJob.id }
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to start background job processing');
+        if (error) {
+          throw new Error(error.message || 'Failed to start background job processing');
         }
 
-        console.log('✅ [BACKGROUND] Background job processing triggered successfully');
+        console.log('✅ [BACKGROUND] Background job processing triggered successfully:', data);
       } catch (processError) {
         console.error('❌ [BACKGROUND] Error triggering background job processing:', processError);
-        toast({
-          title: "Erro ao iniciar processamento em segundo plano",
-          description: processError instanceof Error ? processError.message : 'Erro desconhecido',
-          variant: "destructive"
-        });
+        
+        // Create error notification in notification center
+        try {
+          await notificationService.createBackgroundJobNotification(
+            "Erro no processamento em segundo plano",
+            processError instanceof Error ? processError.message : 'Erro desconhecido ao iniciar processamento',
+            "error",
+            backgroundJob.id,
+            {
+              error: processError instanceof Error ? processError.message : 'Unknown error'
+            }
+          );
+        } catch (notificationError) {
+          console.error('Error creating error notification:', notificationError);
+          // Fallback to toast if notification fails
+          toast({
+            title: "Erro ao iniciar processamento em segundo plano",
+            description: processError instanceof Error ? processError.message : 'Erro desconhecido',
+            variant: "destructive"
+          });
+        }
       }
 
-      // Reset import state and redirect to home
+      // Reset import state and redirect to home immediately
       resetImport();
       
-      // Navigate to home or dashboard
-      window.location.href = '/dashboard';
+      // Navigate to home or dashboard immediately
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 100); // Small delay to ensure notification is created
       
       return;
       
     } catch (error) {
       console.error('💥 [BACKGROUND] Exception in background processing:', error);
-      toast({
-        title: "Erro no processamento em background",
-        description: "Ocorreu um erro ao iniciar o processamento em segundo plano",
-        variant: "destructive"
-      });
+      
+      // Create error notification in notification center
+      try {
+        await notificationService.createBackgroundJobNotification(
+          "Erro no processamento em background",
+          "Ocorreu um erro ao iniciar o processamento em segundo plano",
+          "error",
+          "unknown", // No job ID available in this case
+          {
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }
+        );
+      } catch (notificationError) {
+        console.error('Error creating error notification:', notificationError);
+        // Fallback to toast if notification fails
+        toast({
+          title: "Erro no processamento em background",
+          description: "Ocorreu um erro ao iniciar o processamento em segundo plano",
+          variant: "destructive"
+        });
+      }
       return;
     }
   }
@@ -1322,8 +1370,10 @@ setIsProcessing(true);
         setImportResults({
           successful: creditCardTransactionsToImport.length,
           failed: 0,
+          skipped: 0,
           updated: 0,
-          total: creditCardTransactionsToImport.length
+          total: creditCardTransactionsToImport.length,
+          errors: []
         });
 
         setProcessingProgress(100);
@@ -1481,8 +1531,10 @@ external_id: transaction.id,
       setImportResults({
         successful: transactionsToImport.length,
         failed: 0,
+        skipped: 0,
         updated: 0,
-        total: transactionsToImport.length
+        total: transactionsToImport.length,
+        errors: []
       });
 
       setProcessingProgress(100);
@@ -1675,7 +1727,7 @@ external_id: transaction.id,
           <h2 className="text-xl font-medium">Importação Concluída</h2>
           <ImportResultsCard
             result={importResults}
-            onNewImport={resetImport}
+            onClose={resetImport}
           />
         </div>
       )}

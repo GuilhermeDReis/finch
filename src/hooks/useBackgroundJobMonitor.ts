@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import backgroundJobService, { type BackgroundJob } from '@/services/backgroundJobService';
+import { notificationService } from '@/services/notificationService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface UseBackgroundJobMonitorOptions {
@@ -76,11 +77,25 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
         const jobTypeText = getJobTypeText(currentJob.type);
         const resultText = getResultText(currentJob.result);
         
-        toast({
-          title: "✅ Processamento Concluído!",
-          description: `${jobTypeText} foi concluído com sucesso. ${resultText}`,
-          variant: "default",
-          duration: 8000, // 8 segundos
+        // Create success notification in notification center
+        notificationService.createBackgroundJobNotification(
+          "Processamento Concluído",
+          `${jobTypeText} foi concluído com sucesso. ${resultText}`,
+          "success",
+          currentJob.id,
+          {
+            jobType: currentJob.type,
+            result: currentJob.result
+          }
+        ).catch(error => {
+          console.error('Error creating success notification:', error);
+          // Fallback to toast if notification fails
+          toast({
+            title: "✅ Processamento Concluído!",
+            description: `${jobTypeText} foi concluído com sucesso. ${resultText}`,
+            variant: "default",
+            duration: 8000,
+          });
         });
       }
       
@@ -92,11 +107,25 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
       ) {
         const jobTypeText = getJobTypeText(currentJob.type);
         
-        toast({
-          title: "❌ Processamento Falhou",
-          description: `${jobTypeText} falhou: ${currentJob.error_message || 'Erro desconhecido'}`,
-          variant: "destructive",
-          duration: 10000, // 10 segundos
+        // Create error notification in notification center
+        notificationService.createBackgroundJobNotification(
+          "Processamento Falhou",
+          `${jobTypeText} falhou: ${currentJob.error_message || 'Erro desconhecido'}`,
+          "error",
+          currentJob.id,
+          {
+            jobType: currentJob.type,
+            error: currentJob.error_message
+          }
+        ).catch(error => {
+          console.error('Error creating error notification:', error);
+          // Fallback to toast if notification fails
+          toast({
+            title: "❌ Processamento Falhou",
+            description: `${jobTypeText} falhou: ${currentJob.error_message || 'Erro desconhecido'}`,
+            variant: "destructive",
+            duration: 10000,
+          });
         });
       }
     });
