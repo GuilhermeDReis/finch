@@ -1,77 +1,42 @@
 import { useState, useEffect } from 'react';
-import { getLogger } from '@/utils/logger';
-
-const logger = getLogger('creditCards');
-import { Plus } from 'lucide-react';
+import { Plus, CreditCard, Wallet } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { CreditCardWithBank } from '@/types/creditCard';
+import { CreditCardGrid } from '@/components/CreditCardGrid';
+import { CreditCardModal } from '@/components/CreditCardModal';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCardModal } from '@/components/CreditCardModal';
-import { CreditCardGrid } from '@/components/CreditCardGrid';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { CreditCardWithBank, CreditCard } from '@/types/creditCard';
-
 export default function CreditCards() {
+  const { user } = useAuth();
   const [creditCards, setCreditCards] = useState<CreditCardWithBank[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardWithBank | null>(null);
-  const { user } = useAuth();
 
-  // Fetch credit cards from database
   const fetchCreditCards = async () => {
     if (!user) return;
 
     try {
       setLoading(true);
       
-      // First, let's test basic connectivity
-      logger.info('Testing Supabase connectivity');
-      
-      // Test if we can connect to supabase at all
-      const { data: testData, error: testError } = await supabase
-        .from('banks')
-        .select('id, name')
-        .limit(1);
-      
-      if (testError) {
-        logger.error('Basic connectivity test failed', { error: testError });
-        throw new Error(`Conectividade falhou: ${testError.message}`);
-      }
-      
-      
-      logger.info('Basic connectivity OK, testing credit cards for user', { userId: user.id });
-      
       const { data, error } = await supabase
         .from('credit_cards')
         .select(`
           *,
-          banks (
-            id,
-            name
-          )
+          bank:banks(*)
         `)
         .eq('user_id', user.id)
         .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        logger.error('Supabase error details', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        throw error;
-      }
+      if (error) throw error;
 
-      logger.info('Credit cards fetched successfully', { count: data?.length || 0 });
       setCreditCards(data || []);
     } catch (error) {
-      logger.error('Error fetching credit cards', { error: error instanceof Error ? error.message : 'Unknown error' });
-      toast.error(`Erro ao carregar cartões de crédito: ${error.message || 'Erro desconhecido'}`);
+      console.error('Erro ao carregar cartões:', error);
+      toast.error('Erro ao carregar cartões de crédito');
     } finally {
       setLoading(false);
     }
@@ -94,12 +59,7 @@ export default function CreditCards() {
   const handleModalClose = () => {
     setShowModal(false);
     setEditingCard(null);
-  };
-
-  const handleCardSaved = () => {
     fetchCreditCards();
-    handleModalClose();
-    toast.success(editingCard ? 'Cartão atualizado com sucesso!' : 'Cartão cadastrado com sucesso!');
   };
 
   const handleArchive = async (cardId: string) => {
@@ -111,62 +71,145 @@ export default function CreditCards() {
         .eq('user_id', user?.id);
 
       if (error) throw error;
-
-      setCreditCards(prev => prev.filter(card => card.id !== cardId));
-      toast.success('Cartão arquivado com sucesso!');
+      
+      toast.success('Cartão arquivado com sucesso');
+      fetchCreditCards();
     } catch (error) {
-      logger.error('Error archiving credit card', { cardId, error: error instanceof Error ? error.message : 'Unknown error' });
+      console.error('Erro ao arquivar cartão:', error);
       toast.error('Erro ao arquivar cartão');
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Cartões de Crédito</h1>
-              <p className="text-muted-foreground">
-                Gerencie seus cartões de crédito e acompanhe seus gastos
-              </p>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-center items-center h-64">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="text-gray-600">Carregando cartões...</p>
             </div>
-            <Button onClick={handleAddNew} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Novo Cartão de Crédito
-            </Button>
           </div>
         </div>
       </div>
+    );
+  }
 
-      <div className="container mx-auto px-4 py-8">
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Carregando cartões de crédito...</p>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header Section */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Wallet className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-light text-gray-900">Cartões de Crédito</h1>
+                <p className="text-gray-600 mt-1">
+                  Gerencie seus cartões e acompanhe suas faturas
+                </p>
+              </div>
+            </div>
+            <Button 
+              onClick={handleAddNew}
+              className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:shadow-md"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Cartão
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CreditCard className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total de Cartões</p>
+                  <p className="text-2xl font-light text-gray-900">{creditCards.length}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Wallet className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Cartões Ativos</p>
+                  <p className="text-2xl font-light text-gray-900">{creditCards.length}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <CreditCard className="h-5 w-5 text-purple-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Bancos Diferentes</p>
+                  <p className="text-2xl font-light text-gray-900">
+                    {new Set(creditCards.map(card => card.bank?.name)).size}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-        ) : (
-          // Credit cards grid - Always show with action card
-          <CreditCardGrid 
-            creditCards={creditCards}
-            onEdit={handleEdit}
-            onArchive={handleArchive}
-            onAddNew={handleAddNew}
-          />
-        )}
-      </div>
+        </div>
 
-      {/* Modal */}
-      {showModal && (
+        {/* Content Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          {creditCards.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <CreditCard className="h-12 w-12 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Nenhum cartão cadastrado
+              </h3>
+              <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+                Comece adicionando seu primeiro cartão de crédito para acompanhar suas faturas e transações.
+              </p>
+              <Button 
+                onClick={handleAddNew}
+                className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:shadow-md"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Primeiro Cartão
+              </Button>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-medium text-gray-900">
+                  Seus Cartões ({creditCards.length})
+                </h2>
+              </div>
+              
+              <CreditCardGrid
+                creditCards={creditCards}
+                onEdit={handleEdit}
+                onArchive={handleArchive}
+                onAddNew={handleAddNew}
+              />
+            </div>
+          )}
+        </div>
+
         <CreditCardModal
-          creditCard={editingCard}
+          isOpen={showModal}
           onClose={handleModalClose}
-          onSave={handleCardSaved}
+          creditCard={editingCard}
         />
-      )}
+      </div>
     </div>
   );
 }

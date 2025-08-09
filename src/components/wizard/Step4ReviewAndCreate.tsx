@@ -17,7 +17,7 @@ interface Step4ReviewAndCreateProps {
 
 export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4ReviewAndCreateProps) {
   const [isCreating, setIsCreating] = useState(false);
-  const { addChart, allCategories } = useCharts();
+  const { addChart, allCategories, allSubcategories } = useCharts();
   const { toast } = useToast();
 
   const getChartTypeLabel = () => {
@@ -68,7 +68,46 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
   };
 
   const getCategoryLabel = () => {
-    return wizardData.step2.category_id ? 'Alimentação' : 'Todas as categorias';
+    const { chart_type } = wizardData.step1;
+    const step2 = wizardData.step2;
+
+    switch (chart_type) {
+      case 'evolution':
+        if (step2.evolution_scope === 'all_categories') {
+          return 'Todas as categorias';
+        } else if (step2.evolution_scope === 'specific_category' && step2.category_id) {
+          const category = allCategories.find(cat => cat.id === step2.category_id);
+          return category?.name || 'Categoria específica';
+        } else if (step2.evolution_scope === 'specific_subcategory' && step2.subcategory_id) {
+          const subcategory = allSubcategories.find(sub => sub.id === step2.subcategory_id);
+          return subcategory?.name || 'Subcategoria específica';
+        }
+        return 'Todas as categorias';
+        
+      case 'distribution':
+        if (step2.distribution_scope === 'all_categories') {
+          return 'Todas as categorias';
+        } else if (step2.distribution_scope === 'within_category' && step2.category_id) {
+          const category = allCategories.find(cat => cat.id === step2.category_id);
+          return category?.name || 'Categoria específica';
+        }
+        return 'Todas as categorias';
+        
+      case 'comparison':
+        if (step2.comparison_type === 'categories_same_period') {
+          return 'Múltiplas categorias';
+        } else if (step2.comparison_type === 'category_different_periods' && step2.category_id) {
+          const category = allCategories.find(cat => cat.id === step2.category_id);
+          return category?.name || 'Categoria específica';
+        } else if (step2.comparison_type === 'subcategories' && step2.subcategory_id) {
+          const subcategory = allSubcategories.find(sub => sub.id === step2.subcategory_id);
+          return subcategory?.name || 'Subcategoria específica';
+        }
+        return 'Múltiplas categorias';
+        
+      default:
+        return 'Todas as categorias';
+    }
   };
 
   const getPeriodLabel = () => {
@@ -197,10 +236,12 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           } else if (wizardData.step2.evolution_scope === 'specific_category') {
             grouping_type = 'category';
             category_id = wizardData.step2.category_id;
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           } else {
-            // Para 'all_categories', usar a primeira categoria disponível como placeholder
+            // Para 'all_categories', category_id deve ser null
             grouping_type = 'category';
-            category_id = allCategories.find(cat => cat.type === 'expense')?.id || null;
+            category_id = null;
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           }
           break;
           
@@ -208,11 +249,12 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           if (wizardData.step2.distribution_scope === 'within_category') {
             grouping_type = 'category'; // Usar category para evitar constraint, mas filtrar subcategorias depois
             category_id = wizardData.step2.category_id;
-            subcategory_id = null;
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           } else {
             // Para 'all_categories', mostrar todas as categorias
             grouping_type = 'category';
             category_id = null; // null indica que deve mostrar todas as categorias
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           }
           break;
           
@@ -224,16 +266,23 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           } else if (wizardData.step2.comparison_type === 'category_different_periods') {
             grouping_type = 'category';
             category_id = wizardData.step2.category_id;
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           } else {
             // Para 'categories_same_period', usar a primeira categoria como placeholder
             grouping_type = 'category';
             category_id = allCategories.find(cat => cat.type === 'expense')?.id || null;
+            subcategory_id = null; // Deve ser null quando grouping_type é 'category'
           }
           break;
       }
 
-      // Garantir que sempre temos um category_id válido, exceto para distribution com all_categories
-      if (!category_id && !(wizardData.step1.chart_type === 'distribution' && wizardData.step2.distribution_scope === 'all_categories')) {
+      // Garantir que sempre temos um category_id válido, exceto para casos específicos onde null é permitido
+      const allowNullCategoryId = (
+        (wizardData.step1.chart_type === 'distribution' && wizardData.step2.distribution_scope === 'all_categories') ||
+        (wizardData.step1.chart_type === 'evolution' && wizardData.step2.evolution_scope === 'all_categories')
+      );
+      
+      if (!category_id && !allowNullCategoryId) {
         const firstCategory = allCategories.find(cat => cat.type === 'expense');
         if (firstCategory) {
           category_id = firstCategory.id;
@@ -245,20 +294,31 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
       const chartData: ChartFormData = {
         name: wizardData.step3.name.trim(),
         category_id: category_id,
-        subcategory_id: subcategory_id || undefined, // Ensure it's undefined instead of null to avoid foreign key issues
+        subcategory_id: subcategory_id || null, // Use null instead of undefined for database compatibility
         monthly_goal: wizardData.step2.monthly_goal || '0',
         color: wizardData.step3.color === 'rainbow' ? '#3B82F6' : wizardData.step3.color,
         period_months: wizardData.step2.period_months || 12,
         transaction_type: 'expense',
         grouping_type: grouping_type,
         chart_type: wizardData.step1.chart_type,
-        comparison_type: wizardData.step2.comparison_type || undefined,
+        comparison_type: wizardData.step2.comparison_type || null, // Use null instead of undefined
         show_values_on_points: wizardData.step3.show_values_on_points || false,
         show_percentages: wizardData.step3.show_percentages || false,
         show_trend_line: wizardData.step3.show_trend_line || false,
         highlight_min_max: wizardData.step3.highlight_min_max || false,
         visual_options: {}
       };
+
+      // Debug log para verificar os dados sendo enviados
+      console.log('Chart data being sent:', {
+        ...chartData,
+        name_length: chartData.name.length,
+        name_trimmed: chartData.name,
+        category_id_type: typeof category_id,
+        subcategory_id_type: typeof subcategory_id,
+        grouping_type_value: grouping_type,
+        chart_type_value: wizardData.step1.chart_type
+      });
 
       await addChart({
         ...chartData,

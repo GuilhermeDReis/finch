@@ -11,15 +11,24 @@ interface CreditCardGridProps {
 
 export function CreditCardGrid({ creditCards, onEdit, onArchive, onAddNew }: CreditCardGridProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {/* Add New Card Button */}
       <div 
-        onClick={onAddNew} 
-        className="relative w-60 h-40 rounded-lg cursor-pointer transition-all duration-300 bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 hover:border-primary/50 hover:shadow-lg hover:-translate-y-1 flex flex-col justify-center items-center p-5"
+        className="group relative bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 min-h-[200px]"
+        onClick={onAddNew}
       >
-        <Plus className="h-10 w-10 text-muted-foreground/60 mb-4" />
-        <p className="text-base font-semibold text-muted-foreground mb-2">Adicionar Cartão</p>
-        <p className="text-sm text-muted-foreground/70 text-center">Novo cartão de crédito</p>
+        <div className="p-3 bg-white rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-200 mb-4">
+          <Plus className="h-8 w-8 text-gray-400 group-hover:text-blue-600 transition-colors duration-200" />
+        </div>
+        <span className="text-gray-600 font-medium group-hover:text-blue-700 transition-colors duration-200">
+          Adicionar Cartão
+        </span>
+        <span className="text-sm text-gray-400 mt-1 group-hover:text-blue-500 transition-colors duration-200">
+          Clique para cadastrar
+        </span>
       </div>
+
+      {/* Credit Cards */}
       {creditCards.map((card) => (
         <CreditCardCard
           key={card.id}

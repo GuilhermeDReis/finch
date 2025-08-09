@@ -56,13 +56,11 @@ export function AppSidebar() {
       <SidebarHeader className={`border-b ${isCollapsed ? 'p-2' : 'p-3'}`}>
         <div className="flex items-center justify-between">
           <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-2'}`}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <FileText className="h-5 w-5 text-primary-foreground" />
-            </div>
+
             {!isCollapsed && (
               <div className="flex flex-col">
-                <span className="text-sm font-semibold text-foreground">
-                  FinanceApp
+                <span className="text-lg font-semibold text-foreground">
+                  Finch
                 </span>
               </div>
             )}

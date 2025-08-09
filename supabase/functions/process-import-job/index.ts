@@ -208,69 +208,141 @@ async function processImportJob(supabase: any, job: BackgroundJob) {
     // Process credit card transactions
     for (const transaction of payload.transactions) {
       try {
-        const { error } = await supabase
-          .from('transaction_credit')
-          .upsert({
-            date: transaction.date,
-            amount: transaction.amount,
-            description: transaction.editedDescription || transaction.description,
-            original_description: transaction.originalDescription,
-            external_id: transaction.id,
-            credit_card_id: payload.selectedCreditCardId,
-            type: transaction.type,
-            category_id: transaction.categoryId,
-            subcategory_id: transaction.subcategoryId,
-            bank_id: payload.selectedBank,
-            user_id: job.user_id
-          }, { onConflict: 'external_id' });
+        const transactionData = {
+          date: transaction.date,
+          amount: transaction.amount,
+          description: transaction.editedDescription || transaction.description,
+          original_description: transaction.originalDescription,
+          external_id: transaction.id,
+          credit_card_id: payload.selectedCreditCardId,
+          type: transaction.type,
+          category_id: transaction.categoryId,
+          subcategory_id: transaction.subcategoryId,
+          bank_id: payload.selectedBank,
+          user_id: job.user_id
+        };
 
-        if (error) {
-          logger.error('Error saving credit transaction', { jobId: job.id, transactionId: transaction.id, error });
-          errors.push(`Error saving transaction ${transaction.id}: ${error.message}`);
-        } else {
-          imported++;
+        // Check if transaction already exists
+        const { data: existingTransaction, error: checkError } = await supabase
+          .from('transaction_credit')
+          .select('id')
+          .eq('external_id', transaction.id)
+          .maybeSingle();
+        
+        if (checkError) {
+          logger.error('Error checking existing credit transaction', { jobId: job.id, transactionId: transaction.id, error: checkError });
+          errors.push(`Error checking transaction ${transaction.description}: ${checkError.message}`);
+          continue;
         }
+        
+        let result;
+        if (existingTransaction) {
+          // Update existing transaction
+          const { data, error } = await supabase
+            .from('transaction_credit')
+            .update(transactionData)
+            .eq('external_id', transaction.id)
+            .select();
+          
+          if (error) {
+            logger.error('Error updating credit transaction', { jobId: job.id, transactionId: transaction.id, error });
+            errors.push(`Error saving transaction ${transaction.description}: ${error.message}`);
+            continue;
+          }
+          result = data;
+        } else {
+          // Insert new transaction
+          const { data, error } = await supabase
+            .from('transaction_credit')
+            .insert(transactionData)
+            .select();
+          
+          if (error) {
+            logger.error('Error inserting credit transaction', { jobId: job.id, transactionId: transaction.id, error });
+            errors.push(`Error saving transaction ${transaction.description}: ${error.message}`);
+            continue;
+          }
+          result = data;
+        }
+        
+        imported++;
       } catch (error) {
         logger.error('Exception saving credit transaction', { 
           jobId: job.id, 
           transactionId: transaction.id, 
           error: error instanceof Error ? error.message : 'Unknown error' 
         });
-        errors.push(`Exception saving transaction ${transaction.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        errors.push(`Error saving transaction ${transaction.description}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
   } else {
     // Process bank transactions
     for (const transaction of payload.transactions) {
       try {
-        const { error } = await supabase
-          .from('transactions')
-          .upsert({
-            external_id: transaction.id,
-            date: transaction.date + 'T12:00:00',
-            amount: transaction.amount,
-            description: transaction.editedDescription || transaction.description,
-            original_description: transaction.originalDescription,
-            type: transaction.type,
-            category_id: transaction.categoryId,
-            subcategory_id: transaction.subcategoryId,
-            bank_id: payload.selectedBank,
-            user_id: job.user_id
-          }, { onConflict: 'external_id' });
+        const transactionData = {
+          external_id: transaction.id,
+          date: transaction.date + 'T12:00:00',
+          amount: transaction.amount,
+          description: transaction.editedDescription || transaction.description,
+          original_description: transaction.originalDescription,
+          type: transaction.type,
+          category_id: transaction.categoryId,
+          subcategory_id: transaction.subcategoryId,
+          bank_id: payload.selectedBank,
+          user_id: job.user_id
+        };
 
-        if (error) {
-          logger.error('Error saving bank transaction', { jobId: job.id, transactionId: transaction.id, error });
-          errors.push(`Error saving transaction ${transaction.id}: ${error.message}`);
-        } else {
-          imported++;
+        // Check if transaction already exists
+        const { data: existingTransaction, error: checkError } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('external_id', transaction.id)
+          .maybeSingle();
+        
+        if (checkError) {
+          logger.error('Error checking existing bank transaction', { jobId: job.id, transactionId: transaction.id, error: checkError });
+          errors.push(`Error checking transaction ${transaction.description}: ${checkError.message}`);
+          continue;
         }
+        
+        let result;
+        if (existingTransaction) {
+          // Update existing transaction
+          const { data, error } = await supabase
+            .from('transactions')
+            .update(transactionData)
+            .eq('external_id', transaction.id)
+            .select();
+          
+          if (error) {
+            logger.error('Error updating bank transaction', { jobId: job.id, transactionId: transaction.id, error });
+            errors.push(`Error saving transaction ${transaction.description}: ${error.message}`);
+            continue;
+          }
+          result = data;
+        } else {
+          // Insert new transaction
+          const { data, error } = await supabase
+            .from('transactions')
+            .insert(transactionData)
+            .select();
+          
+          if (error) {
+            logger.error('Error inserting bank transaction', { jobId: job.id, transactionId: transaction.id, error });
+            errors.push(`Error saving transaction ${transaction.description}: ${error.message}`);
+            continue;
+          }
+          result = data;
+        }
+        
+        imported++;
       } catch (error) {
         logger.error('Exception saving bank transaction', { 
           jobId: job.id, 
           transactionId: transaction.id, 
           error: error instanceof Error ? error.message : 'Unknown error' 
         });
-        errors.push(`Exception saving transaction ${transaction.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        errors.push(`Error saving transaction ${transaction.description}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
   }

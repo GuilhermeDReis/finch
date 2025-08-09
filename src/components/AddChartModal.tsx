@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Step1ChartTypeSelection from './wizard/Step1ChartTypeSelection';
@@ -115,13 +115,17 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Criar Novo Gráfico</DialogTitle>
+          <DialogDescription>
+            Siga os passos para criar um gráfico personalizado para análise dos seus gastos.
+          </DialogDescription>
+        </DialogHeader>
+        
         {/* Header with step indicator */}
         <div className="border-b pb-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">Criar Novo Gráfico</h2>
-            <div className="text-sm text-muted-foreground">
-              Passo {currentStep} de 4
-            </div>
+            <h2 className="text-xl font-bold">Passo {currentStep} de 4</h2>
           </div>
           
           {/* Step indicator */}

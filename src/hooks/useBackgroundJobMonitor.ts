@@ -62,6 +62,11 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
     };
   };
 
+  // Função para verificar se um job completado teve sucesso real (sem erros)
+  const hasJobSucceeded = (job: BackgroundJob): boolean => {
+    return job.status === 'completed' && (!job.result?.errors || job.result.errors.length === 0);
+  };
+
   // Função para detectar jobs recém-completados e mostrar notificações
   const checkForCompletedJobs = (currentJobs: BackgroundJob[], previousJobs: BackgroundJob[]) => {
     if (!showNotifications || previousJobs.length === 0) return;
@@ -71,35 +76,66 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
     currentJobs.forEach(currentJob => {
       const previousJob = previousJobsMap.get(currentJob.id);
       
-      // Job recém-completado com sucesso
+      // Job recém-completado - verificar se teve sucesso real ou se houve erros
       if (
         previousJob && 
         previousJob.status !== 'completed' && 
         currentJob.status === 'completed'
       ) {
         const jobTypeText = getJobTypeText(currentJob.type);
-        const resultText = getResultText(currentJob.result);
         
-        // Create success notification in notification center
-        notificationService.createBackgroundJobNotification(
-          "Processamento Concluído",
-          `${jobTypeText} foi concluído com sucesso. ${resultText}`,
-          "success",
-          currentJob.id,
-          {
-            jobType: currentJob.type,
-            result: currentJob.result
-          }
-        ).catch(error => {
-          logger.error('Error creating success notification', { error, jobId: currentJob.id, jobType: currentJob.type });
-          // Fallback to toast if notification fails
-          toast({
-            title: "✅ Processamento Concluído!",
-            description: `${jobTypeText} foi concluído com sucesso. ${resultText}`,
-            variant: "default",
-            duration: 8000,
+        if (hasJobSucceeded(currentJob)) {
+          // Sucesso real - sem erros
+          const resultText = getResultText(currentJob.result);
+          
+          // Create success notification in notification center
+          notificationService.createBackgroundJobNotification(
+            "Processamento Concluído",
+            `${jobTypeText} foi concluído com sucesso. ${resultText}`,
+            "success",
+            currentJob.id,
+            {
+              jobType: currentJob.type,
+              result: currentJob.result
+            }
+          ).catch(error => {
+            logger.error('Error creating success notification', { error, jobId: currentJob.id, jobType: currentJob.type });
+            // Fallback to toast if notification fails
+            toast({
+              title: "✅ Processamento Concluído!",
+              description: `${jobTypeText} foi concluído com sucesso. ${resultText}`,
+              variant: "default",
+              duration: 8000,
+            });
           });
-        });
+        } else {
+          // Completado mas com erros - tratar como problema
+          const errorCount = currentJob.result?.errors?.length || 0;
+          const errorMessage = errorCount > 0 
+            ? `Processamento concluído com ${errorCount} erro${errorCount > 1 ? 's' : ''}.`
+            : 'Processamento concluído com problemas.';
+          
+          // Create error notification in notification center
+          notificationService.createBackgroundJobNotification(
+            "Processamento com Problemas",
+            `${jobTypeText}: ${errorMessage}`,
+            "error",
+            currentJob.id,
+            {
+              jobType: currentJob.type,
+              result: currentJob.result
+            }
+          ).catch(error => {
+            logger.error('Error creating error notification for completed job with errors', { error, jobId: currentJob.id, jobType: currentJob.type });
+            // Fallback to toast if notification fails
+            toast({
+              title: "⚠️ Processamento com Problemas",
+              description: `${jobTypeText}: ${errorMessage}`,
+              variant: "destructive",
+              duration: 10000,
+            });
+          });
+        }
       }
       
       // Job recém-falhado
@@ -146,14 +182,13 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
     }
   };
 
-  // Função para obter texto do resultado
+  // Função para obter texto do resultado (apenas sucessos, erros são tratados separadamente)
   const getResultText = (result: any): string => {
     if (!result) return '';
     
     const parts = [];
     if (result.imported) parts.push(`${result.imported} importadas`);
     if (result.skipped) parts.push(`${result.skipped} ignoradas`);
-    if (result.errors?.length) parts.push(`${result.errors.length} erros`);
     
     return parts.length > 0 ? `(${parts.join(', ')})` : '';
   };

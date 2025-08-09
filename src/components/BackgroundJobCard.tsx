@@ -90,12 +90,19 @@ export default function BackgroundJobCard({
     }
   };
 
+  // Função para verificar se um job completado teve sucesso real (sem erros)
+  const hasJobSucceeded = (job: BackgroundJob): boolean => {
+    return job.status === 'completed' && (!job.result?.errors || job.result.errors.length === 0);
+  };
+
   const getStatusIcon = () => {
     if (!job) return <Clock className="h-4 w-4" />;
     
     switch (job.status) {
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return hasJobSucceeded(job) 
+          ? <CheckCircle className="h-4 w-4 text-green-600" />
+          : <XCircle className="h-4 w-4 text-yellow-600" />;
       case 'failed':
         return <XCircle className="h-4 w-4 text-red-600" />;
       case 'processing':
@@ -110,7 +117,7 @@ export default function BackgroundJobCard({
     
     switch (job.status) {
       case 'completed':
-        return 'default';
+        return hasJobSucceeded(job) ? 'default' : 'destructive';
       case 'failed':
         return 'destructive';
       case 'processing':
@@ -129,7 +136,7 @@ export default function BackgroundJobCard({
       case 'processing':
         return 'Processando...';
       case 'completed':
-        return 'Concluído';
+        return hasJobSucceeded(job) ? 'Concluído' : 'Concluído com Problemas';
       case 'failed':
         return 'Falhou';
       default:
@@ -218,15 +225,35 @@ export default function BackgroundJobCard({
         )}
 
         {/* Success Result */}
-        {job.status === 'completed' && job.result && (
+        {job.status === 'completed' && job.result && hasJobSucceeded(job) && (
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Processamento concluído!</strong>
+              <strong>Processamento concluído com sucesso!</strong>
               <br />
               {job.result.imported ? `${job.result.imported} transações importadas` : ''}
               {job.result.skipped ? `, ${job.result.skipped} ignoradas` : ''}
-              {job.result.errors?.length > 0 ? `, ${job.result.errors.length} erros` : ''}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Completed with Errors */}
+        {job.status === 'completed' && job.result && !hasJobSucceeded(job) && (
+          <Alert variant="destructive">
+            <XCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Processamento concluído com problemas!</strong>
+              <br />
+              {job.result.imported ? `${job.result.imported} transações importadas` : ''}
+              {job.result.skipped ? `, ${job.result.skipped} ignoradas` : ''}
+              {job.result.errors?.length > 0 && (
+                <>
+                  <br />
+                  <span className="text-red-600">
+                    {job.result.errors.length} erro{job.result.errors.length > 1 ? 's' : ''} encontrado{job.result.errors.length > 1 ? 's' : ''}
+                  </span>
+                </>
+              )}
             </AlertDescription>
           </Alert>
         )}

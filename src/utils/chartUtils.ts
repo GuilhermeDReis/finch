@@ -40,6 +40,44 @@ export const calculateGoalStatus = (currentSpent: number, monthlyGoal: number): 
   return 'danger';
 };
 
+export const groupAllTransactionsByMonth = (
+  transactions: any[],
+  periodMonths: number,
+  transactionType: 'income' | 'expense' = 'expense'
+): ChartDataPoint[] => {
+  const now = new Date();
+  const months: ChartDataPoint[] = [];
+  
+  // Generate array of months for the specified period
+  for (let i = periodMonths - 1; i >= 0; i--) {
+    const monthDate = subMonths(now, i);
+    const monthStart = startOfMonth(monthDate);
+    const monthEnd = endOfMonth(monthDate);
+    
+    // Filter transactions for this month (all categories)
+    const monthTransactions = transactions.filter(transaction => {
+      const transactionDate = typeof transaction.date === 'string' 
+        ? parseISO(transaction.date) 
+        : transaction.date;
+      
+      return transaction.type === transactionType &&
+             transactionDate >= monthStart &&
+             transactionDate <= monthEnd;
+    });
+    
+    const totalSpent = monthTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+    
+    months.push({
+      month: formatMonth(monthDate),
+      totalSpent,
+      goal: 0, // Will be set by the calling function
+      transactionCount: monthTransactions.length
+    });
+  }
+  
+  return months;
+};
+
 export const groupTransactionsByMonthAndCategory = (
   transactions: any[],
   categoryId: string,
@@ -108,16 +146,33 @@ export const processEvolutionChartData = (
   transactions: any[],
   categoryName: string
 ): ChartData => {
-  const dataPoints = groupTransactionsByMonthAndCategory(
-    transactions,
-    config.category_id,
-    config.period_months,
-    config.transaction_type,
-    config.grouping_type
-  ).map(point => ({
-    ...point,
-    goal: config.monthly_goal
-  }));
+  let dataPoints: ChartDataPoint[];
+  
+  // Check if we should consider all categories (when category_id is null)
+  if (!config.category_id) {
+    // For "all categories", we sum all transactions by month regardless of category
+    dataPoints = groupAllTransactionsByMonth(
+      transactions,
+      config.period_months,
+      config.transaction_type
+    ).map(point => ({
+      ...point,
+      goal: config.monthly_goal
+    }));
+  } else {
+    // For specific category or subcategory
+    const targetId = config.grouping_type === 'subcategory' ? config.subcategory_id : config.category_id;
+    dataPoints = groupTransactionsByMonthAndCategory(
+      transactions,
+      targetId,
+      config.period_months,
+      config.transaction_type,
+      config.grouping_type
+    ).map(point => ({
+      ...point,
+      goal: config.monthly_goal
+    }));
+  }
   
   // Get current month data
   const currentMonth = dataPoints[dataPoints.length - 1];

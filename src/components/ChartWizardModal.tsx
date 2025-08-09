@@ -117,6 +117,7 @@ export default function ChartWizardModal({ isOpen, onClose }: ChartWizardModalPr
           <Step3VisualCustomization
             chartType={wizardData.step1.chart_type}
             data={wizardData.step3}
+            step2Data={wizardData.step2}
             onUpdate={updateStep3Data}
           />
         );

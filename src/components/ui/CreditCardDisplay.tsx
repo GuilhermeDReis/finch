@@ -8,6 +8,8 @@ interface CreditCardDisplayProps {
   lastFourDigits: string;
   /** Bandeira do cartão */
   brand: string;
+  /** Dia de vencimento do cartão */
+  dueDay?: number;
   /** URL da imagem de fundo do cartão */
   backgroundImageUrl?: string;
   /** Classe CSS adicional */
@@ -69,6 +71,7 @@ export function CreditCardDisplay({
   description,
   lastFourDigits,
   brand,
+  dueDay,
   backgroundImageUrl,
   className,
   onClick,
@@ -103,25 +106,28 @@ export function CreditCardDisplay({
       {/* Conteúdo do cartão */}
       <div className="relative z-10 p-4 h-full flex flex-col">
         {/* Header - Bandeira do cartão (canto superior direito) */}
-        <div className="flex justify-end mb-3">
+        <div className="flex justify-end">
           {getCardBrandIcon(brand)}
         </div>
         
-        {/* Nome do cartão */}
-        <div className="mb-4">
-          <h3 className="text-lg font-bold text-white drop-shadow-lg truncate">
-            {description || 'Cartão Principal'}
-          </h3>
+        {/* Centro - Número do cartão centralizado com ajuste vertical de 20px */}
+        <div className="flex-1 flex items-center justify-center pt-8">
+          <span className="text-lg font-mono text-white drop-shadow-lg tracking-wider">
+            **** **** **** {lastFourDigits || '****'}
+          </span>
         </div>
         
-        {/* Spacer para empurrar os dígitos para baixo */}
-        <div className="flex-1" />
-        
-        {/* Footer - Últimos dígitos */}
-        <div className="flex justify-start">
-          <span className="text-sm font-mono text-white drop-shadow-lg tracking-wider">
-            **** {lastFourDigits || '****'}
+        {/* Footer - Vencimento e nome do cartão */}
+        <div className="flex justify-between items-end">
+          {/* Vencimento no canto inferior esquerdo */}
+          <span className="text-xs font-medium text-white drop-shadow-lg">
+            ven/{dueDay || '00'}
           </span>
+          
+          {/* Nome do cartão no canto inferior direito */}
+          <h3 className="text-xs font-medium text-white drop-shadow-lg truncate max-w-[150px]">
+            {description || 'Cartão Principal'}
+          </h3>
         </div>
       </div>
       

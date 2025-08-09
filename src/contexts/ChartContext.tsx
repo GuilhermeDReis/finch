@@ -162,7 +162,9 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       // Get the next order position
-      const maxOrder = Math.max(...chartConfigs.map(chart => chart.display_order || 0), 0);
+      const maxOrder = chartConfigs.length > 0 
+        ? Math.max(...chartConfigs.map(chart => chart.display_order || 0)) 
+        : 0;
       
       const chartData = {
         user_id: user.id,

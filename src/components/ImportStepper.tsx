@@ -59,7 +59,7 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
   });
 
   return (
-    <div className="w-full py-6 border-b bg-gray-50/50">
+    <div className="w-full py-6 border-b border-gray-200 dark:border-gray-700">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           {visibleSteps.map((step, index) => {
@@ -82,7 +82,7 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
                       {
                         "bg-blue-600 border-blue-600 text-white": isActive,
                         "bg-green-600 border-green-600 text-white": isCompleted,
-                        "bg-gray-100 border-gray-300 text-gray-400": isUpcoming,
+                        "bg-gray-100 border-gray-300 text-gray-400 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300": isUpcoming,
                         "bg-blue-600 border-blue-600 text-white animate-pulse": isProcessing,
                       }
                     )}
@@ -102,9 +102,9 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
                       className={cn(
                         "text-sm font-medium transition-colors duration-300",
                         {
-                          "text-blue-600": isActive || isProcessing,
-                          "text-green-600": isCompleted,
-                          "text-gray-400": isUpcoming,
+                          "text-blue-600 dark:text-blue-400": isActive || isProcessing,
+                          "text-green-600 dark:text-green-400": isCompleted,
+                          "text-gray-400 dark:text-gray-500": isUpcoming,
                         }
                       )}
                     >
@@ -114,9 +114,9 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
                       className={cn(
                         "text-xs transition-colors duration-300 mt-1",
                         {
-                          "text-blue-500": isActive || isProcessing,
-                          "text-green-500": isCompleted,
-                          "text-gray-400": isUpcoming,
+                          "text-blue-500 dark:text-blue-300": isActive || isProcessing,
+                          "text-green-500 dark:text-green-300": isCompleted,
+                          "text-gray-400 dark:text-gray-500": isUpcoming,
                         }
                       )}
                     >
@@ -131,9 +131,9 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
                     className={cn(
                       "flex-1 h-0.5 mx-4 transition-colors duration-300 min-w-12",
                       {
-                        "bg-green-600": actualIndex < currentStepIndex,
-                        "bg-blue-600": actualIndex === currentStepIndex - 1 || isProcessing,
-                        "bg-gray-300": actualIndex >= currentStepIndex && !isProcessing,
+                        "bg-green-600 dark:bg-green-500": actualIndex < currentStepIndex,
+                        "bg-blue-600 dark:bg-blue-500": actualIndex === currentStepIndex - 1 || isProcessing,
+                        "bg-gray-300 dark:bg-gray-600": actualIndex >= currentStepIndex && !isProcessing,
                       }
                     )}
                   />
@@ -146,7 +146,7 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
         {/* Additional step info */}
         {layoutType && (
           <div className="text-center mt-4">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
               {layoutType === 'credit_card' ? '💳 Cartão de Crédito' : '🏦 Conta Bancária'}
             </span>
           </div>

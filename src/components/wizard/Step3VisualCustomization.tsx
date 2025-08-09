@@ -4,11 +4,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CHART_COLORS } from '@/utils/chartUtils';
-import type { WizardStep3Data, ChartType } from '@/types/chart';
+import { useCharts } from '@/contexts/ChartContext';
+import type { WizardStep3Data, ChartType, WizardStep2Data } from '@/types/chart';
 
 interface Step3VisualCustomizationProps {
   chartType: ChartType;
   data: WizardStep3Data;
+  step2Data?: WizardStep2Data;
   onUpdate: (data: WizardStep3Data) => void;
 }
 
@@ -21,8 +23,9 @@ const COLOR_STYLES = [
   { id: 'rainbow', name: '🌈 Paleta Colorida (só Pizza/Barras)' }
 ];
 
-export default function Step3VisualCustomization({ chartType, data, onUpdate }: Step3VisualCustomizationProps) {
+export default function Step3VisualCustomization({ chartType, data, step2Data, onUpdate }: Step3VisualCustomizationProps) {
   const [formData, setFormData] = useState<WizardStep3Data>(data);
+  const { allCategories, allSubcategories } = useCharts();
 
   const updateFormData = (updates: Partial<WizardStep3Data>) => {
     const newData = { ...formData, ...updates };
@@ -33,11 +36,35 @@ export default function Step3VisualCustomization({ chartType, data, onUpdate }: 
   const getDefaultChartName = () => {
     switch (chartType) {
       case 'evolution':
-        return 'Evolução dos Gastos com Alimentação';
+        if (step2Data?.evolution_scope === 'all_categories') {
+          return 'Evolução dos Gastos Totais';
+        } else if (step2Data?.evolution_scope === 'specific_category' && step2Data?.category_id) {
+          const category = allCategories.find(cat => cat.id === step2Data.category_id);
+          return `Evolução dos Gastos com ${category?.name || 'Categoria'}`;
+        } else if (step2Data?.evolution_scope === 'specific_subcategory' && step2Data?.subcategory_id) {
+          const subcategory = allSubcategories.find(sub => sub.id === step2Data.subcategory_id);
+          return `Evolução dos Gastos com ${subcategory?.name || 'Subcategoria'}`;
+        }
+        return 'Evolução dos Gastos';
       case 'distribution':
-        return 'Distribuição dos Gastos por Categoria';
+        if (step2Data?.distribution_scope === 'all_categories') {
+          return 'Distribuição dos Gastos por Categoria';
+        } else if (step2Data?.distribution_scope === 'within_category' && step2Data?.category_id) {
+          const category = allCategories.find(cat => cat.id === step2Data.category_id);
+          return `Distribuição em ${category?.name || 'Categoria'}`;
+        }
+        return 'Distribuição dos Gastos';
       case 'comparison':
-        return 'Comparação de Gastos Mensais';
+        if (step2Data?.comparison_type === 'categories_same_period') {
+          return 'Comparação entre Categorias';
+        } else if (step2Data?.comparison_type === 'category_different_periods' && step2Data?.category_id) {
+          const category = allCategories.find(cat => cat.id === step2Data.category_id);
+          return `Comparação de ${category?.name || 'Categoria'} por Período`;
+        } else if (step2Data?.comparison_type === 'subcategories' && step2Data?.category_id) {
+          const category = allCategories.find(cat => cat.id === step2Data.category_id);
+          return `Comparação de Subcategorias em ${category?.name || 'Categoria'}`;
+        }
+        return 'Comparação de Gastos';
       default:
         return 'Meu Gráfico';
     }
@@ -138,15 +165,15 @@ export default function Step3VisualCustomization({ chartType, data, onUpdate }: 
             <div className="mt-4 space-y-1 text-xs">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: formData.color }}></div>
-                <span>Alimentação (45%)</span>
+                <span>Categoria A (45%)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span>Transporte (25%)</span>
+                <span>Categoria B (25%)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <span>Lazer (20%)</span>
+                <span>Categoria C (20%)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>

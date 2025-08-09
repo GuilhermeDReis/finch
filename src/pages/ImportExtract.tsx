@@ -17,6 +17,7 @@ import ImportResultsCard from '@/components/ImportResultsCard';
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { BankSelector } from '@/components/BankSelector';
 import ImportCreditCardCard from '@/components/ImportCreditCardCard';
+import { CreditCardGridSelector } from '@/components/CreditCardGridSelector';
 import { ImportStepper } from '@/components/ImportStepper';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
@@ -1474,16 +1475,46 @@ external_id: transaction.id,
 
       // console.log('💾 [FINAL] Importing', transactionsToImport.length, 'transactions');
 
-      // Import to database using upsert for update functionality
+      // Import to database with manual duplicate handling
       for (const transaction of transactionsToImport) {
-        const { data, error } = await supabase
+        // Check if transaction already exists
+        const { data: existingTransaction, error: checkError } = await supabase
           .from('transactions')
-          .upsert(transaction, { onConflict: 'external_id' })
-          .select();
+          .select('id')
+          .eq('external_id', transaction.external_id)
+          .maybeSingle();
         
-        if (error) {
-          logger.error('Error upserting transaction', { externalId: transaction.external_id, error });
-          throw error;
+        if (checkError) {
+          logger.error('Error checking existing transaction', { externalId: transaction.external_id, error: checkError });
+          throw checkError;
+        }
+        
+        let result;
+        if (existingTransaction) {
+          // Update existing transaction
+          const { data, error } = await supabase
+            .from('transactions')
+            .update(transaction)
+            .eq('external_id', transaction.external_id)
+            .select();
+          
+          if (error) {
+            logger.error('Error updating transaction', { externalId: transaction.external_id, error });
+            throw error;
+          }
+          result = data;
+        } else {
+          // Insert new transaction
+          const { data, error } = await supabase
+            .from('transactions')
+            .insert(transaction)
+            .select();
+          
+          if (error) {
+            logger.error('Error inserting transaction', { externalId: transaction.external_id, error });
+            throw error;
+          }
+          result = data;
         }
       }
 
@@ -1663,29 +1694,12 @@ external_id: transaction.id,
             <div className="space-y-4">
               <h2 className="text-xl font-medium">Selecione o cartão</h2>
               
-              {loadingCreditCards ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-muted-foreground">Carregando cartões...</div>
-                </div>
-              ) : creditCards.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Nenhum cartão de crédito encontrado para o banco selecionado.</p>
-                  <p className="text-sm mt-2">Verifique se você possui cartões cadastrados para este banco.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {creditCards.map((card) => {
-                    return (
-                      <ImportCreditCardCard
-                        key={card.id}
-                        card={card}
-                        isSelected={selectedCreditCardId === card.id}
-                        onClick={() => setSelectedCreditCardId(card.id)}
-                      />
-                    );
-                  })}
-                </div>
-              )}
+              <CreditCardGridSelector
+                creditCards={creditCards}
+                selectedCreditCardId={selectedCreditCardId}
+                onSelect={setSelectedCreditCardId}
+                loading={loadingCreditCards}
+              />
             </div>
           )}
 
