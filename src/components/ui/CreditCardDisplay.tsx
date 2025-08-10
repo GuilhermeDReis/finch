@@ -97,7 +97,7 @@ export function CreditCardDisplay({
     >
       {/* Fallback background se não houver imagem */}
       {!backgroundImageUrl && (
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200" />
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800" />
       )}
       
       {/* Overlay para melhorar legibilidade do texto */}

@@ -530,21 +530,21 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
               </div>
 
               {errors.due_after_closing && (
-                <Alert className="border-red-200 bg-red-50">
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-700">
+                <Alert className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <AlertDescription className="text-red-700 dark:text-red-300">
                     {errors.due_after_closing}
                   </AlertDescription>
                 </Alert>
               )}
 
               {suggestedDueDays.length > 0 && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
-                    <Info className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Dica</span>
+                    <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Dica</span>
                   </div>
-                  <p className="text-xs text-blue-600">
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
                     Dias de vencimento sugeridos: {suggestedDueDays.join(', ')}
                   </p>
                 </div>
@@ -557,8 +557,8 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
         return (
           <div className="space-y-6">
             <div className="text-center space-y-2">
-              <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-                <Check className="w-8 h-8 text-emerald-600" />
+              <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center">
+                <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
               </div>
               <h3 className="text-lg font-semibold">Revisar e Confirmar</h3>
               <p className="text-sm text-muted-foreground">Confira todas as informações antes de finalizar</p>
