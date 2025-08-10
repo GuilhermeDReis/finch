@@ -208,6 +208,7 @@ export default function CreditCards() {
           isOpen={showModal}
           onClose={handleModalClose}
           creditCard={editingCard}
+          onSuccess={fetchCreditCards}
         />
       </div>
     </div>

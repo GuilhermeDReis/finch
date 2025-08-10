@@ -43,9 +43,14 @@ export const calculateGoalStatus = (currentSpent: number, monthlyGoal: number): 
 export const groupAllTransactionsByMonth = (
   transactions: any[],
   periodMonths: number,
-  transactionType: 'income' | 'expense' = 'expense'
+  transactionType: 'income' | 'expense' = 'expense',
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartDataPoint[] => {
-  const now = new Date();
+  // Use selected date from dashboard or current date as fallback
+  const now = selectedYear && selectedMonth 
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date();
   const months: ChartDataPoint[] = [];
   
   // Generate array of months for the specified period
@@ -83,9 +88,14 @@ export const groupTransactionsByMonthAndCategory = (
   categoryId: string,
   periodMonths: number,
   transactionType: 'income' | 'expense' = 'expense',
-  groupingType: 'category' | 'subcategory' = 'category'
+  groupingType: 'category' | 'subcategory' = 'category',
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartDataPoint[] => {
-  const now = new Date();
+  // Use selected date from dashboard or current date as fallback
+  const now = selectedYear && selectedMonth 
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date();
   const months: ChartDataPoint[] = [];
   
   // Generate array of months for the specified period
@@ -126,25 +136,30 @@ export const groupTransactionsByMonthAndCategory = (
 export const processChartData = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  allSubcategories?: any[],
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
   // Handle different chart types
   switch (config.chart_type) {
     case 'evolution':
-      return processEvolutionChartData(config, transactions, categoryName);
+      return processEvolutionChartData(config, transactions, categoryName, selectedYear, selectedMonth);
     case 'distribution':
-      return processDistributionChartData(config, transactions, categoryName);
+      return processDistributionChartData(config, transactions, categoryName, selectedYear, selectedMonth);
     case 'comparison':
-      return processComparisonChartData(config, transactions, categoryName);
+      return processComparisonChartData(config, transactions, categoryName, allSubcategories, selectedYear, selectedMonth);
     default:
-      return processEvolutionChartData(config, transactions, categoryName);
+      return processEvolutionChartData(config, transactions, categoryName, selectedYear, selectedMonth);
   }
 };
 
 export const processEvolutionChartData = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
   let dataPoints: ChartDataPoint[];
   
@@ -154,7 +169,9 @@ export const processEvolutionChartData = (
     dataPoints = groupAllTransactionsByMonth(
       transactions,
       config.period_months,
-      config.transaction_type
+      config.transaction_type,
+      selectedYear,
+      selectedMonth
     ).map(point => ({
       ...point,
       goal: config.monthly_goal
@@ -167,7 +184,9 @@ export const processEvolutionChartData = (
       targetId,
       config.period_months,
       config.transaction_type,
-      config.grouping_type
+      config.grouping_type,
+      selectedYear,
+      selectedMonth
     ).map(point => ({
       ...point,
       goal: config.monthly_goal
@@ -195,18 +214,26 @@ export const processEvolutionChartData = (
 export const processDistributionChartData = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
-  // For distribution charts, we need to group by categories or subcategories
-  const now = new Date();
-  const monthsAgo = subMonths(now, config.period_months);
+  // For distribution charts (pie charts), ALWAYS use only the specific month selected in dashboard
+  // Use selected date from dashboard or current date as fallback
+  const currentDate = selectedYear && selectedMonth 
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date();
   
-  // Filter transactions for the period and transaction type
+  // ALWAYS use only the specific month from dashboard for distribution charts
+  const startDate = startOfMonth(currentDate);
+  const endDate = endOfMonth(currentDate);
+  
+  // Filter transactions ONLY for the selected month and transaction type
   let periodTransactions = transactions.filter(transaction => {
     const transactionDate = typeof transaction.date === 'string' 
       ? parseISO(transaction.date) 
       : transaction.date;
-    return transactionDate >= monthsAgo && transaction.type === config.transaction_type;
+    return transactionDate >= startDate && transactionDate <= endDate && transaction.type === config.transaction_type;
   });
 
   // Apply category filter based on the configuration
@@ -262,35 +289,46 @@ export const processDistributionChartData = (
 export const processComparisonChartData = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  allSubcategories?: any[],
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
   // For comparison charts, the logic depends on comparison_type
   switch (config.comparison_type) {
     case 'categories_same_period':
-      return processComparisonCategoriesSamePeriod(config, transactions, categoryName);
+      return processComparisonCategoriesSamePeriod(config, transactions, categoryName, selectedYear, selectedMonth);
     case 'category_different_periods':
-      return processComparisonCategoryDifferentPeriods(config, transactions, categoryName);
+      return processComparisonCategoryDifferentPeriods(config, transactions, categoryName, selectedYear, selectedMonth);
     case 'subcategories':
-      return processComparisonSubcategories(config, transactions, categoryName);
+      return processComparisonSubcategories(config, transactions, categoryName, allSubcategories, selectedYear, selectedMonth);
     default:
-      return processEvolutionChartData(config, transactions, categoryName);
+      return processEvolutionChartData(config, transactions, categoryName, selectedYear, selectedMonth);
   }
 };
 
 const processComparisonCategoriesSamePeriod = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
-  const now = new Date();
-  const monthsAgo = subMonths(now, config.period_months);
+  // For comparison charts, ALWAYS use only the specific month selected in dashboard
+  const currentDate = selectedYear && selectedMonth 
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date();
   
-  // Filter transactions for the period
+  // ALWAYS use only the specific month from dashboard for comparison charts
+  const startDate = startOfMonth(currentDate);
+  const endDate = endOfMonth(currentDate);
+  
+  // Filter transactions ONLY for the selected month
   const periodTransactions = transactions.filter(transaction => {
     const transactionDate = typeof transaction.date === 'string' 
       ? parseISO(transaction.date) 
       : transaction.date;
-    return transactionDate >= monthsAgo && transaction.type === config.transaction_type;
+    return transactionDate >= startDate && transactionDate <= endDate && transaction.type === config.transaction_type;
   });
 
   // Group by categories
@@ -326,7 +364,9 @@ const processComparisonCategoriesSamePeriod = (
 const processComparisonCategoryDifferentPeriods = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
   // This is similar to evolution but for a specific category across different periods
   const dataPoints = groupTransactionsByMonthAndCategory(
@@ -334,7 +374,9 @@ const processComparisonCategoryDifferentPeriods = (
     config.category_id,
     config.period_months,
     config.transaction_type,
-    config.grouping_type
+    config.grouping_type,
+    selectedYear,
+    selectedMonth
   ).map(point => ({
     ...point,
     goal: config.monthly_goal
@@ -357,17 +399,27 @@ const processComparisonCategoryDifferentPeriods = (
 const processComparisonSubcategories = (
   config: ChartConfig,
   transactions: any[],
-  categoryName: string
+  categoryName: string,
+  allSubcategories?: any[],
+  selectedYear?: number,
+  selectedMonth?: number
 ): ChartData => {
-  const now = new Date();
-  const monthsAgo = subMonths(now, config.period_months);
+  // Para gráficos de subcategorias, SEMPRE usar apenas o mês selecionado no dashboard
+  // Independente da configuração de period_months
+  const currentDate = selectedYear && selectedMonth 
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date();
   
-  // Filter transactions for the period and category
+  // SEMPRE usar apenas o mês específico do dashboard para subcategorias
+  const startDate = startOfMonth(currentDate);
+  const endDate = endOfMonth(currentDate);
+  
+  // Filter transactions ONLY for the selected month and category
   const periodTransactions = transactions.filter(transaction => {
     const transactionDate = typeof transaction.date === 'string' 
       ? parseISO(transaction.date) 
       : transaction.date;
-    return transactionDate >= monthsAgo && 
+    return transactionDate >= startDate && transactionDate <= endDate && 
            transaction.type === config.transaction_type &&
            transaction.category_id === config.category_id;
   });
@@ -381,9 +433,16 @@ const processComparisonSubcategories = (
     }
   });
 
+  // Helper function to get subcategory name
+  const getSubcategoryName = (subcategoryId: string): string => {
+    if (!allSubcategories) return subcategoryId;
+    const subcategory = allSubcategories.find(sub => sub.id === subcategoryId);
+    return subcategory ? subcategory.name : subcategoryId;
+  };
+
   // Convert to data points
   const dataPoints = Object.entries(subcategoryTotals).map(([subcategoryId, total]) => ({
-    month: subcategoryId,
+    month: getSubcategoryName(subcategoryId),
     totalSpent: total,
     goal: config.monthly_goal,
     transactionCount: periodTransactions.filter(t => t.subcategory_id === subcategoryId).length

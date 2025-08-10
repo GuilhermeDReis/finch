@@ -1,6 +1,5 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { TrendingUp, PieChart, BarChart3 } from 'lucide-react';
 import type { WizardStep1Data, ChartType } from '@/types/chart';
 
@@ -13,88 +12,45 @@ interface Step1ChartTypeSelectionProps {
 const CHART_TYPES = [
   {
     id: 'evolution' as ChartType,
-    title: 'EVOLUÇÃO',
-    subtitle: 'Gráfico de linha',
+    title: 'Evolução',
+    subtitle: 'Acompanhe tendências ao longo do tempo',
+    benefits: ['📈 Visualize tendências', '🎯 Acompanhe metas', '📊 Compare períodos'],
     icon: TrendingUp,
-    benefits: [
-      'Acompanhar evolução',
-      'Identificar tendências',
-      'Comparar com metas'
-    ]
+    color: 'text-blue-500'
   },
   {
     id: 'distribution' as ChartType,
-    title: 'DISTRIBUIÇÃO',
-    subtitle: 'Gráfico de pizza',
+    title: 'Distribuição',
+    subtitle: 'Veja como seus gastos se distribuem',
+    benefits: ['🥧 Proporções claras', '💡 Identifique padrões', '🔍 Análise detalhada'],
     icon: PieChart,
-    benefits: [
-      'Ver proporção entre partes',
-      'Encontrar maiores gastos',
-      'Análise de categorias'
-    ]
+    color: 'text-green-500'
   },
   {
     id: 'comparison' as ChartType,
-    title: 'COMPARAÇÃO',
-    subtitle: 'Gráfico de barras',
+    title: 'Comparação',
+    subtitle: 'Compare categorias ou períodos',
+    benefits: ['📊 Compare valores', '⚖️ Analise diferenças', '🎯 Tome decisões'],
     icon: BarChart3,
-    benefits: [
-      'Ver diferenças entre meses',
-      'Identificar picos e quedas',
-      'Análise de múltiplas variáveis'
-    ]
+    color: 'text-purple-500'
   }
 ];
 
 export default function Step1ChartTypeSelection({ data, onUpdate, onNext }: Step1ChartTypeSelectionProps) {
-  const [selectedType, setSelectedType] = React.useState<ChartType>(data.chart_type);
+  const selectedType = data.chart_type;
 
-  const handleSelect = (chartType: ChartType) => {
-    setSelectedType(chartType);
-    onUpdate({ chart_type: chartType });
-    // Auto-advance after selection
+  const handleTypeSelect = (type: ChartType) => {
+    onUpdate({ chart_type: type });
+    // Auto-advance to next step after selection
     setTimeout(() => {
       onNext();
     }, 300);
   };
 
-  const renderChartPreview = (type: ChartType) => {
-    switch (type) {
-      case 'evolution':
-        return (
-          <div className="w-full h-16 flex items-end justify-center space-x-1 mb-4">
-            <div className="w-1 bg-blue-500 h-8"></div>
-            <div className="w-1 bg-blue-500 h-12"></div>
-            <div className="w-1 bg-blue-500 h-6"></div>
-            <div className="w-1 bg-blue-500 h-14"></div>
-            <div className="w-1 bg-blue-500 h-10"></div>
-            <div className="w-1 bg-blue-500 h-16"></div>
-          </div>
-        );
-      case 'distribution':
-        return (
-          <div className="w-16 h-16 mx-auto mb-4 relative">
-            <div className="w-16 h-16 rounded-full border-8 border-blue-500 border-r-green-500 border-b-yellow-500 border-l-red-500"></div>
-          </div>
-        );
-      case 'comparison':
-        return (
-          <div className="w-full h-16 flex items-end justify-center space-x-2 mb-4">
-            <div className="w-4 bg-blue-500 h-12"></div>
-            <div className="w-4 bg-green-500 h-8"></div>
-            <div className="w-4 bg-yellow-500 h-16"></div>
-            <div className="w-4 bg-red-500 h-6"></div>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-xl font-bold mb-2">Escolha o Tipo de Gráfico</h2>
+        <h2 className="text-lg font-bold mb-2">Escolha o Tipo de Gráfico</h2>
         <p className="text-sm text-muted-foreground">
           Selecione o tipo de análise que melhor atende às suas necessidades
         </p>
@@ -104,43 +60,43 @@ export default function Step1ChartTypeSelection({ data, onUpdate, onNext }: Step
         {CHART_TYPES.map((chartType) => {
           const Icon = chartType.icon;
           const isSelected = selectedType === chartType.id;
-
+          
           return (
             <Card
               key={chartType.id}
-              className={`cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-primary/50 ${
-                isSelected ? 'ring-2 ring-primary border-primary' : ''
+              className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                isSelected 
+                  ? 'ring-2 ring-primary bg-primary/5' 
+                  : 'hover:bg-muted/50'
               }`}
-              onClick={() => handleSelect(chartType.id)}
+              onClick={() => handleTypeSelect(chartType.id)}
             >
-              <CardContent className="p-4 text-center h-full flex flex-col">
-                <div className="mb-3">
-                  <Icon className="w-8 h-8 mx-auto mb-2 text-primary" />
-                  <h3 className="text-lg font-bold mb-1">{chartType.title}</h3>
-                  <p className="text-xs text-muted-foreground">{chartType.subtitle}</p>
-                </div>
+              <CardContent className="p-6">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className={`p-3 rounded-full bg-muted ${chartType.color}`}>
+                    <Icon className="w-6 h-6" />
+                  </div>
+                  
+                  <div>
+                    <h3 className="font-semibold text-lg">{chartType.title}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {chartType.subtitle}
+                    </p>
+                  </div>
 
-                <div className="mb-3">
-                  {renderChartPreview(chartType.id)}
-                </div>
+                  <div className="space-y-1">
+                    {chartType.benefits.map((benefit, index) => (
+                      <p key={index} className="text-xs text-muted-foreground">
+                        {benefit}
+                      </p>
+                    ))}
+                  </div>
 
-                <div className="space-y-2 flex-grow">
-                  {chartType.benefits.map((benefit, index) => (
-                    <div key={index} className="flex items-center justify-start text-xs">
-                      <span className="text-green-500 mr-2 text-sm">✅</span>
-                      <span className="text-left">{benefit}</span>
+                  {isSelected && (
+                    <div className="w-full pt-2">
+                      <div className="w-full h-1 bg-primary rounded-full" />
                     </div>
-                  ))}
-                </div>
-
-                <div className="mt-3 pt-3 border-t">
-                  <Button 
-                    variant={isSelected ? "default" : "outline"} 
-                    size="sm" 
-                    className="w-full text-xs"
-                  >
-                    {isSelected ? 'SELECIONADO' : 'ESCOLHER'}
-                  </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

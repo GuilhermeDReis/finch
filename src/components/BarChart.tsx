@@ -43,6 +43,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function BarChart({ data, height = 300 }: BarChartProps) {
   const { dataPoints, config } = data;
 
+  // Verificar se há dados para exibir
+  const hasData = dataPoints && dataPoints.length > 0 && dataPoints.some(point => point.totalSpent > 0);
+
+  if (!hasData) {
+    return (
+      <div 
+        className="flex items-center justify-center text-muted-foreground"
+        style={{ height }}
+      >
+        <p className="text-sm">Nenhum valor encontrado</p>
+      </div>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RechartsBarChart data={dataPoints} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>

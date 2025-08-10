@@ -7,6 +7,7 @@ import { Suspense, lazy } from "react";
 import { Layout } from "./components/Layout";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ChartProvider } from "./contexts/ChartContext";
+import { DateProvider } from "./contexts/DateContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { FullPageLoader } from "./components/LoadingSpinner";
@@ -33,8 +34,9 @@ const App = () => (
       disableTransitionOnChange
     >
       <AuthProvider>
-        <ChartProvider>
-          <TooltipProvider>
+        <DateProvider>
+          <ChartProvider>
+            <TooltipProvider>
             <Toaster />
             <Sonner />
             <BrowserRouter>
@@ -95,8 +97,9 @@ const App = () => (
                 </Routes>
               </Suspense>
             </BrowserRouter>
-          </TooltipProvider>
-        </ChartProvider>
+            </TooltipProvider>
+          </ChartProvider>
+        </DateProvider>
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>

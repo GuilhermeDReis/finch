@@ -9,11 +9,11 @@ import {
   useSensors,
   DragEndEvent
 } from '@dnd-kit/core';
-import { 
-  arrayMove, 
-  SortableContext, 
-  sortableKeyboardCoordinates, 
-  rectSortingStrategy
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,13 +23,12 @@ import ChartCard from '@/components/ChartCard';
 import AddChartModal from '@/components/AddChartModal';
 import DashboardTotalCard from '@/components/DashboardTotalCard';
 import { useCharts } from '@/contexts/ChartContext';
+import { useDateContext } from '@/contexts/DateContext';
 import { useDashboardTotals } from '@/hooks/useDashboardTotals';
 
 export default function DashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false);
-  const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
+  const { selectedYear, selectedMonth, setSelectedYear, setSelectedMonth } = useDateContext();
   
   const { chartConfigs, loading, reorderCharts } = useCharts();
   const { totals, loading: totalsLoading } = useDashboardTotals(selectedYear, selectedMonth);
@@ -55,7 +54,7 @@ export default function DashboardPage() {
     }
   };
 
-  const years = Array.from({ length: 10 }, (_, i) => currentDate.getFullYear() - i);
+  const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
   const months = [
     { value: 1, label: 'Janeiro' },
     { value: 2, label: 'Fevereiro' },

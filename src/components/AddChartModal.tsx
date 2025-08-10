@@ -78,6 +78,7 @@ export default function AddChartModal({ isOpen, onClose }: AddChartModalProps) {
           <Step3VisualCustomization 
             chartType={step1Data.chart_type}
             data={step3Data} 
+            step2Data={step2Data}
             onUpdate={setStep3Data}
           />
         );

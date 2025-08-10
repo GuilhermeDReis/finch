@@ -44,6 +44,7 @@ interface CreditCardModalProps {
   isOpen: boolean;
   creditCard?: CreditCardWithBank | null;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 type Bank = Tables<'banks'>;
@@ -56,10 +57,16 @@ const STEPS = [
   { id: 4, title: 'Finalização', icon: Check, description: 'Revisar e confirmar' }
 ];
 
-export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModalProps) {
-  const { user } = useAuth();
+export function CreditCardModal({ isOpen, creditCard, onClose, onSuccess }: CreditCardModalProps) {
+  const { user, loading: authLoading } = useAuth();
   const isEditing = !!creditCard;
   
+  // Log user state for debugging
+  useEffect(() => {
+    logger.info('CreditCardModal user state:', { user: !!user, userId: user?.id });
+  }, [user]);
+  
+  // Persistent form state - only reset when explicitly needed
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<CreditCardFormData>({
     bank_id: '',
@@ -77,6 +84,40 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
   const [loading, setLoading] = useState(false);
   const [limitInput, setLimitInput] = useState('');
   const [stepValidation, setStepValidation] = useState<Record<number, boolean>>({});
+  
+  // Track if form has been initialized to prevent unnecessary resets
+  const [formInitialized, setFormInitialized] = useState(false);
+
+  // Monitor bank_id changes
+  useEffect(() => {
+    logger.info('bank_id changed', { 
+      bank_id: formData.bank_id, 
+      currentStep, 
+      isOpen,
+      formInitialized 
+    });
+  }, [formData.bank_id, currentStep, isOpen, formInitialized]);
+
+  // Function to explicitly reset the form
+  const resetForm = () => {
+    logger.info('Explicitly resetting form');
+    const newFormData: CreditCardFormData = {
+      bank_id: '',
+      limit_amount: 0,
+      description: '',
+      brand: 'visa',
+      closing_day: 15,
+      due_day: 20,
+      last_four_digits: '',
+      background_image_url: '',
+    };
+    setFormData(newFormData);
+    setLimitInput('');
+    setCurrentStep(1);
+    setErrors({});
+    setStepValidation({});
+    setFormInitialized(false);
+  };
 
   // Load banks on component mount
   useEffect(() => {
@@ -98,22 +139,71 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
     loadBanks();
   }, []);
 
-  // Populate form data when editing
+  // Initialize form data only when needed
   useEffect(() => {
-    if (creditCard) {
-      setFormData({
-        bank_id: creditCard.bank_id,
-        limit_amount: creditCard.limit_amount,
-        description: creditCard.description,
-        brand: creditCard.brand,
-        closing_day: creditCard.closing_day,
-        due_day: creditCard.due_day,
-        last_four_digits: creditCard.last_four_digits || '',
-        background_image_url: creditCard.background_image_url || '',
-      });
-      setLimitInput(CreditCardValidationService.formatCurrency(creditCard.limit_amount));
+    if (isOpen) {
+      logger.info('Modal opened', { isEditing, creditCard: !!creditCard, formInitialized });
+      
+      if (creditCard) {
+        // Editing mode - always populate with existing data
+        const editFormData: CreditCardFormData = {
+          bank_id: creditCard.bank_id,
+          limit_amount: creditCard.limit_amount,
+          description: creditCard.description,
+          brand: creditCard.brand as CreditCardFormData['brand'],
+          closing_day: creditCard.closing_day,
+          due_day: creditCard.due_day,
+          last_four_digits: creditCard.last_four_digits || '',
+          background_image_url: creditCard.background_image_url || '',
+        };
+        logger.info('Setting edit form data', editFormData);
+        setFormData(editFormData);
+        setLimitInput(CreditCardValidationService.formatCurrency(creditCard.limit_amount));
+        setCurrentStep(1);
+        setErrors({});
+        setStepValidation({});
+        setFormInitialized(true);
+      } else if (!formInitialized) {
+        // Creating mode - only reset if not initialized (first time opening)
+        const newFormData: CreditCardFormData = {
+          bank_id: '',
+          limit_amount: 0,
+          description: '',
+          brand: 'visa',
+          closing_day: 15,
+          due_day: 20,
+          last_four_digits: '',
+          background_image_url: '',
+        };
+        logger.info('Setting new form data (first time)', newFormData);
+        setFormData(newFormData);
+        setLimitInput('');
+        setCurrentStep(1);
+        setErrors({});
+        setStepValidation({});
+        setFormInitialized(true);
+      } else {
+        // Creating mode - preserve existing form data
+        logger.info('Preserving existing form data', formData);
+      }
+      
+      setLoading(false);
     }
-  }, [creditCard]);
+  }, [isOpen, creditCard]);
+
+  // Reset form when switching between create and edit modes
+  useEffect(() => {
+    if (isOpen) {
+      const currentMode = !!creditCard;
+      const wasEditing = formInitialized && isEditing;
+      
+      // Reset if switching from edit to create or vice versa
+      if (formInitialized && (currentMode !== wasEditing)) {
+        logger.info('Mode changed, resetting form', { currentMode, wasEditing });
+        setFormInitialized(false);
+      }
+    }
+  }, [isOpen, creditCard, isEditing, formInitialized]);
 
   const handleInputChange = (field: keyof CreditCardFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -183,72 +273,138 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
   };
 
   const validateForm = () => {
+    logger.info('validateForm called with formData:', formData);
+    logger.info('Bank ID value during validation', { bank_id: formData.bank_id });
     const validation = CreditCardValidationService.validateCreditCard(formData);
+    logger.info('Validation result:', { 
+      isValid: validation.isValid, 
+      errors: validation.errors,
+      formData,
+      bankIdInFormData: formData.bank_id
+    });
     setErrors(validation.errors);
     return validation.isValid;
   };
 
   // Navegação entre etapas
   const nextStep = () => {
+    logger.info('nextStep called', { currentStep, formData: formData.bank_id });
     if (validateStep(currentStep) && currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
+      logger.info('Moved to next step', { newStep: currentStep + 1, bankId: formData.bank_id });
     }
   };
 
   const prevStep = () => {
+    logger.info('prevStep called', { currentStep, formData: formData.bank_id });
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+      logger.info('Moved to previous step', { newStep: currentStep - 1, bankId: formData.bank_id });
     }
   };
 
   const goToStep = (step: number) => {
+    logger.info('goToStep called', { currentStep, targetStep: step, bankId: formData.bank_id });
     if (step <= currentStep || stepValidation[step - 1]) {
       setCurrentStep(step);
+      logger.info('Moved to step', { newStep: step, bankId: formData.bank_id });
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm() || !user) return;
+    logger.info('handleSubmit called', { formData, user: !!user, authLoading });
+    
+    // Check if auth is still loading
+    if (authLoading) {
+      logger.warn('Authentication still loading, waiting...');
+      toast.error('Aguarde, carregando dados de autenticação...');
+      return;
+    }
+    
+    // Check if user is authenticated
+    if (!user) {
+      logger.warn('User not authenticated');
+      toast.error('Você precisa estar logado para criar um cartão');
+      return;
+    }
+    
+    // Check if user is on the final step
+    if (currentStep !== STEPS.length) {
+      logger.warn('User not on final step', { currentStep, totalSteps: STEPS.length });
+      toast.error('Complete todas as etapas antes de finalizar');
+      return;
+    }
+    
+    const validation = validateForm();
+    logger.info('Form validation result', { validation, errors });
+    
+    if (!validation) {
+      logger.warn('Form validation failed', { errors });
+      toast.error('Por favor, corrija os erros no formulário');
+      return;
+    }
 
     try {
       setLoading(true);
+      logger.info('Starting credit card save operation', { isEditing, formData });
 
       if (isEditing && creditCard) {
         // Update existing credit card
+        const updateData = {
+          // Note: bank_id is intentionally omitted (business rule)
+          limit_amount: formData.limit_amount,
+          description: formData.description.trim(),
+          brand: formData.brand,
+          closing_day: formData.closing_day,
+          due_day: formData.due_day,
+          last_four_digits: formData.last_four_digits,
+          background_image_url: formData.background_image_url,
+        };
+        
+        logger.info('Updating credit card', { updateData, creditCardId: creditCard.id });
+        
         const { error } = await supabase
           .from('credit_cards')
-          .update({
-            // Note: bank_id is intentionally omitted (business rule)
-            limit_amount: formData.limit_amount,
-            description: formData.description.trim(),
-            brand: formData.brand,
-            closing_day: formData.closing_day,
-            due_day: formData.due_day,
-            last_four_digits: formData.last_four_digits,
-          })
+          .update(updateData)
           .eq('id', creditCard.id)
           .eq('user_id', user.id);
 
         if (error) throw error;
       } else {
         // Create new credit card
+        const insertData = {
+          ...formData,
+          description: formData.description.trim(),
+          user_id: user.id,
+        };
+        
+        logger.info('Creating new credit card', { insertData });
+        
         const { error } = await supabase
           .from('credit_cards')
-          .insert({
-            ...formData,
-            description: formData.description.trim(),
-            user_id: user.id,
-          });
+          .insert(insertData);
 
         if (error) throw error;
       }
 
+      logger.info('Credit card saved successfully');
       toast.success(isEditing ? 'Cartão atualizado com sucesso!' : 'Cartão criado com sucesso!');
+      
+      // Call onSuccess callback if provided
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      // Reset form only for new card creation
+      if (!isEditing) {
+        resetForm();
+      }
+      
       onClose();
     } catch (error) {
-      logger.error('Error saving credit card', { isEditing, error: error instanceof Error ? error.message : 'Unknown error' });
+      logger.error('Error saving credit card', { isEditing, error: error instanceof Error ? error.message : 'Unknown error', formData });
       toast.error('Erro ao salvar cartão de crédito');
     } finally {
       setLoading(false);
@@ -260,6 +416,12 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
 
   // Renderizar conteúdo da etapa atual
   const renderStepContent = () => {
+    logger.info('renderStepContent called', { 
+      currentStep, 
+      bank_id: formData.bank_id,
+      formData: formData 
+    });
+    
     switch (currentStep) {
       case 1:
         return (
@@ -279,8 +441,12 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
                   Banco *
                 </Label>
                 <Select
+                  key={`bank-select-${currentStep}-${formData.bank_id}`}
                   value={formData.bank_id}
-                  onValueChange={(value) => handleInputChange('bank_id', value)}
+                  onValueChange={(value) => {
+                    logger.info('Bank select onValueChange', { value, currentBankId: formData.bank_id });
+                    handleInputChange('bank_id', value);
+                  }}
                   disabled={isEditing}
                 >
                   <SelectTrigger className="h-12">
@@ -608,97 +774,98 @@ export function CreditCardModal({ isOpen, creditCard, onClose }: CreditCardModal
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden">
-        <DialogHeader className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-xl">
-                {isEditing ? 'Editar Cartão de Crédito' : 'Novo Cartão de Crédito'}
-              </DialogTitle>
-              <DialogDescription>
-                {isEditing 
-                  ? 'Atualize as informações do seu cartão de crédito.'
-                  : 'Adicione um novo cartão de crédito para gerenciar seus gastos.'
-                }
-              </DialogDescription>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+          <DialogHeader className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-xl">
+                  {isEditing ? 'Editar Cartão de Crédito' : 'Novo Cartão de Crédito'}
+                </DialogTitle>
+                <DialogDescription>
+                  {isEditing 
+                    ? 'Atualize as informações do seu cartão de crédito.'
+                    : 'Adicione um novo cartão de crédito para gerenciar seus gastos.'
+                  }
+                </DialogDescription>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                Etapa {currentStep} de {STEPS.length}
+              </Badge>
             </div>
-            <Badge variant="outline" className="text-xs">
-              Etapa {currentStep} de {STEPS.length}
-            </Badge>
-          </div>
 
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <Progress value={progressPercentage} className="h-2" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {STEPS.map((step) => (
-                <button
-                  key={step.id}
-                  onClick={() => goToStep(step.id)}
-                  className={`flex flex-col items-center gap-1 transition-colors ${
-                    step.id === currentStep 
-                      ? 'text-primary' 
-                      : step.id < currentStep || stepValidation[step.id]
-                        ? 'text-green-600 hover:text-green-700' 
-                        : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  disabled={step.id > currentStep && !stepValidation[step.id - 1]}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors ${
-                    step.id === currentStep 
-                      ? 'border-primary bg-primary text-primary-foreground' 
-                      : step.id < currentStep || stepValidation[step.id]
-                        ? 'border-green-600 bg-green-600 text-white'
-                        : 'border-muted-foreground'
-                  }`}>
-                    {step.id < currentStep || stepValidation[step.id] ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <step.icon className="w-4 h-4" />
-                    )}
-                  </div>
-                  <span className="text-xs font-medium hidden sm:block">{step.title}</span>
-                </button>
-              ))}
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <Progress value={progressPercentage} className="h-2" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                {STEPS.map((step) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => goToStep(step.id)}
+                    className={`flex flex-col items-center gap-1 transition-colors ${
+                      step.id === currentStep 
+                        ? 'text-primary' 
+                        : step.id < currentStep || stepValidation[step.id]
+                          ? 'text-green-600 hover:text-green-700' 
+                          : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    disabled={step.id > currentStep && !stepValidation[step.id - 1]}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors ${
+                      step.id === currentStep 
+                        ? 'border-primary bg-primary text-primary-foreground' 
+                        : step.id < currentStep || stepValidation[step.id]
+                          ? 'border-green-600 bg-green-600 text-white'
+                          : 'border-muted-foreground'
+                    }`}>
+                      {step.id < currentStep || stepValidation[step.id] ? (
+                        <Check className="w-4 h-4" />
+                      ) : (
+                        <step.icon className="w-4 h-4" />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium hidden sm:block">{step.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
-        <Separator />
+          <Separator />
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="py-4">
+          <div className="flex-1 overflow-y-auto py-4">
             {renderStepContent()}
           </div>
+
+          <Separator />
+
+          <DialogFooter className="flex justify-between">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              {currentStep > 1 && (
+                <Button type="button" variant="outline" onClick={prevStep}>
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Anterior
+                </Button>
+              )}
+            </div>
+            
+            <div className="flex gap-2">
+              {currentStep < STEPS.length ? (
+                <Button type="button" onClick={nextStep}>
+                  Próximo
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              ) : (
+                <Button type="submit" disabled={loading} className="bg-green-600 hover:bg-green-700">
+                  {loading ? 'Salvando...' : (isEditing ? 'Atualizar Cartão' : 'Criar Cartão')}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
         </form>
-
-        <Separator />
-
-        <DialogFooter className="flex justify-between">
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            {currentStep > 1 && (
-              <Button type="button" variant="outline" onClick={prevStep}>
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Anterior
-              </Button>
-            )}
-          </div>
-          
-          <div className="flex gap-2">
-            {currentStep < STEPS.length ? (
-              <Button type="button" onClick={nextStep}>
-                Próximo
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            ) : (
-              <Button type="submit" disabled={loading} className="bg-green-600 hover:bg-green-700">
-                {loading ? 'Salvando...' : (isEditing ? 'Atualizar Cartão' : 'Criar Cartão')}
-              </Button>
-            )}
-          </div>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
