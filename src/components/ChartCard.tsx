@@ -27,6 +27,7 @@ import PieChart from './PieChart';
 import BarChart from './BarChart';
 import EditChartModal from './EditChartModal';
 import { useCharts } from '@/contexts/ChartContext';
+import { useDateContext } from '@/contexts/DateContext';
 import { processChartData, formatCurrency } from '@/utils/chartUtils';
 import type { ChartConfig } from '@/types/chart';
 
@@ -37,7 +38,8 @@ interface ChartCardProps {
 export default function ChartCard({ config }: ChartCardProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const { allTransactions, allCategories, removeChart, duplicateChart } = useCharts();
+  const { allTransactions, allCategories, allSubcategories, removeChart, duplicateChart } = useCharts();
+  const { selectedYear, selectedMonth } = useDateContext();
   
   const {
     attributes,
@@ -59,7 +61,7 @@ export default function ChartCard({ config }: ChartCardProps) {
   const categoryName = category?.name || 'Categoria não encontrada';
 
   // Process chart data
-  const chartData = processChartData(config, allTransactions, categoryName);
+  const chartData = processChartData(config, allTransactions, categoryName, allSubcategories, selectedYear, selectedMonth);
 
   const getStatusIcon = () => {
     switch (chartData.status) {

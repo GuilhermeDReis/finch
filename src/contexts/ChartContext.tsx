@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDateContext } from '@/contexts/DateContext';
 import { useToast } from '@/hooks/use-toast';
 import type { ChartConfig, ChartFormData } from '@/types/chart';
 import { getLogger } from '@/utils/logger';
@@ -45,9 +46,11 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [allSubcategories, setAllSubcategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { selectedYear, selectedMonth } = useDateContext();
   const { toast } = useToast();
 
-  const loadData = useCallback(async () => {
+  // Load static data (charts, categories, subcategories) - only when user changes
+  const loadStaticData = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -89,24 +92,6 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setChartConfigs(typedCharts);
       }
 
-      // Load user transactions
-      const { data: transactions, error: transactionsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
-
-      if (transactionsError) {
-        logger.error('Error loading transactions', { error: transactionsError });
-        toast({
-          title: 'Erro ao carregar transações',
-          description: transactionsError.message,
-          variant: 'destructive',
-        });
-      } else {
-        setAllTransactions(transactions || []);
-      }
-
       // Load categories
       const { data: categories, error: categoriesError } = await supabase
         .from('categories')
@@ -142,7 +127,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
     } catch (error) {
-      logger.error('Error in loadData', { error });
+      logger.error('Error in loadStaticData', { error });
       toast({
         title: 'Erro ao carregar dados',
         description: 'Ocorreu um erro inesperado ao carregar os dados.',
@@ -153,9 +138,105 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [user, toast]);
 
+  // Load transactions based on selected date
+  const loadTransactions = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      logger.info('Loading transactions for date', { selectedYear, selectedMonth });
+
+      // Calculate date range for the selected month and previous months
+      // We need to load enough data to cover all possible chart periods
+      const maxPeriodMonths = 12; // Assuming max period is 12 months
+      const startDate = new Date(selectedYear, selectedMonth - maxPeriodMonths, 1);
+      // Fix: endDate should be the last day of the selected month
+      const endDate = new Date(selectedYear, selectedMonth, 0, 23, 59, 59, 999);
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      // Load user transactions from both tables for the date range
+      const [transactionsResult, creditTransactionsResult] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', startDateStr)
+          .lte('date', endDateStr)
+          .order('date', { ascending: false }),
+        supabase
+          .from('transaction_credit')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', startDateStr)
+          .lte('date', endDateStr)
+          .order('date', { ascending: false })
+      ]);
+
+      const { data: transactions, error: transactionsError } = transactionsResult;
+      const { data: creditTransactions, error: creditError } = creditTransactionsResult;
+
+      if (transactionsError) {
+        logger.error('Error loading transactions', { error: transactionsError });
+        toast({
+          title: 'Erro ao carregar transações',
+          description: transactionsError.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (creditError) {
+        logger.error('Error loading credit transactions', { error: creditError });
+        toast({
+          title: 'Erro ao carregar transações de crédito',
+          description: creditError.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Normalize credit transactions to match regular transactions format
+      const normalizedCreditTransactions = (creditTransactions || []).map(ct => ({
+        ...ct,
+        type: 'expense', // Credit card transactions are always expenses
+        // Keep other fields as they are
+      }));
+
+      // Combine both transaction types
+      const allCombinedTransactions = [
+        ...(transactions || []),
+        ...normalizedCreditTransactions
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      logger.info('Transactions loaded successfully', { 
+        regularTransactions: transactions?.length || 0,
+        creditTransactions: creditTransactions?.length || 0,
+        totalCombined: allCombinedTransactions.length,
+        dateRange: { startDateStr, endDateStr }
+      });
+      
+      setAllTransactions(allCombinedTransactions);
+
+    } catch (error) {
+      logger.error('Error in loadTransactions', { error });
+      toast({
+        title: 'Erro ao carregar transações',
+        description: 'Ocorreu um erro inesperado ao carregar as transações.',
+        variant: 'destructive',
+      });
+    }
+  }, [user, selectedYear, selectedMonth, toast]);
+
+  // Load static data when user changes
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadStaticData();
+  }, [loadStaticData]);
+
+  // Load transactions when user or date changes
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
 
   const addChart = async (data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
     if (!user) return;
@@ -166,6 +247,11 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? Math.max(...chartConfigs.map(chart => chart.display_order || 0)) 
         : 0;
       
+      // Force period_months = 1 for subcategories comparison charts
+      const finalPeriodMonths = data.chart_type === 'comparison' && data.comparison_type === 'subcategories' 
+        ? 1 
+        : data.period_months;
+      
       const chartData = {
         user_id: user.id,
         name: data.name,
@@ -173,7 +259,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
-        period_months: data.period_months,
+        period_months: finalPeriodMonths,
         transaction_type: data.transaction_type,
         grouping_type: data.grouping_type,
         chart_type: data.chart_type,
@@ -218,33 +304,30 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      logger.error('Error adding chart', { error, code: error.code });
+      logger.error('Error adding chart', { error, code: error?.code, message: error?.message });
       
-      if (error.code === '23505') {
-        toast({
-          title: 'Nome já existe',
-          description: 'Já existe um gráfico com este nome. Escolha um nome diferente.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Erro ao criar gráfico',
-          description: error.message || 'Ocorreu um erro inesperado.',
-          variant: 'destructive',
-        });
-      }
+      toast({
+        title: 'Erro ao criar gráfico',
+        description: error.message || 'Ocorreu um erro inesperado. Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      });
     }
   };
 
   const updateChart = async (id: string, data: ChartFormData & { selectedCategoryForSubcategory?: string }) => {
     try {
+      // Force period_months = 1 for subcategories comparison charts
+      const finalPeriodMonths = data.chart_type === 'comparison' && data.comparison_type === 'subcategories' 
+        ? 1 
+        : data.period_months;
+        
       const updateData = {
         name: data.name,
         category_id: data.category_id || null,
         subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
-        period_months: data.period_months,
+        period_months: finalPeriodMonths,
         transaction_type: data.transaction_type,
         grouping_type: data.grouping_type,
         chart_type: data.chart_type,
@@ -291,21 +374,13 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
     } catch (error: any) {
-      logger.error('Error updating chart', { error, code: error.code });
+      logger.error('Error updating chart', { error, code: error?.code, message: error?.message });
       
-      if (error.code === '23505') {
-        toast({
-          title: 'Nome já existe',
-          description: 'Já existe um gráfico com este nome. Escolha um nome diferente.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Erro ao atualizar gráfico',
-          description: error.message || 'Ocorreu um erro inesperado.',
-          variant: 'destructive',
-        });
-      }
+      toast({
+        title: 'Erro ao atualizar gráfico',
+        description: error.message || 'Ocorreu um erro inesperado. Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -436,7 +511,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const refreshData = async () => {
-    await loadData();
+    await Promise.all([loadStaticData(), loadTransactions()]);
   };
 
   const value = {

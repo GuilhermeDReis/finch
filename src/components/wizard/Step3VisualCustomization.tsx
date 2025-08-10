@@ -3,29 +3,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CHART_COLORS } from '@/utils/chartUtils';
-import { useCharts } from '@/contexts/ChartContext';
-import type { WizardStep3Data, ChartType, WizardStep2Data } from '@/types/chart';
+import { Badge } from '@/components/ui/badge';
+import type { WizardStep2Data, WizardStep3Data, ChartType } from '@/types/chart';
 
 interface Step3VisualCustomizationProps {
   chartType: ChartType;
   data: WizardStep3Data;
-  step2Data?: WizardStep2Data;
+  step2Data: WizardStep2Data;
   onUpdate: (data: WizardStep3Data) => void;
 }
 
 const COLOR_STYLES = [
-  { id: '#3B82F6', name: '🔵 Azul Profissional' },
-  { id: '#10B981', name: '🟢 Verde Crescimento' },
-  { id: '#EF4444', name: '🔴 Vermelho Alerta' },
-  { id: '#F59E0B', name: '🟡 Amarelo Energia' },
-  { id: '#8B5CF6', name: '🟣 Roxo Criativo' },
-  { id: 'rainbow', name: '🌈 Paleta Colorida (só Pizza/Barras)' }
+  { name: 'Azul Profissional', primary: '#2563eb', secondary: '#3b82f6', accent: '#60a5fa' },
+  { name: 'Verde Crescimento', primary: '#059669', secondary: '#10b981', accent: '#34d399' },
+  { name: 'Roxo Moderno', primary: '#7c3aed', secondary: '#8b5cf6', accent: '#a78bfa' },
+  { name: 'Laranja Energia', primary: '#ea580c', secondary: '#f97316', accent: '#fb923c' },
+  { name: 'Rosa Criativo', primary: '#db2777', secondary: '#ec4899', accent: '#f472b6' },
+  { name: 'Cinza Elegante', primary: '#374151', secondary: '#6b7280', accent: '#9ca3af' },
 ];
 
 export default function Step3VisualCustomization({ chartType, data, step2Data, onUpdate }: Step3VisualCustomizationProps) {
   const [formData, setFormData] = useState<WizardStep3Data>(data);
-  const { allCategories, allSubcategories } = useCharts();
 
   const updateFormData = (updates: Partial<WizardStep3Data>) => {
     const newData = { ...formData, ...updates };
@@ -34,315 +32,304 @@ export default function Step3VisualCustomization({ chartType, data, step2Data, o
   };
 
   const getDefaultChartName = () => {
+    if (!step2Data) {
+      return 'Meu Gráfico';
+    }
+
     switch (chartType) {
       case 'evolution':
-        if (step2Data?.evolution_scope === 'all_categories') {
+        if (step2Data.evolution_scope === 'all_categories') {
           return 'Evolução dos Gastos Totais';
-        } else if (step2Data?.evolution_scope === 'specific_category' && step2Data?.category_id) {
-          const category = allCategories.find(cat => cat.id === step2Data.category_id);
-          return `Evolução dos Gastos com ${category?.name || 'Categoria'}`;
-        } else if (step2Data?.evolution_scope === 'specific_subcategory' && step2Data?.subcategory_id) {
-          const subcategory = allSubcategories.find(sub => sub.id === step2Data.subcategory_id);
-          return `Evolução dos Gastos com ${subcategory?.name || 'Subcategoria'}`;
+        } else if (step2Data.evolution_scope === 'specific_category') {
+          return `Evolução da Categoria`;
+        } else {
+          return `Evolução da Subcategoria`;
         }
-        return 'Evolução dos Gastos';
       case 'distribution':
-        if (step2Data?.distribution_scope === 'all_categories') {
-          return 'Distribuição dos Gastos por Categoria';
-        } else if (step2Data?.distribution_scope === 'within_category' && step2Data?.category_id) {
-          const category = allCategories.find(cat => cat.id === step2Data.category_id);
-          return `Distribuição em ${category?.name || 'Categoria'}`;
+        if (step2Data.distribution_scope === 'all_categories') {
+          return 'Distribuição por Categorias';
+        } else {
+          return 'Distribuição por Subcategorias';
         }
-        return 'Distribuição dos Gastos';
       case 'comparison':
-        if (step2Data?.comparison_type === 'categories_same_period') {
+        if (step2Data.comparison_type === 'categories_same_period') {
           return 'Comparação entre Categorias';
-        } else if (step2Data?.comparison_type === 'category_different_periods' && step2Data?.category_id) {
-          const category = allCategories.find(cat => cat.id === step2Data.category_id);
-          return `Comparação de ${category?.name || 'Categoria'} por Período`;
-        } else if (step2Data?.comparison_type === 'subcategories' && step2Data?.category_id) {
-          const category = allCategories.find(cat => cat.id === step2Data.category_id);
-          return `Comparação de Subcategorias em ${category?.name || 'Categoria'}`;
+        } else if (step2Data.comparison_type === 'category_different_periods') {
+          return 'Comparação de Períodos';
+        } else {
+          return 'Comparação de Subcategorias';
         }
-        return 'Comparação de Gastos';
       default:
         return 'Meu Gráfico';
     }
   };
 
+  const renderEvolutionPreview = () => (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <h4 className="font-medium mb-3">📈 Preview: Gráfico de Evolução</h4>
+      <div className="space-y-2 text-sm text-gray-600">
+        <p>• Linha temporal mostrando a evolução dos gastos</p>
+        <p>• Eixo X: Meses do período selecionado</p>
+        <p>• Eixo Y: Valores em reais (R$)</p>
+        {step2Data?.has_monthly_goal && (
+          <p>• Linha de meta mensal para referência</p>
+        )}
+        <p>• Pontos interativos com valores detalhados</p>
+      </div>
+    </div>
+  );
+
+  const renderDistributionPreview = () => (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <h4 className="font-medium mb-3">🥧 Preview: Gráfico de Pizza</h4>
+      <div className="space-y-2 text-sm text-gray-600">
+        <p>• Fatias proporcionais aos valores gastos</p>
+        <p>• Percentuais e valores em cada fatia</p>
+        <p>• Legenda com cores identificadoras</p>
+        <p>• Hover para detalhes adicionais</p>
+        {formData.show_percentages && (
+           <p>• Percentuais visíveis nas fatias</p>
+         )}
+      </div>
+    </div>
+  );
+
+  const renderComparisonPreview = () => (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <h4 className="font-medium mb-3">📊 Preview: Gráfico de Barras</h4>
+      <div className="space-y-2 text-sm text-gray-600">
+        <p>• Barras verticais para comparação visual</p>
+        <p>• Eixo X: Categorias/Períodos/Subcategorias</p>
+        <p>• Eixo Y: Valores em reais (R$)</p>
+        {step2Data?.include_goal_reference && (
+           <p>• Linha de referência de meta</p>
+         )}
+        <p>• Cores diferenciadas para cada barra</p>
+      </div>
+    </div>
+  );
+
   const renderPreview = () => {
-    const chartName = formData.name || getDefaultChartName();
-    
     switch (chartType) {
       case 'evolution':
-        return (
-          <div className="border rounded-lg p-4 bg-white">
-            <div className="text-center mb-4">
-              <h3 className="font-medium text-sm">📈 {chartName}</h3>
-            </div>
-            <div className="relative">
-              <div className="text-xs text-muted-foreground mb-2">R$</div>
-              <div className="h-24 relative">
-                {/* Y-axis labels */}
-                <div className="absolute left-0 top-0 text-xs text-muted-foreground">1000</div>
-                <div className="absolute left-0 top-6 text-xs text-muted-foreground">800</div>
-                <div className="absolute left-0 top-12 text-xs text-muted-foreground">600</div>
-                <div className="absolute left-0 top-18 text-xs text-muted-foreground">400</div>
-                <div className="absolute left-0 bottom-0 text-xs text-muted-foreground">200</div>
-                
-                {/* Chart area */}
-                <div className="ml-8 h-full border-l border-b border-gray-300 relative">
-                  {/* Goal line */}
-                  <div className="absolute top-6 left-0 right-0 border-t border-dashed border-gray-400"></div>
-                  
-                  {/* Data line */}
-                  <svg className="absolute inset-0 w-full h-full">
-                    <polyline
-                      fill="none"
-                      stroke={formData.color}
-                      strokeWidth="2"
-                      points="10,20 30,16 50,12 70,8 90,14 110,10"
-                    />
-                    {formData.show_values_on_points && (
-                      <>
-                        <circle cx="10" cy="20" r="3" fill={formData.color} />
-                        <circle cx="30" cy="16" r="3" fill={formData.color} />
-                        <circle cx="50" cy="12" r="3" fill={formData.color} />
-                        <circle cx="70" cy="8" r="3" fill={formData.color} />
-                        <circle cx="90" cy="14" r="3" fill={formData.color} />
-                        <circle cx="110" cy="10" r="3" fill={formData.color} />
-                      </>
-                    )}
-                  </svg>
-                </div>
-                
-                {/* X-axis labels */}
-                <div className="flex justify-between mt-2 ml-8 text-xs text-muted-foreground">
-                  <span>Jan</span>
-                  <span>Fev</span>
-                  <span>Mar</span>
-                  <span>Abr</span>
-                  <span>Mai</span>
-                  <span>Jun</span>
-                </div>
-              </div>
-              
-              {/* Legend */}
-              <div className="flex justify-center gap-4 mt-4 text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-0.5" style={{ backgroundColor: formData.color }}></div>
-                  <span>Gastos Reais</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-0.5 border-t border-dashed border-gray-400"></div>
-                  <span>Meta (R$ 800)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-        
+        return renderEvolutionPreview();
       case 'distribution':
-        return (
-          <div className="border rounded-lg p-4 bg-white">
-            <div className="text-center mb-4">
-              <h3 className="font-medium text-sm">🥧 {chartName}</h3>
-            </div>
-            <div className="flex justify-center">
-              <div className="w-24 h-24 rounded-full relative" style={{
-                background: `conic-gradient(${formData.color} 0deg 120deg, #10B981 120deg 200deg, #F59E0B 200deg 280deg, #EF4444 280deg 360deg)`
-              }}>
-                <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center">
-                  {formData.show_percentages && (
-                    <div className="text-xs text-center">
-                      <div>45%</div>
-                      <div className="text-muted-foreground">Maior</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: formData.color }}></div>
-                <span>Categoria A (45%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span>Categoria B (25%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <span>Categoria C (20%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span>Outros (10%)</span>
-              </div>
-            </div>
-          </div>
-        );
-        
+        return renderDistributionPreview();
       case 'comparison':
-        return (
-          <div className="border rounded-lg p-4 bg-white">
-            <div className="text-center mb-4">
-              <h3 className="font-medium text-sm">📊 {chartName}</h3>
-            </div>
-            <div className="relative h-24">
-              <div className="text-xs text-muted-foreground mb-2">R$</div>
-              <div className="ml-8 h-full border-l border-b border-gray-300 relative">
-                {/* Bars */}
-                <div className="absolute bottom-0 left-2 w-4 bg-blue-500" style={{ height: '60%' }}></div>
-                <div className="absolute bottom-0 left-8 w-4 bg-green-500" style={{ height: '40%' }}></div>
-                <div className="absolute bottom-0 left-14 w-4 bg-yellow-500" style={{ height: '80%' }}></div>
-                <div className="absolute bottom-0 left-20 w-4 bg-red-500" style={{ height: '30%' }}></div>
-                
-                {formData.show_values_on_points && (
-                  <>
-                    <div className="absolute bottom-14 left-2 text-xs">600</div>
-                    <div className="absolute bottom-10 left-8 text-xs">400</div>
-                    <div className="absolute bottom-20 left-14 text-xs">800</div>
-                    <div className="absolute bottom-8 left-20 text-xs">300</div>
-                  </>
-                )}
-              </div>
-              
-              <div className="flex gap-2 mt-2 ml-8 text-xs text-muted-foreground">
-                <span>Jan</span>
-                <span>Fev</span>
-                <span>Mar</span>
-                <span>Abr</span>
-              </div>
-            </div>
-          </div>
-        );
-        
+        return renderComparisonPreview();
       default:
         return null;
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-lg font-bold mb-2">🎨 Vamos deixar seu gráfico com a sua cara!</h2>
+        <h2 className="text-lg font-bold mb-2">🎨 Personalização Visual</h2>
         <p className="text-sm text-muted-foreground">
-          Personalize a aparência e configure as opções visuais do seu gráfico
+          Customize a aparência do seu gráfico
         </p>
       </div>
 
-      <div className="space-y-4">
-        {/* Chart Name */}
-        <div>
-          <Label htmlFor="chart-name" className="text-base font-medium mb-3 block">Nome do Gráfico</Label>
-          <Input
-            id="chart-name"
-            type="text"
-            value={formData.name}
-            onChange={(e) => updateFormData({ name: e.target.value })}
-            placeholder={getDefaultChartName()}
-            className="h-12 text-base"
-          />
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Nome do Gráfico</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+             <Label className="text-sm font-medium mb-2 block">Título</Label>
+             <Input
+               placeholder={getDefaultChartName()}
+               value={formData.name || ''}
+               onChange={(e) => updateFormData({ name: e.target.value })}
+               className="h-10"
+             />
+           </div>
+        </CardContent>
+      </Card>
 
-        {/* Colors */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Cores</CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              <Label className="text-base font-medium">Escolha um estilo:</Label>
-              <div className="space-y-4">
-                {COLOR_STYLES.map((style) => (
-                  <div key={style.id} className="flex items-center space-x-3">
-                    <input
-                      type="radio"
-                      id={style.id}
-                      name="color-style"
-                      checked={formData.color === style.id}
-                      onChange={() => updateFormData({ color: style.id })}
-                      className="w-4 h-4"
-                    />
-                    <Label htmlFor={style.id} className="text-base cursor-pointer">
-                      {style.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Esquema de Cores</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+             {COLOR_STYLES.map((style, index) => (
+               <div
+                 key={index}
+                 className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                   formData.color === style.primary
+                     ? 'border-blue-500 bg-blue-50'
+                     : 'border-gray-200 hover:border-gray-300'
+                 }`}
+                 onClick={() => updateFormData({ color: style.primary })}
+               >
+                 <div className="flex items-center space-x-2 mb-2">
+                   <div
+                     className="w-4 h-4 rounded"
+                     style={{ backgroundColor: style.primary }}
+                   />
+                   <div
+                     className="w-4 h-4 rounded"
+                     style={{ backgroundColor: style.secondary }}
+                   />
+                   <div
+                     className="w-4 h-4 rounded"
+                     style={{ backgroundColor: style.accent }}
+                   />
+                 </div>
+                 <p className="text-sm font-medium">{style.name}</p>
+               </div>
+             ))}
+           </div>
+        </CardContent>
+      </Card>
 
-        {/* Advanced Options */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Opções Avançadas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="space-y-6">
-              <div className="flex items-center space-x-3">
-                <Checkbox
-                  id="show-values"
-                  checked={formData.show_values_on_points}
-                  onCheckedChange={(checked) => updateFormData({ show_values_on_points: !!checked })}
-                />
-                <Label htmlFor="show-values" className="text-base">
-                  Mostrar valores nos pontos
-                </Label>
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Preview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {renderPreview()}
+        </CardContent>
+      </Card>
 
-              {chartType === 'distribution' && (
-                <div className="flex items-center space-x-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Opções de Visualização</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            {chartType === 'evolution' && (
+              <>
+                <div className="flex items-center space-x-2">
                   <Checkbox
-                    id="show-percentages"
-                    checked={formData.show_percentages}
-                    onCheckedChange={(checked) => updateFormData({ show_percentages: !!checked })}
+                    id="show_values_on_points"
+                    checked={formData.show_values_on_points || false}
+                    onCheckedChange={(checked) => updateFormData({ show_values_on_points: checked as boolean })}
                   />
-                  <Label htmlFor="show-percentages" className="text-base">
-                    Exibir percentuais (Pizza)
+                  <Label htmlFor="show_values_on_points" className="text-sm">
+                    Mostrar valores nos pontos do gráfico
                   </Label>
                 </div>
-              )}
 
-              {chartType === 'evolution' && (
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
                   <Checkbox
-                    id="show-trend"
-                    checked={formData.show_trend_line}
-                    onCheckedChange={(checked) => updateFormData({ show_trend_line: !!checked })}
+                    id="show_trend_line"
+                    checked={formData.show_trend_line || false}
+                    onCheckedChange={(checked) => updateFormData({ show_trend_line: checked as boolean })}
                   />
-                  <Label htmlFor="show-trend" className="text-base">
-                    Incluir linha de tendência
+                  <Label htmlFor="show_trend_line" className="text-sm">
+                    Mostrar linha de tendência
                   </Label>
                 </div>
-              )}
 
-              <div className="flex items-center space-x-3">
-                <Checkbox
-                  id="highlight-minmax"
-                  checked={formData.highlight_min_max}
-                  onCheckedChange={(checked) => updateFormData({ highlight_min_max: !!checked })}
-                />
-                <Label htmlFor="highlight-minmax" className="text-base">
-                  Destacar valor máximo/mínimo
-                </Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="highlight_min_max"
+                    checked={formData.highlight_min_max || false}
+                    onCheckedChange={(checked) => updateFormData({ highlight_min_max: checked as boolean })}
+                  />
+                  <Label htmlFor="highlight_min_max" className="text-sm">
+                    Destacar valores mínimo e máximo
+                  </Label>
+                </div>
+              </>
+            )}
+
+            {chartType === 'distribution' && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show_percentages"
+                    checked={formData.show_percentages || false}
+                    onCheckedChange={(checked) => updateFormData({ show_percentages: checked as boolean })}
+                  />
+                  <Label htmlFor="show_percentages" className="text-sm">
+                    Mostrar percentuais nas fatias
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show_values_on_points"
+                    checked={formData.show_values_on_points || false}
+                    onCheckedChange={(checked) => updateFormData({ show_values_on_points: checked as boolean })}
+                  />
+                  <Label htmlFor="show_values_on_points" className="text-sm">
+                    Mostrar valores nas fatias
+                  </Label>
+                </div>
+              </>
+            )}
+
+            {chartType === 'comparison' && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show_values_on_points"
+                    checked={formData.show_values_on_points || false}
+                    onCheckedChange={(checked) => updateFormData({ show_values_on_points: checked as boolean })}
+                  />
+                  <Label htmlFor="show_values_on_points" className="text-sm">
+                    Mostrar valores nas barras
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show_percentages"
+                    checked={formData.show_percentages || false}
+                    onCheckedChange={(checked) => updateFormData({ show_percentages: checked as boolean })}
+                  />
+                  <Label htmlFor="show_percentages" className="text-sm">
+                    Mostrar percentuais relativos
+                  </Label>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Tips based on chart type */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+            <div className="flex items-start space-x-2">
+              <span className="text-blue-500">💡</span>
+              <div className="text-sm text-blue-700">
+                {chartType === 'evolution' && (
+                  <>
+                    <p className="font-medium mb-1">Dicas para gráfico de evolução:</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Valores nos pontos ajudam a ver números exatos</li>
+                      <li>• Linha de tendência mostra direção geral dos gastos</li>
+                      <li>• Destaque de min/max identifica períodos extremos</li>
+                    </ul>
+                  </>
+                )}
+                {chartType === 'distribution' && (
+                  <>
+                    <p className="font-medium mb-1">Dicas para gráfico de pizza:</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Percentuais mostram proporção de cada categoria</li>
+                      <li>• Valores nas fatias exibem montantes reais</li>
+                      <li>• Ideal para ver onde você gasta mais</li>
+                    </ul>
+                  </>
+                )}
+                {chartType === 'comparison' && (
+                  <>
+                    <p className="font-medium mb-1">Dicas para gráfico de barras:</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Valores nas barras mostram montantes exatos</li>
+                      <li>• Percentuais ajudam a comparar proporções</li>
+                      <li>• Perfeito para comparações visuais rápidas</li>
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Preview */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Preview</CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            {renderPreview()}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

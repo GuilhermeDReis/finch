@@ -85,8 +85,7 @@ export default function ChartWizardModal({ isOpen, onClose }: ChartWizardModalPr
       case 1:
         return wizardData.step1.chart_type !== undefined;
       case 2:
-        // Validation logic for step 2 will be handled by the step component
-        return true;
+        return true; // Simplified validation for step 2
       case 3:
         return wizardData.step3.name.trim() !== '';
       default:

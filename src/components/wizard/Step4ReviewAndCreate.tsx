@@ -99,9 +99,9 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
         } else if (step2.comparison_type === 'category_different_periods' && step2.category_id) {
           const category = allCategories.find(cat => cat.id === step2.category_id);
           return category?.name || 'Categoria específica';
-        } else if (step2.comparison_type === 'subcategories' && step2.subcategory_id) {
-          const subcategory = allSubcategories.find(sub => sub.id === step2.subcategory_id);
-          return subcategory?.name || 'Subcategoria específica';
+        } else if (step2.comparison_type === 'subcategories' && step2.category_id) {
+          const category = allCategories.find(cat => cat.id === step2.category_id);
+          return `Subcategorias de ${category?.name || 'categoria selecionada'}`;
         }
         return 'Múltiplas categorias';
         
@@ -199,14 +199,15 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           });
           return false;
         }
-        if (step2.comparison_type === 'subcategories' && !step2.subcategory_id) {
-          toast({
-            title: 'Subcategoria obrigatória',
-            description: 'Por favor, selecione uma subcategoria.',
-            variant: 'destructive',
-          });
-          return false;
-        }
+        // Para 'subcategories', não precisamos de subcategoria específica pois vamos comparar todas
+        // if (step2.comparison_type === 'subcategories' && !step2.subcategory_id) {
+        //   toast({
+        //     title: 'Subcategoria obrigatória',
+        //     description: 'Por favor, selecione uma subcategoria.',
+        //     variant: 'destructive',
+        //   });
+        //   return false;
+        // }
         break;
     }
 
@@ -260,8 +261,8 @@ export default function Step4ReviewAndCreate({ wizardData, onClose }: Step4Revie
           
         case 'comparison':
           if (wizardData.step2.comparison_type === 'subcategories') {
-            grouping_type = 'subcategory';
-            subcategory_id = wizardData.step2.subcategory_id;
+            grouping_type = 'category'; // Usar category para filtrar por categoria, mas mostrar subcategorias
+            subcategory_id = null; // Não precisamos de subcategoria específica
             category_id = wizardData.step2.category_id;
           } else if (wizardData.step2.comparison_type === 'category_different_periods') {
             grouping_type = 'category';
