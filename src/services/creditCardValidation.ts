@@ -1,10 +1,99 @@
 import { CreditCardFormData, CreditCardValidation } from '@/types/creditCard';
 
+export interface FieldValidation {
+  isValid: boolean;
+  message: string;
+}
+
+export interface StepValidation {
+  isValid: boolean;
+  fieldValidations: Partial<CreditCardValidation>;
+}
+
 export class CreditCardValidationService {
+  static validateCreditCard(formData: CreditCardFormData): CreditCardValidation {
+    return {
+      bank_id: this.validateBankId(formData.bank_id),
+      limit_amount: this.validateLimitAmount(formData.limit_amount),
+      description: this.validateDescription(formData.description),
+      brand: this.validateBrand(formData.brand),
+      closing_day: this.validateClosingDay(formData.closing_day),
+      due_day: this.validateDueDay(formData.due_day, formData.closing_day),
+      last_four_digits: this.validateLastFourDigits(formData.last_four_digits),
+      background_image_url: this.validateBackgroundImageUrl(formData.background_image_url),
+    };
+  }
+
+  static validateField(
+    field: keyof CreditCardFormData, 
+    value: any, 
+    formData: CreditCardFormData
+  ): FieldValidation {
+    switch (field) {
+      case 'bank_id':
+        return this.validateBankId(value);
+      case 'limit_amount':
+        return this.validateLimitAmount(value);
+      case 'description':
+        return this.validateDescription(value);
+      case 'brand':
+        return this.validateBrand(value);
+      case 'closing_day':
+        return this.validateClosingDay(value);
+      case 'due_day':
+        return this.validateDueDay(value, formData.closing_day);
+      case 'last_four_digits':
+        return this.validateLastFourDigits(value);
+      case 'background_image_url':
+        return this.validateBackgroundImageUrl(value);
+      default:
+        return { isValid: true, message: '' };
+    }
+  }
+
+  static validateStep(step: number, formData: CreditCardFormData): StepValidation {
+    const fieldValidations: Partial<CreditCardValidation> = {};
+    let isValid = true;
+
+    switch (step) {
+      case 1: // Bank selection
+        fieldValidations.bank_id = this.validateBankId(formData.bank_id);
+        isValid = fieldValidations.bank_id.isValid;
+        break;
+      
+      case 2: // Basic info
+        fieldValidations.limit_amount = this.validateLimitAmount(formData.limit_amount);
+        fieldValidations.description = this.validateDescription(formData.description);
+        fieldValidations.brand = this.validateBrand(formData.brand);
+        isValid = fieldValidations.limit_amount.isValid && 
+                 fieldValidations.description.isValid && 
+                 fieldValidations.brand.isValid;
+        break;
+      
+      case 3: // Dates
+        fieldValidations.closing_day = this.validateClosingDay(formData.closing_day);
+        fieldValidations.due_day = this.validateDueDay(formData.due_day, formData.closing_day);
+        isValid = fieldValidations.closing_day.isValid && fieldValidations.due_day.isValid;
+        break;
+      
+      case 4: // Final details
+        fieldValidations.last_four_digits = this.validateLastFourDigits(formData.last_four_digits);
+        fieldValidations.background_image_url = this.validateBackgroundImageUrl(formData.background_image_url);
+        isValid = fieldValidations.last_four_digits.isValid && 
+                 fieldValidations.background_image_url.isValid;
+        break;
+      
+      default:
+        isValid = false;
+    }
+
+    return { isValid, fieldValidations };
+  }
+
   /**
    * Validates credit card form data
    */
-  static validateCreditCard(data: Partial<CreditCardFormData>): CreditCardValidation {
+  static validateCreditCardOld(data: Partial<CreditCardFormData>): CreditCardValidation {
     const errors: CreditCardValidation['errors'] = {};
 
     // Validate bank_id
