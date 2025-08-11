@@ -8,6 +8,7 @@ import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 import { Checkbox } from './ui/checkbox';
 import { FileLayoutService } from '@/services/fileLayoutService';
+import { ParsedTransactionSchema } from '@/types/schemas';
 
 interface ParsedTransaction {
   id: string;
@@ -221,6 +222,7 @@ export default function CSVUploader({
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        worker: true,
         complete: (results) => {
           try {
             if (!results.data || results.data.length === 0) {
@@ -230,7 +232,7 @@ export default function CSVUploader({
             setMessage('Analisando e categorizando transações...');
             setProgress(75);
 
-            const transactions: ParsedTransaction[] = results.data
+            const transactions: ParsedTransaction[] = (results.data as any[])
               .map((row: any) => {
                 const rowValor = row[headerMapping.amountColumn];
                 const amount = parseAmount(rowValor);
@@ -240,17 +242,24 @@ export default function CSVUploader({
                   return null;
                 }
 
-                // Enhanced type detection with Brazilian context
                 const type = detectTransactionType(description, amount);
 
-                return {
+                const parsed: ParsedTransaction = {
                   id: String(row[headerMapping.identifierColumn]).trim(),
                   date: parseDate(String(row[headerMapping.dateColumn]).trim()),
-                  amount: layoutType === 'credit_card' ? amount : Math.abs(amount), // Preserve negative for credit card transactions
-                  description: description,
+                  amount: layoutType === 'credit_card' ? amount : Math.abs(amount),
+                  description,
                   originalDescription: description,
-                  type: type
+                  type
                 };
+
+                // Validação leve com Zod (best-effort, não interrompe toda a importação)
+                const validation = ParsedTransactionSchema.safeParse(parsed);
+                if (!validation.success) {
+                  return null;
+                }
+
+                return parsed;
               })
               .filter((transaction): transaction is ParsedTransaction => transaction !== null);
 
@@ -258,7 +267,6 @@ export default function CSVUploader({
               throw new Error('Nenhum transação válida foi encontrada no arquivo.');
             }
 
-            // Log statistics
             const incomeCount = transactions.filter(t => t.type === 'income').length;
             const expenseCount = transactions.filter(t => t.type === 'expense').length;
             
@@ -266,7 +274,6 @@ export default function CSVUploader({
             setStatus('success');
             setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
             
-            // Pass the layout type information to the parent component
             onDataParsed(transactions, layoutType, bankId, useBackgroundProcessing);
 
           } catch (error) {

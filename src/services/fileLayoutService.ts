@@ -50,8 +50,13 @@ const BANK_CODE_TO_UUID: Record<string, string> = {
 };
 
 export class FileLayoutService {
+  // Cache simples em memória por sessão
+  private static bankLayoutsCache: Map<string, FileLayout[]> = new Map();
+  private static allActiveLayoutsCache: { layouts: any[]; timestamp: number } | null = null;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+
   /**
-   * Calculate similarity between two header arrays using Jaccard similarity
+   * Calcular similaridade entre dois conjuntos de headers
    */
   static calculateHeaderSimilarity(headers1: string[], headers2: string[]): number {
     const set1 = new Set(headers1.map(h => h.toLowerCase().trim()));
@@ -105,6 +110,13 @@ export class FileLayoutService {
    * Fetch active file layouts for a specific bank
    */
   static async getFileLayoutsByBank(bankIdOrCode: string): Promise<FileLayout[]> {
+    // Verifica cache
+    const cacheKey = bankIdOrCode;
+    const cached = this.bankLayoutsCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       // Resolve bank code to UUID if needed
       const bankId = await this.resolveBankId(bankIdOrCode);
@@ -136,6 +148,9 @@ export class FileLayoutService {
           });
         }
       }
+
+      // Armazena em cache
+      this.bankLayoutsCache.set(cacheKey, layouts);
 
       return layouts;
     } catch (error) {
@@ -195,28 +210,38 @@ export class FileLayoutService {
     try {
       logger.info('Starting automatic layout detection', { headerCount: csvHeaders.length });
       
-      // Fetch all active file layouts from all banks
-      const { data: layouts, error } = await supabase
-        .from('file_layouts')
-        .select(`
-          *,
-          banks!file_layouts_bank_id_fkey(
-            id,
-            name,
-            code
-          )
-        `)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
+      // Usa cache de layouts ativos
+      const now = Date.now();
+      let layouts: any[] | null = null;
 
-      if (error) {
-        logger.error('Error fetching layouts for detection', { error });
-        throw new Error(`Failed to fetch layouts: ${error.message}`);
-      }
+      if (this.allActiveLayoutsCache && (now - this.allActiveLayoutsCache.timestamp) < this.CACHE_TTL_MS) {
+        layouts = this.allActiveLayoutsCache.layouts;
+      } else {
+        const { data, error } = await supabase
+          .from('file_layouts')
+          .select(`
+            *,
+            banks!file_layouts_bank_id_fkey(
+              id,
+              name,
+              code
+            )
+          `)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
 
-      if (!layouts || layouts.length === 0) {
-        logger.warn('No active layouts found for detection');
-        return null;
+        if (error) {
+          logger.error('Error fetching layouts for detection', { error });
+          throw new Error(`Failed to fetch layouts: ${error.message}`);
+        }
+
+        if (!data || data.length === 0) {
+          logger.warn('No active layouts found for detection');
+          return null;
+        }
+
+        this.allActiveLayoutsCache = { layouts: data, timestamp: now };
+        layouts = data;
       }
 
       let bestMatch: LayoutMatchResult | null = null;

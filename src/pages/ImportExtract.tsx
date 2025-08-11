@@ -21,12 +21,9 @@ import { CreditCardGridSelector } from '@/components/CreditCardGridSelector';
 import { ImportStepper } from '@/components/ImportStepper';
 import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
-import transactionMappingService from '@/services/transactionMapping';
-import creditCardCategorizationService from '@/services/creditCardCategorization';
-import backgroundJobService from '@/services/backgroundJobService';
-import { notificationService } from '@/services/notificationService';
-import type { TransactionRow, RefundedTransaction, UnifiedPixTransaction } from '@/types/transaction';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useImportOrchestration } from '@/hooks/useImportOrchestration';
+import { useImportStrategies } from '@/hooks/useImportStrategies';
+import type { TransactionRow } from '@/types/transaction';
 
 // Define ParsedTransaction interface based on CSVUploader
 interface ParsedTransaction {
@@ -45,23 +42,41 @@ const isValidUUID = (str: string | undefined | null): boolean => {
   return uuidRegex.test(str);
 };
 
-interface ImportSession {
-  id: string;
-  filename: string;
-  total_records: number;
-  processed_records: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  error_message?: string;
-  created_at: string;
-  completed_at?: string;
-}
-
 export default function ImportExtract() {
-  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'identify' | 'duplicate-analysis' | 'processing' | 'categorization' | 'completion' | 'manual-selection'>('upload');
-  const [selectedBank, setSelectedBank] = useState<string>('00000000-0000-0000-0000-000000000001'); // Start with Nubank UUID instead of 'nubank' 
-  const [importSession, setImportSession] = useState<ImportSession | null>(null);
-  const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
+  // Use orchestration hook for all state management
+  const {
+    currentStep,
+    isProcessing,
+    processingProgress,
+    currentProcessingMessage,
+    currentProcessingSubMessage,
+    transactions,
+    duplicateAnalysis,
+    importSession,
+    selectedBank,
+    selectedCreditCardId,
+    layoutType,
+    selectedImportMode,
+    setCurrentStep,
+    setTransactions,
+    setSelectedBank,
+    setSelectedCreditCardId,
+    setLayoutType,
+    setSelectedImportMode,
+    setImportSession,
+    handleDataParsed,
+    handleDuplicateAnalysisComplete,
+    resetFlow,
+    updateProcessingState
+  } = useImportOrchestration();
+
+  // Use strategies hook for import operations
+  const {
+    importBankTransactions,
+    importCreditCardTransactions,
+    runAICategorization,
+    startBackgroundImport
+  } = useImportStrategies();
 
   // Persist session ID in localStorage to survive page reloads
   const saveSessionToStorage = (session: ImportSession) => {
@@ -89,9 +104,9 @@ export default function ImportExtract() {
       logger.info('Loaded session from storage', { sessionId: storedSession.id });
       setImportSession(storedSession);
     }
-  }, []);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState(0);
+  }, [setImportSession]);
+
+  // Local states for UI-specific functionality not covered by orchestration hooks
   const [importResults, setImportResults] = useState<{
     successful: number;
     failed: number;
@@ -100,14 +115,7 @@ export default function ImportExtract() {
     total: number;
     errors: string[];
   } | null>(null);
-  const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
-  const [duplicateAnalysis, setDuplicateAnalysis] = useState<{
-    duplicates: any[];
-    newTransactions: TransactionRow[];
-  } | null>(null);
-  const [selectedImportMode, setSelectedImportMode] = useState<'new-only' | 'update-existing' | 'import-all'>('new-only');
-  const [currentProcessingMessage, setCurrentProcessingMessage] = useState('');
-  const [currentProcessingSubMessage, setCurrentProcessingSubMessage] = useState('');
+  const [useBackgroundProcessing, setUseBackgroundProcessing] = useState(false);
   const { toast } = useToast();
 
   // Check authentication status
@@ -178,10 +186,10 @@ export default function ImportExtract() {
     }
   }, [selectedBank, layoutType]);
 
-  // Load credit cards when identify step is reached for credit_card layout
+  // Load credit cards when identification step is reached for credit_card layout
   useEffect(() => {
     const loadCreditCards = async () => {
-      if (currentStep === 'identify' && layoutType === 'credit_card' && selectedBank) {
+      if (currentStep === 'identification' && layoutType === 'credit_card' && selectedBank) {
         setLoadingCreditCards(true);
         
         try {
@@ -351,7 +359,7 @@ setProcessingProgress(10);
 setProcessingProgress(30);
         setCurrentProcessingSubMessage('Aplicando mapeamentos existentes...');
 
-        // First, apply existing credit card mappings to avoid unnecessary AI processing
+        // First, apply existing mappings to avoid unnecessary AI processing
         logger.info('Checking for existing credit card mappings');
         
         const { mappedTransactions, unmappedTransactions } = await transactionMappingService.applyMappingsToTransactions(
@@ -570,61 +578,12 @@ setProcessingProgress(100);
         // console.log('✅ [IMPORT] No duplicates detected, proceeding with import-all mode');
         
         // Create unified transactions - ONE transaction per group
-        const unifiedTransactions = [
-          ...duplicateResults.newTransactions,
-          // Add refund representative transactions (valor original, sem categoria)
-          ...duplicateResults.refundPairs.map(pair => {
-            // console.log('🔄 [REFUND] Creating refund transaction:', {
-            //   originalAmount: pair.originalTransaction.amount,
-            //   originalDescription: pair.originalTransaction.description,
-            //   pairId: pair.id
-            // });
-            return {
-              id: pair.id,
-              date: pair.originalTransaction.date,
-              amount: pair.originalTransaction.amount, // Valor original (não zero)
-              description: `Estorno Total: ${pair.originalTransaction.description}`,
-              originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-              type: pair.originalTransaction.type,
-              status: 'refunded' as const,
-              selected: true,
-              categoryId: undefined, // Sem categoria
-              subcategoryId: undefined,
-              // Sem sugestão de IA para estornos
-              aiSuggestion: undefined
-            };
-          }),
-          // Add PIX Crédito representative transactions
-          ...duplicateResults.pixPairs.map(pair => ({
-            id: pair.id,
-            date: pair.pixTransaction.date,
-            amount: pair.pixTransaction.amount, // Valor do PIX
-            description: `PIX Crédito: ${pair.pixTransaction.description}`,
-            originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
-            type: pair.pixTransaction.type,
-            status: 'unified-pix' as const,
-            selected: true,
-            categoryId: pair.pixTransaction.categoryId,
-            subcategoryId: pair.pixTransaction.subcategoryId
-          }))
-        ];
+        const unifiedTransactions = createUnifiedTransactions(duplicateResults);
 
         // Validation: Verify unification integrity
-        // console.log('🔍 [VALIDATION] Final unified transactions:', {
-        //   totalOriginal: transactionRows.length,
-        //   totalUnified: unifiedTransactions.length,
-        //   newTransactions: duplicateResults.newTransactions.length,
-        //   refundTransactions: duplicateResults.refundPairs.length,
-        //   pixTransactions: duplicateResults.pixPairs.length,
-        //   hiddenTransactions: duplicateResults.hiddenTransactionIds.size
-        // });
-
-        // Verify that no refunds have categories
-        const refundsWithCategories = unifiedTransactions.filter(t => 
-          t.status === 'refunded' && (t.categoryId || t.subcategoryId)
-        );
-        if (refundsWithCategories.length > 0) {
-          // console.error('🚨 [VALIDATION] ERROR: Refunds should not have categories!', refundsWithCategories);
+        const validation = validateUnifiedTransactions(unifiedTransactions);
+        if (!validation.isValid) {
+          // console.error('🚨 [VALIDATION] ERROR in unified transactions:', validation.errors);
         }
 
         await handleAICategorization(unifiedTransactions);
@@ -820,80 +779,14 @@ setProcessingProgress(80);
     const duplicateResults = detectDuplicates(selectedTransactions, existingTransactions);
     
     // Create unified transactions list based on selected mode
-    const unifiedTransactions = [
-      ...duplicateResults.newTransactions,
-      // Add refund representative transactions (valor original, sem categoria)
-      ...duplicateResults.refundPairs.map(pair => {
-        // console.log('🔄 [REFUND] Creating refund transaction from analysis:', {
-        //   originalAmount: pair.originalTransaction.amount,
-        //   originalDescription: pair.originalTransaction.description,
-        //   pairId: pair.id
-        // });
-        return {
-          id: pair.id,
-          date: pair.originalTransaction.date,
-          amount: pair.originalTransaction.amount, // Valor original (não zero)
-          description: `Estorno Total: ${pair.originalTransaction.description}`,
-          originalDescription: pair.originalTransaction.originalDescription || pair.originalTransaction.description,
-          type: pair.originalTransaction.type,
-          status: 'refunded' as const,
-          selected: true,
-          categoryId: undefined, // Sem categoria
-          subcategoryId: undefined,
-          // Sem sugestão de IA para estornos
-          aiSuggestion: undefined
-        };
-      }),
-      // Add PIX Crédito representative transactions
-      ...duplicateResults.pixPairs.map(pair => ({
-        id: pair.id,
-        date: pair.pixTransaction.date,
-        amount: pair.pixTransaction.amount, // Valor do PIX
-        description: `PIX Crédito: ${pair.pixTransaction.description}`,
-        originalDescription: pair.pixTransaction.originalDescription || pair.pixTransaction.description,
-        type: pair.pixTransaction.type,
-        status: 'unified-pix' as const,
-        selected: true,
-        categoryId: pair.pixTransaction.categoryId,
-        subcategoryId: pair.pixTransaction.subcategoryId
-      }))
-    ];
+    const unifiedTransactions = createUnifiedTransactionsForDuplicateAnalysis(duplicateResults, selectedTransactions, action);
       
     // Handle duplicates based on selected mode
     if (selectedImportMode === 'update-existing') {
       logger.info('Update mode selected, loading existing data from database');
       
       // For update mode, use existing data with categories from database
-      const duplicatesWithExistingData = duplicateResults.duplicates.map(duplicate => {
-        const existingTransaction = duplicate.existing;
-        
-        logger.debug('Processing duplicate with existing data', {
-          newTransactionId: duplicate.new.id,
-          existingTransactionId: existingTransaction.id,
-          existingCategoryId: existingTransaction.category_id,
-          existingSubcategoryId: existingTransaction.subcategory_id,
-          existingDescription: existingTransaction.description,
-          categoryIdType: typeof existingTransaction.category_id,
-          subcategoryIdType: typeof existingTransaction.subcategory_id,
-          categoryIdValid: isValidUUID(existingTransaction.category_id),
-          subcategoryIdValid: isValidUUID(existingTransaction.subcategory_id)
-        });
-
-        return {
-          ...duplicate.new,
-          // Use existing categories from database
-          categoryId: existingTransaction.category_id || duplicate.new.categoryId,
-          subcategoryId: existingTransaction.subcategory_id || duplicate.new.subcategoryId,
-          // Mark as using existing data
-          aiSuggestion: {
-            categoryId: existingTransaction.category_id,
-            subcategoryId: existingTransaction.subcategory_id,
-            confidence: 1.0,
-            reasoning: 'Categorização existente do banco de dados',
-            isAISuggested: false
-          }
-        };
-      });
+      const duplicatesWithExistingData = prepareDuplicatesWithExistingData(duplicateResults.duplicates);
       
       unifiedTransactions.push(...duplicatesWithExistingData);
       
