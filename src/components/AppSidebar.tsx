@@ -25,7 +25,7 @@ const items = [
   { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCard },
   { title: "Importar Extrato", url: "/import", icon: Upload },
   { title: "Relatórios", url: "/reports", icon: FileText },
-  { title: "Teste Belvo", url: "/belvo-test", icon: TestTube2 },
+  
 ];
 
 export function AppSidebar() {

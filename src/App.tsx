@@ -24,7 +24,7 @@ const UserProfilePage = lazy(() => import("./pages/UserProfilePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const CreditCards = lazy(() => import("./pages/CreditCards"));
 const CreditCardBill = lazy(() => import("./pages/CreditCardBill"));
-const BelvoTestPage = lazy(() => import("./pages/BelvoTestPage").then(module => ({ default: module.BelvoTestPage })));
+
 
 const queryClient = new QueryClient();
 
@@ -102,11 +102,7 @@ const App = () => (
                       </Layout>
                     </ProtectedRoute>
                   } />
-                  <Route path="/belvo-test" element={
-                    <ProtectedRoute>
-                      <BelvoTestPage />
-                    </ProtectedRoute>
-                  } />
+
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
