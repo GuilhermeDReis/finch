@@ -20,8 +20,11 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const UserProfile = lazy(() => import("./pages/UserProfile").then(module => ({ default: module.UserProfile })));
+const UserProfilePage = lazy(() => import("./pages/UserProfilePage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const CreditCards = lazy(() => import("./pages/CreditCards"));
 const CreditCardBill = lazy(() => import("./pages/CreditCardBill"));
+const BelvoTestPage = lazy(() => import("./pages/BelvoTestPage").then(module => ({ default: module.BelvoTestPage })));
 
 const queryClient = new QueryClient();
 
@@ -74,7 +77,14 @@ const App = () => (
                   <Route path="/profile" element={
                     <ProtectedRoute>
                       <Layout>
-                        <UserProfile />
+                        <UserProfilePage />
+                      </Layout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/settings" element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <SettingsPage />
                       </Layout>
                     </ProtectedRoute>
                   } />
@@ -90,6 +100,11 @@ const App = () => (
                       <Layout>
                         <CreditCardBill />
                       </Layout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/belvo-test" element={
+                    <ProtectedRoute>
+                      <BelvoTestPage />
                     </ProtectedRoute>
                   } />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

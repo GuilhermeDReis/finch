@@ -1,9 +1,8 @@
 
-import { BarChart3, CreditCard, FileText, Home, Settings, Upload, Menu, LogOut, ArrowRightLeft } from "lucide-react";
+import { BarChart3, CreditCard, FileText, Home, Upload, Menu, LogOut, ArrowRightLeft, TestTube2 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import {
   Sidebar,
@@ -26,7 +25,7 @@ const items = [
   { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCard },
   { title: "Importar Extrato", url: "/import", icon: Upload },
   { title: "Relatórios", url: "/reports", icon: FileText },
-  { title: "Configurações", url: "/settings", icon: Settings },
+  { title: "Teste Belvo", url: "/belvo-test", icon: TestTube2 },
 ];
 
 export function AppSidebar() {
@@ -112,33 +111,6 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {user?.email && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to="/profile"
-                      className="flex items-center gap-2 p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title={isCollapsed ? 'Perfil' : undefined}
-                    >
-                      <Avatar className={`${isCollapsed ? 'h-9 w-9 mx-auto rounded-full' : 'h-6 w-6'}`}>
-                        <AvatarImage 
-                          src={user.user_metadata?.avatar_url} 
-                          alt={user.user_metadata?.first_name || user.user_metadata?.full_name || user.email} 
-                          className="object-cover"
-                        />
-                        <AvatarFallback className={`${isCollapsed ? 'h-9 w-9' : 'h-6 w-6'} text-xs`}>
-                          {user.user_metadata?.first_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      {!isCollapsed && (
-                        <span className="text-sm truncate">
-                          {user.user_metadata?.first_name || user.user_metadata?.full_name || user.email}
-                        </span>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
               <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <Button
