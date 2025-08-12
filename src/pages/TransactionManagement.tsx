@@ -14,7 +14,7 @@ import { TransactionFiltersNew } from '@/components/TransactionFiltersNew';
 import { TransactionTable } from '@/components/TransactionTable';
 import { TransactionModal } from '@/components/TransactionModal';
 
-import { Transaction, TransactionFormData } from '@/types/transaction';
+import { Transaction, TransactionFormData, PaymentMethod, RecurringFrequency } from '@/types/transaction';
 import { supabase } from '@/integrations/supabase/client';
 
 interface TransactionFilters {
@@ -83,11 +83,11 @@ export default function TransactionManagement() {
           category_id: t.category_id,
           subcategory: t.subcategory_id || undefined,
           date: new Date(t.date),
-          payment_method: t.payment_method as any,
+          payment_method: t.payment_method as PaymentMethod,
           tags: t.tags || [],
           notes: t.notes || undefined,
           is_recurring: t.is_recurring || false,
-          recurring_frequency: t.recurring_frequency as any,
+          recurring_frequency: t.recurring_frequency as RecurringFrequency | undefined,
           created_at: new Date(t.created_at),
           updated_at: new Date(t.updated_at)
         }));
@@ -146,7 +146,7 @@ export default function TransactionManagement() {
 
   const handleSubmitTransaction = async (data: TransactionFormData) => {
     try {
-      const amount = Number(data.amount.replace(/[^\d,]/g, '').replace(',', '.'));
+      const amount = Number(data.amount.replace(/[\^\d,]/g, '').replace(',', '.'));
       
       if (editingTransaction) {
         // Edit existing transaction

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import backgroundJobService, { type BackgroundJob } from '@/services/backgroundJobService';
+import backgroundJobService, { type BackgroundJob, type BackgroundJobResult } from '@/services/backgroundJobService';
 import { notificationService } from '@/services/notificationService';
-import { supabase } from '@/integrations/supabase/client';
 import { getLogger } from '@/utils/logger';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const logger = getLogger('useBackgroundJobMonitor');
 
@@ -41,7 +41,7 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
   });
 
   const previousJobsRef = useRef<BackgroundJob[]>([]);
-  const subscriptionsRef = useRef<Map<string, any>>(new Map());
+  const subscriptionsRef = useRef<Map<string, RealtimeChannel>>(new Map());
 
   // Função para processar e categorizar jobs
   const processJobs = (jobs: BackgroundJob[]) => {
@@ -183,12 +183,22 @@ export function useBackgroundJobMonitor(options: UseBackgroundJobMonitorOptions 
   };
 
   // Função para obter texto do resultado (apenas sucessos, erros são tratados separadamente)
-  const getResultText = (result: any): string => {
+  const getResultText = (result: BackgroundJobResult | undefined): string => {
     if (!result) return '';
-    
-    const parts = [];
-    if (result.imported) parts.push(`${result.imported} importadas`);
-    if (result.skipped) parts.push(`${result.skipped} ignoradas`);
+
+    const parts: string[] = [];
+    if ('imported' in result && typeof result.imported === 'number') {
+      parts.push(`${result.imported} importadas`);
+    }
+    if ('skipped' in result && typeof result.skipped === 'number') {
+      parts.push(`${result.skipped} ignoradas`);
+    }
+    if ('categorized' in result && typeof result.categorized === 'number') {
+      parts.push(`${result.categorized} categorizadas`);
+    }
+    if ('failed' in result && typeof result.failed === 'number' && result.failed > 0) {
+      parts.push(`${result.failed} falharam`);
+    }
     
     return parts.length > 0 ? `(${parts.join(', ')})` : '';
   };

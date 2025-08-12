@@ -6,7 +6,7 @@ interface UnifiedTransactionBadgeProps {
   status?: TransactionStatus;
 }
 
-export default function UnifiedTransactionBadge({ status }: UnifiedTransactionBadgeProps) {
+const UnifiedTransactionBadge = React.memo(function UnifiedTransactionBadge({ status }: UnifiedTransactionBadgeProps) {
   if (!status || status === 'normal') {
     return null;
   }
@@ -40,4 +40,6 @@ export default function UnifiedTransactionBadge({ status }: UnifiedTransactionBa
   }
 
   return <Badge variant={badgeProps.variant}>{badgeProps.children}</Badge>;
-}
+});
+
+export default UnifiedTransactionBadge;

@@ -20,7 +20,7 @@ interface ImportResultsCardProps {
   onClose: () => void;
 }
 
-export default function ImportResultsCard({ result, onClose }: ImportResultsCardProps) {
+const ImportResultsCard = React.memo(function ImportResultsCard({ result, onClose }: ImportResultsCardProps) {
   const { successful, failed, skipped, updated, total, errors } = result || {
     successful: 0,
     failed: 0,
@@ -126,4 +126,6 @@ export default function ImportResultsCard({ result, onClose }: ImportResultsCard
       </CardContent>
     </Card>
   );
-}
+});
+
+export default ImportResultsCard;

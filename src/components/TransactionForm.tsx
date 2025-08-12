@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-import { TransactionFormData, TransactionType, PaymentMethod } from '@/types/transaction';
+import { TransactionFormData, TransactionType, PaymentMethod, RecurringFrequency } from '@/types/transaction';
 import { incomeCategories, expenseCategories, incomePaymentMethods, expensePaymentMethods } from '@/data/mockData';
 
 interface TransactionFormProps {
@@ -305,21 +305,21 @@ export function TransactionForm({ type, onSubmit }: TransactionFormProps) {
             <Label htmlFor="is_recurring">Transação recorrente</Label>
           </div>
 
-          {isRecurring && (
-            <div className="space-y-2">
-              <Label htmlFor="recurring_frequency">Frequência</Label>
-              <Select onValueChange={(value) => setValue('recurring_frequency', value as any)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a frequência" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="weekly">Semanal</SelectItem>
-                  <SelectItem value="monthly">Mensal</SelectItem>
-                  <SelectItem value="yearly">Anual</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+            {isRecurring && (
+              <div className="space-y-2">
+                <Label htmlFor="recurring_frequency">Frequência</Label>
+                <Select onValueChange={(value) => setValue('recurring_frequency', value as RecurringFrequency)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a frequência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="monthly">Mensal</SelectItem>
+                    <SelectItem value="yearly">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
         </div>
 
         {/* Botões de Ação */}

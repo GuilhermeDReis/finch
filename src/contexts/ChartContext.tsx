@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDateContext } from '@/contexts/DateContext';
 import { useToast } from '@/hooks/use-toast';
-import type { ChartConfig, ChartFormData } from '@/types/chart';
+import type { ChartConfig, ChartFormData, ChartPeriod, TransactionType, GroupingType } from '@/types/chart';
+import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { getLogger } from '@/utils/logger';
 
 const logger = getLogger('ChartContext');
@@ -59,9 +60,9 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       setLoading(true);
 
-      // Load user charts with raw SQL to handle type issues
+      // Load user charts using proper TypeScript types
       const { data: charts, error: chartsError } = await supabase
-        .from('user_charts' as any)
+        .from('user_charts')
         .select('*')
         .eq('user_id', user.id)
         .order('display_order', { ascending: true });
@@ -75,18 +76,18 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       } else {
         // Map the data to ensure correct types
-        const typedCharts: ChartConfig[] = (charts || []).map((chart: any) => ({
+        const typedCharts: ChartConfig[] = (charts || []).map((chart: Tables<'user_charts'>) => ({
           ...chart,
-          period_months: chart.period_months as any,
-          transaction_type: chart.transaction_type || 'expense',
-          grouping_type: chart.grouping_type || 'category',
+          period_months: chart.period_months as ChartPeriod,
+          transaction_type: (chart.transaction_type as TransactionType) || 'expense',
+          grouping_type: (chart.grouping_type as GroupingType) || 'category',
           chart_type: chart.chart_type || 'evolution',
           comparison_type: chart.comparison_type || undefined,
           show_values_on_points: chart.show_values_on_points ?? true,
           show_percentages: chart.show_percentages ?? true,
           show_trend_line: chart.show_trend_line ?? false,
           highlight_min_max: chart.highlight_min_max ?? false,
-          visual_options: chart.visual_options || {},
+          visual_options: (chart.visual_options as Record<string, any>) || {},
           display_order: chart.display_order || 0
         }));
         setChartConfigs(typedCharts);
@@ -252,10 +253,10 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? 1 
         : data.period_months;
       
-      const chartData = {
+      const chartData: TablesInsert<'user_charts'> = {
         user_id: user.id,
         name: data.name,
-        category_id: data.category_id || null,
+        category_id: data.category_id || '',
         subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
@@ -273,7 +274,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       const { data: newChart, error } = await supabase
-        .from('user_charts' as any)
+        .from('user_charts')
         .insert(chartData)
         .select()
         .single();
@@ -283,18 +284,18 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const typedChart: ChartConfig = {
-        ...(newChart as any),
-        period_months: (newChart as any).period_months as any,
-        transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category',
-        chart_type: (newChart as any).chart_type || 'evolution',
-        comparison_type: (newChart as any).comparison_type || undefined,
-        show_values_on_points: (newChart as any).show_values_on_points ?? true,
-        show_percentages: (newChart as any).show_percentages ?? true,
-        show_trend_line: (newChart as any).show_trend_line ?? false,
-        highlight_min_max: (newChart as any).highlight_min_max ?? false,
-        visual_options: (newChart as any).visual_options || {},
-        display_order: (newChart as any).display_order || 0
+        ...newChart,
+        period_months: newChart.period_months as ChartPeriod,
+        transaction_type: (newChart.transaction_type as TransactionType) || 'expense',
+        grouping_type: (newChart.grouping_type as GroupingType) || 'category',
+        chart_type: newChart.chart_type || 'evolution',
+        comparison_type: newChart.comparison_type || undefined,
+        show_values_on_points: newChart.show_values_on_points ?? true,
+        show_percentages: newChart.show_percentages ?? true,
+        show_trend_line: newChart.show_trend_line ?? false,
+        highlight_min_max: newChart.highlight_min_max ?? false,
+        visual_options: (newChart.visual_options as Record<string, any>) || {},
+        display_order: newChart.display_order || 0
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);
@@ -321,9 +322,9 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? 1 
         : data.period_months;
         
-      const updateData = {
+      const updateData: TablesUpdate<'user_charts'> = {
         name: data.name,
-        category_id: data.category_id || null,
+        category_id: data.category_id || '',
         subcategory_id: data.subcategory_id || null,
         monthly_goal: parseFloat(data.monthly_goal.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
         color: data.color,
@@ -340,7 +341,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       const { data: updatedChart, error } = await supabase
-        .from('user_charts' as any)
+        .from('user_charts')
         .update(updateData)
         .eq('id', id)
         .select()
@@ -351,17 +352,17 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const typedChart: ChartConfig = {
-        ...(updatedChart as any),
-        period_months: (updatedChart as any).period_months as any,
-        transaction_type: (updatedChart as any).transaction_type || 'expense',
-        grouping_type: (updatedChart as any).grouping_type || 'category',
-        chart_type: (updatedChart as any).chart_type || 'evolution',
-        comparison_type: (updatedChart as any).comparison_type || undefined,
-        show_values_on_points: (updatedChart as any).show_values_on_points ?? true,
-        show_percentages: (updatedChart as any).show_percentages ?? true,
-        show_trend_line: (updatedChart as any).show_trend_line ?? false,
-        highlight_min_max: (updatedChart as any).highlight_min_max ?? false,
-        visual_options: (updatedChart as any).visual_options || {}
+        ...updatedChart,
+        period_months: updatedChart.period_months as ChartPeriod,
+        transaction_type: (updatedChart.transaction_type as TransactionType) || 'expense',
+        grouping_type: (updatedChart.grouping_type as GroupingType) || 'category',
+        chart_type: updatedChart.chart_type || 'evolution',
+        comparison_type: updatedChart.comparison_type || undefined,
+        show_values_on_points: updatedChart.show_values_on_points ?? true,
+        show_percentages: updatedChart.show_percentages ?? true,
+        show_trend_line: updatedChart.show_trend_line ?? false,
+        highlight_min_max: updatedChart.highlight_min_max ?? false,
+        visual_options: (updatedChart.visual_options as Record<string, any>) || {}
       };
 
       setChartConfigs(prev => 
@@ -418,7 +419,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const originalChart = chartConfigs.find(chart => chart.id === id);
       if (!originalChart) return;
 
-      const duplicateData = {
+      const duplicateData: TablesInsert<'user_charts'> = {
         user_id: user.id,
         name: `Cópia de ${originalChart.name}`,
         category_id: originalChart.category_id,
@@ -427,10 +428,17 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         period_months: originalChart.period_months,
         transaction_type: originalChart.transaction_type,
         grouping_type: originalChart.grouping_type,
+        chart_type: originalChart.chart_type,
+        comparison_type: originalChart.comparison_type,
+        show_values_on_points: originalChart.show_values_on_points,
+        show_percentages: originalChart.show_percentages,
+        show_trend_line: originalChart.show_trend_line,
+        highlight_min_max: originalChart.highlight_min_max,
+        visual_options: originalChart.visual_options
       };
 
       const { data: newChart, error } = await supabase
-        .from('user_charts' as any)
+        .from('user_charts')
         .insert(duplicateData)
         .select()
         .single();
@@ -440,17 +448,17 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const typedChart: ChartConfig = {
-        ...(newChart as any),
-        period_months: (newChart as any).period_months as any,
-        transaction_type: (newChart as any).transaction_type || 'expense',
-        grouping_type: (newChart as any).grouping_type || 'category',
-        chart_type: (newChart as any).chart_type || 'evolution',
-        comparison_type: (newChart as any).comparison_type || undefined,
-        show_values_on_points: (newChart as any).show_values_on_points ?? true,
-        show_percentages: (newChart as any).show_percentages ?? true,
-        show_trend_line: (newChart as any).show_trend_line ?? false,
-        highlight_min_max: (newChart as any).highlight_min_max ?? false,
-        visual_options: (newChart as any).visual_options || {}
+        ...newChart,
+        period_months: newChart.period_months as ChartPeriod,
+        transaction_type: newChart.transaction_type || 'expense',
+        grouping_type: newChart.grouping_type || 'category',
+        chart_type: newChart.chart_type || 'evolution',
+        comparison_type: newChart.comparison_type || undefined,
+        show_values_on_points: newChart.show_values_on_points ?? true,
+        show_percentages: newChart.show_percentages ?? true,
+        show_trend_line: newChart.show_trend_line ?? false,
+        highlight_min_max: newChart.highlight_min_max ?? false,
+        visual_options: newChart.visual_options || {}
       };
 
       setChartConfigs(prev => [typedChart, ...prev]);
@@ -481,7 +489,7 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       for (const update of updates) {
         const { error } = await supabase
-          .from('user_charts' as any)
+          .from('user_charts')
           .update({ display_order: update.display_order })
           .eq('id', update.id);
 

@@ -7,12 +7,13 @@ import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Separator } from './ui/separator';
 import type { TransactionRow } from '@/types/transaction';
+import type { ExistingTransaction } from '@/services/duplicateDetection';
 
 export type ImportMode = 'new-only' | 'update-existing' | 'import-all';
 
 interface DuplicateAnalysisCardProps {
   duplicates: Array<{
-    existing: any;
+    existing: ExistingTransaction;
     new: TransactionRow;
     similarity: number;
     reasons: string[];

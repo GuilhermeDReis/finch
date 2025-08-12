@@ -1,5 +1,5 @@
 import type { TransactionRow } from '@/types/transaction';
-import type { SimplifiedDetectionResult } from '@/services/duplicateDetection';
+import type { SimplifiedDetectionResult, ExistingTransaction } from '@/services/duplicateDetection';
 
 /**
  * Interface para transação unificada que representa grupos de transações relacionadas
@@ -145,7 +145,7 @@ export function createUnifiedTransactionsForDuplicateAnalysis(
  */
 export function prepareDuplicatesWithExistingData(
   duplicates: Array<{
-    existing: any;
+    existing: ExistingTransaction;
     new: TransactionRow;
     similarity: number;
     reasons: string[];
@@ -161,8 +161,8 @@ export function prepareDuplicatesWithExistingData(
       subcategoryId: existingTransaction.subcategory_id || duplicate.new.subcategoryId,
       // Marcar como usando dados existentes
       aiSuggestion: {
-        categoryId: existingTransaction.category_id,
-        subcategoryId: existingTransaction.subcategory_id,
+        categoryId: existingTransaction.category_id || undefined,
+        subcategoryId: existingTransaction.subcategory_id || undefined,
         confidence: 1.0,
         reasoning: 'Categorização existente do banco de dados',
         isAISuggested: false

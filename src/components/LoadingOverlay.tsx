@@ -10,7 +10,7 @@ interface LoadingOverlayProps {
   subMessage?: string;
 }
 
-export function LoadingOverlay({ 
+export const LoadingOverlay = React.memo(function LoadingOverlay({ 
   isVisible, 
   message = "Processando com IA...", 
   progress = 0,
@@ -50,4 +50,4 @@ export function LoadingOverlay({
       </div>
     </div>
   );
-}
+});

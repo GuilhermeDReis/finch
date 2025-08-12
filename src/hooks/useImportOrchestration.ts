@@ -4,58 +4,29 @@ import { supabase } from '@/integrations/supabase/client';
 import { detectDuplicates } from '@/services/duplicateDetection';
 import { createUnifiedTransactions, createUnifiedTransactionsForDuplicateAnalysis, validateUnifiedTransactions } from '@/utils/transactionUnification';
 import type { TransactionRow } from '@/types/transaction';
+import { 
+  ImportStep, 
+  ImportMode, 
+  ParsedTransaction, 
+  ImportSession, 
+  DuplicateAnalysis,
+  TransactionType,
+  LayoutType
+} from '@/types/import';
+import type { ExistingTransaction } from '@/services/duplicateDetection';
 import { getLogger } from '@/utils/logger';
 
 const logger = getLogger('useImportOrchestration');
 
-// Interface for parsed transactions from CSV
-interface ParsedTransaction {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-  originalDescription: string;
-  type: 'income' | 'expense';
-}
-
-// Interface for import session
-interface ImportSession {
-  id: string;
-  filename: string;
-  total_records: number;
-  processed_records: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  error_message?: string;
-  created_at: string;
-  completed_at?: string;
-}
-
-// Interface for duplicate analysis result
-interface DuplicateAnalysis {
-  duplicates: Array<{
-    existing: any;
-    new: TransactionRow;
-    similarity: number;
-    reasons: string[];
-  }>;
-  newTransactions: TransactionRow[];
-}
-
-// Step types for import flow
-type ImportStep = 'upload' | 'bank-selection' | 'credit-card-selection' | 'identification' | 'processing' | 'duplicate-analysis' | 'categorization' | 'review' | 'import' | 'completed';
-
-// Import mode for handling duplicates
-type ImportMode = 'new-only' | 'update-existing' | 'import-all';
-
 /**
- * Hook para orquestração do fluxo de importação de extratos
- * Centraliza toda a lógica de estado e coordenação entre os steps
+ * Hook central para orquestração do fluxo de importação
+ * Gerencia estado e coordena os passos do processo
  */
 export function useImportOrchestration() {
   const { toast } = useToast();
 
-  // State management
-  const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
+  // Flow state
+  const [currentStep, setCurrentStep] = useState<ImportStep>(ImportStep.UPLOAD);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [currentProcessingMessage, setCurrentProcessingMessage] = useState('');
@@ -63,22 +34,22 @@ export function useImportOrchestration() {
   
   // Data state
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
+  const [existingTransactions, setExistingTransactions] = useState<ExistingTransaction[]>([]);
   const [duplicateAnalysis, setDuplicateAnalysis] = useState<DuplicateAnalysis | null>(null);
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   
   // Selection state
   const [selectedBank, setSelectedBank] = useState<string>('');
   const [selectedCreditCardId, setSelectedCreditCardId] = useState<string>('');
-  const [layoutType, setLayoutType] = useState<'bank' | 'credit_card' | null>(null);
-  const [selectedImportMode, setSelectedImportMode] = useState<ImportMode>('new-only');
+  const [layoutType, setLayoutType] = useState<LayoutType | null>(null);
+  const [selectedImportMode, setSelectedImportMode] = useState<ImportMode>(ImportMode.NEW_ONLY);
 
   /**
    * Handles parsed data from CSV upload
    */
   const handleDataParsed = useCallback(async (
     parsedTransactions: ParsedTransaction[], 
-    detectedLayoutType: 'bank' | 'credit_card', 
+    detectedLayoutType: LayoutType, 
     bankId: string, 
     useBackgroundProcessing?: boolean
   ) => {
@@ -99,7 +70,10 @@ export function useImportOrchestration() {
       const transactionRows: TransactionRow[] = parsedTransactions.map(tx => ({
         ...tx,
         selected: true,
-        status: 'normal' as const
+        status: 'normal' as const,
+        originalDescription: tx.originalDescription || tx.description,
+        editedDescription: tx.description,
+        isEditing: false
       }));
 
       setTransactions(transactionRows);
@@ -110,8 +84,9 @@ export function useImportOrchestration() {
       setCurrentProcessingSubMessage('Carregando transações existentes...');
 
       // Load existing transactions for duplicate detection
+      const tableName = detectedLayoutType === LayoutType.CREDIT_CARD ? 'transaction_credit' : 'transactions';
       const { data: existing, error: existingError } = await supabase
-        .from(detectedLayoutType === 'credit_card' ? 'transaction_credit' : 'transactions')
+        .from(tableName)
         .select('*')
         .eq('bank_id', bankId)
         .order('date', { ascending: false });
@@ -120,12 +95,12 @@ export function useImportOrchestration() {
         throw existingError;
       }
 
-      setExistingTransactions(existing || []);
+      setExistingTransactions((existing as ExistingTransaction[]) || []);
       setProcessingProgress(50);
       setCurrentProcessingSubMessage('Detectando duplicatas...');
 
       // Detect duplicates and create unified transactions
-      const duplicateResults = detectDuplicates(transactionRows, existing || []);
+      const duplicateResults = detectDuplicates(transactionRows, (existing as ExistingTransaction[]) || []);
       const unifiedTransactions = createUnifiedTransactions(duplicateResults);
 
       // Validate unified transactions
@@ -148,11 +123,11 @@ export function useImportOrchestration() {
           duplicates: duplicateResults.duplicates,
           newTransactions: duplicateResults.newTransactions
         });
-        setCurrentStep('duplicate-analysis');
+        setCurrentStep(ImportStep.DUPLICATE_ANALYSIS);
       } else {
         logger.info('No duplicates detected, proceeding with unified transactions');
         setTransactions(unifiedTransactions);
-        setCurrentStep('categorization');
+        setCurrentStep(ImportStep.CATEGORIZATION);
       }
 
       setProcessingProgress(100);
@@ -163,7 +138,7 @@ export function useImportOrchestration() {
         description: "Ocorreu um erro ao processar as transações",
         variant: "destructive"
       });
-      setCurrentStep('upload');
+      setCurrentStep(ImportStep.UPLOAD);
     } finally {
       setIsProcessing(false);
     }
@@ -183,7 +158,7 @@ export function useImportOrchestration() {
       });
 
       if (action === 'skip') {
-        setCurrentStep('upload');
+        setCurrentStep(ImportStep.UPLOAD);
         return;
       }
 
@@ -202,7 +177,7 @@ export function useImportOrchestration() {
       );
 
       setTransactions(unifiedTransactions);
-      setCurrentStep('categorization');
+      setCurrentStep(ImportStep.CATEGORIZATION);
 
     } catch (error) {
       logger.error('Error in handleDuplicateAnalysisComplete', { error });
@@ -218,7 +193,7 @@ export function useImportOrchestration() {
    * Resets the import flow
    */
   const resetFlow = useCallback(() => {
-    setCurrentStep('upload');
+    setCurrentStep(ImportStep.UPLOAD);
     setIsProcessing(false);
     setProcessingProgress(0);
     setCurrentProcessingMessage('');
@@ -230,7 +205,7 @@ export function useImportOrchestration() {
     setSelectedBank('');
     setSelectedCreditCardId('');
     setLayoutType(null);
-    setSelectedImportMode('new-only');
+    setSelectedImportMode(ImportMode.NEW_ONLY);
   }, []);
 
   /**

@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCharts } from '@/contexts/ChartContext';
-import type { WizardStep2Data, ChartType } from '@/types/chart';
+import type { WizardStep2Data, ChartType, ChartPeriod } from '@/types/chart';
 
 interface Step2DataConfigurationProps {
   chartType: ChartType;
@@ -34,7 +34,7 @@ export default function Step2DataConfiguration({ chartType, data, onUpdate }: St
         <Select
           value={formData.evolution_scope || ''}
           onValueChange={(value) => updateFormData({ 
-            evolution_scope: value as any,
+            evolution_scope: value as WizardStep2Data['evolution_scope'],
             category_id: undefined,
             subcategory_id: undefined
           })}
@@ -149,7 +149,7 @@ export default function Step2DataConfiguration({ chartType, data, onUpdate }: St
         <Label className="text-base font-medium mb-3 block">Período de Análise</Label>
         <Select
           value={formData.period_months?.toString() || '12'}
-          onValueChange={(value) => updateFormData({ period_months: parseInt(value) as any })}
+          onValueChange={(value) => updateFormData({ period_months: parseInt(value) as ChartPeriod })}
         >
           <SelectTrigger className="h-12">
             <SelectValue />
@@ -172,7 +172,7 @@ export default function Step2DataConfiguration({ chartType, data, onUpdate }: St
         <Select
           value={formData.distribution_scope || ''}
           onValueChange={(value) => updateFormData({ 
-            distribution_scope: value as any,
+            distribution_scope: value as WizardStep2Data['distribution_scope'],
             category_id: undefined
           })}
         >
@@ -237,7 +237,7 @@ export default function Step2DataConfiguration({ chartType, data, onUpdate }: St
         <Select
           value={formData.comparison_type || ''}
           onValueChange={(value) => updateFormData({ 
-            comparison_type: value as any,
+            comparison_type: value as WizardStep2Data['comparison_type'],
             category_id: undefined,
             subcategory_id: undefined
           })}
@@ -275,32 +275,11 @@ export default function Step2DataConfiguration({ chartType, data, onUpdate }: St
         </div>
       )}
 
-      {formData.category_id && formData.comparison_type === 'subcategories' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <h4 className="font-medium mb-2">Subcategorias encontradas:</h4>
-          <div className="flex flex-wrap gap-2">
-            {getSubcategoriesForCategory(formData.category_id).map((subcategory) => (
-              <span
-                key={subcategory.id}
-                className="px-2 py-1 bg-white border border-gray-300 rounded text-sm"
-              >
-                {subcategory.name}
-              </span>
-            ))}
-          </div>
-          {getSubcategoriesForCategory(formData.category_id).length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Nenhuma subcategoria encontrada para esta categoria.
-            </p>
-          )}
-        </div>
-      )}
-
       <div>
         <Label className="text-base font-medium mb-3 block">Período de Análise</Label>
         <Select
           value={formData.period_months?.toString() || '3'}
-          onValueChange={(value) => updateFormData({ period_months: parseInt(value) as any })}
+          onValueChange={(value) => updateFormData({ period_months: parseInt(value) as ChartPeriod })}
         >
           <SelectTrigger className="h-12">
             <SelectValue />

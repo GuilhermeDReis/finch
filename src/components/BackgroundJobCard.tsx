@@ -4,16 +4,20 @@ import { getLogger } from '@/utils/logger';
 const logger = getLogger('backgroundJobCard');
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
+import { Badge, badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, XCircle, Clock, Play, Pause, X, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import backgroundJobService, { type BackgroundJob } from '@/services/backgroundJobService';
+import backgroundJobService, { type BackgroundJob, type BackgroundJobResult } from '@/services/backgroundJobService';
+import type { VariantProps } from 'class-variance-authority';
+
+// Define a strict type for Badge variant
+type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
 interface BackgroundJobCardProps {
   jobId: string;
-  onComplete?: (result: any) => void;
+  onComplete?: (result: BackgroundJobResult | undefined) => void;
   onError?: (error: string) => void;
   showActions?: boolean;
 }
@@ -112,7 +116,7 @@ export default function BackgroundJobCard({
     }
   };
 
-  const getStatusColor = () => {
+  const getStatusColor = (): BadgeVariant => {
     if (!job) return 'secondary';
     
     switch (job.status) {
@@ -155,6 +159,27 @@ export default function BackgroundJobCard({
     }
   };
 
+  // Texto amigável para o resultado (sucessos)
+  const getResultText = (result: BackgroundJobResult | undefined): string => {
+    if (!result) return '';
+
+    const parts: string[] = [];
+    if ('imported' in result && typeof result.imported === 'number') {
+      parts.push(`${result.imported} importadas`);
+    }
+    if ('skipped' in result && typeof result.skipped === 'number') {
+      parts.push(`${result.skipped} ignoradas`);
+    }
+    if ('categorized' in result && typeof result.categorized === 'number') {
+      parts.push(`${result.categorized} categorizadas`);
+    }
+    if ('failed' in result && typeof result.failed === 'number' && result.failed > 0) {
+      parts.push(`${result.failed} falharam`);
+    }
+
+    return parts.length > 0 ? `(${parts.join(', ')})` : '';
+  };
+
   if (loading) {
     return (
       <Card>
@@ -187,7 +212,7 @@ export default function BackgroundJobCard({
             {getStatusIcon()}
             {formatJobType(job.type)}
           </div>
-          <Badge variant={getStatusColor() as any}>
+          <Badge variant={getStatusColor()}>
             {getStatusText()}
           </Badge>
         </CardTitle>
@@ -231,8 +256,7 @@ export default function BackgroundJobCard({
             <AlertDescription>
               <strong>Processamento concluído com sucesso!</strong>
               <br />
-              {job.result.imported ? `${job.result.imported} transações importadas` : ''}
-              {job.result.skipped ? `, ${job.result.skipped} ignoradas` : ''}
+              {getResultText(job.result)}
             </AlertDescription>
           </Alert>
         )}
@@ -244,8 +268,7 @@ export default function BackgroundJobCard({
             <AlertDescription>
               <strong>Processamento concluído com problemas!</strong>
               <br />
-              {job.result.imported ? `${job.result.imported} transações importadas` : ''}
-              {job.result.skipped ? `, ${job.result.skipped} ignoradas` : ''}
+              {getResultText(job.result)}
               {job.result.errors?.length > 0 && (
                 <>
                   <br />
@@ -260,24 +283,15 @@ export default function BackgroundJobCard({
 
         {/* Actions */}
         {showActions && (
-          <div className="flex justify-end gap-2 pt-2">
-            {job.status === 'pending' || job.status === 'processing' ? (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleCancelJob}
-              >
-                <X className="h-4 w-4 mr-1" />
+          <div className="flex gap-2">
+            {(job.status === 'pending' || job.status === 'processing') && (
+              <Button variant="destructive" onClick={handleCancelJob}>
+                <X className="h-4 w-4 mr-2" />
                 Cancelar
               </Button>
-            ) : null}
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadJobStatus}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
+            )}
+            <Button variant="secondary" onClick={loadJobStatus}>
+              <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar
             </Button>
           </div>
