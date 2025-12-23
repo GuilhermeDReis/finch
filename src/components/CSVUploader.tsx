@@ -8,6 +8,7 @@ import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 import { Checkbox } from './ui/checkbox';
 import { FileLayoutService } from '@/services/fileLayoutService';
+import { ParsedTransactionSchema } from '@/types/schemas';
 
 interface ParsedTransaction {
   id: string;
@@ -221,6 +222,7 @@ export default function CSVUploader({
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        worker: true,
         complete: (results) => {
           try {
             if (!results.data || results.data.length === 0) {
@@ -230,35 +232,38 @@ export default function CSVUploader({
             setMessage('Analisando e categorizando transações...');
             setProgress(75);
 
-            const transactions: ParsedTransaction[] = results.data
-              .map((row: any) => {
+            const transactions: ParsedTransaction[] = (results.data as Record<string, unknown>[])
+              .map((row) => {
+                const getString = (val: unknown): string => (val ?? '').toString();
                 const rowValor = row[headerMapping.amountColumn];
-                const amount = parseAmount(rowValor);
-                const description = String(row[headerMapping.descriptionColumn]).trim();
+                const amount = parseAmount(getString(rowValor));
+                const description = getString(row[headerMapping.descriptionColumn]).trim();
 
                 if (!row[headerMapping.dateColumn] || !rowValor || !row[headerMapping.identifierColumn] || !description || isNaN(amount)) {
                   return null;
                 }
 
-                // Enhanced type detection with Brazilian context
                 const type = detectTransactionType(description, amount);
 
-                return {
-                  id: String(row[headerMapping.identifierColumn]).trim(),
-                  date: parseDate(String(row[headerMapping.dateColumn]).trim()),
-                  amount: layoutType === 'credit_card' ? amount : Math.abs(amount), // Preserve negative for credit card transactions
-                  description: description,
-                  originalDescription: description,
-                  type: type
+                const parsed: ParsedTransaction = {
+                  id: getString(row[headerMapping.identifierColumn]).trim(),
+                  date: parseDate(getString(row[headerMapping.dateColumn]).trim()),
+                  amount: layoutType === 'credit_card' ? amount : Math.abs(amount),
+                  description,
+                  originalDescription: getString(row[headerMapping.identifierColumn]).trim(),
+                  type
                 };
+                return parsed;
               })
-              .filter((transaction): transaction is ParsedTransaction => transaction !== null);
+              .filter((t): t is ParsedTransaction => t !== null);
+
+            setProgress(90);
+            setMessage('Concluindo processamento...');
 
             if (transactions.length === 0) {
               throw new Error('Nenhum transação válida foi encontrada no arquivo.');
             }
 
-            // Log statistics
             const incomeCount = transactions.filter(t => t.type === 'income').length;
             const expenseCount = transactions.filter(t => t.type === 'expense').length;
             
@@ -266,7 +271,6 @@ export default function CSVUploader({
             setStatus('success');
             setMessage(`${transactions.length} transações processadas! (${incomeCount} receitas, ${expenseCount} gastos)`);
             
-            // Pass the layout type information to the parent component
             onDataParsed(transactions, layoutType, bankId, useBackgroundProcessing);
 
           } catch (error) {

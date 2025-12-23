@@ -1,86 +1,59 @@
-import { useState, useEffect } from 'react';
-import { Plus, CreditCard, Wallet } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { CreditCardWithBank } from '@/types/creditCard';
-import { CreditCardGrid } from '@/components/CreditCardGrid';
-import { CreditCardModal } from '@/components/CreditCardModal';
+import React, { useState, useEffect } from 'react';
+import { Plus, Archive, Edit, Trash2, CreditCard, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { CreditCardModal } from '@/components/CreditCardModal';
+import { CreditCardGrid } from '@/components/CreditCardGrid';
 import { toast } from 'sonner';
+import { getLogger } from '@/utils/logger';
+import { CreditCardWithBank } from '@/types/creditCard';
+import { useCreditCardOperations } from '@/hooks/useCreditCardOperations';
+
+const logger = getLogger('CreditCards');
 
 export default function CreditCards() {
-  const { user } = useAuth();
-  const [creditCards, setCreditCards] = useState<CreditCardWithBank[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const { 
+    creditCards, 
+    isLoading, 
+    loadCreditCards, 
+    archiveCreditCard 
+  } = useCreditCardOperations();
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardWithBank | null>(null);
 
-  const fetchCreditCards = async () => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('credit_cards')
-        .select(`
-          *,
-          bank:banks(*)
-        `)
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setCreditCards(data || []);
-    } catch (error) {
-      console.error('Erro ao carregar cartões:', error);
-      toast.error('Erro ao carregar cartões de crédito');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchCreditCards();
-  }, [user]);
+    loadCreditCards();
+  }, [loadCreditCards]);
 
   const handleAddNew = () => {
     setEditingCard(null);
-    setShowModal(true);
+    setIsModalOpen(true);
   };
 
   const handleEdit = (card: CreditCardWithBank) => {
     setEditingCard(card);
-    setShowModal(true);
+    setIsModalOpen(true);
   };
 
   const handleModalClose = () => {
-    setShowModal(false);
+    setIsModalOpen(false);
     setEditingCard(null);
-    fetchCreditCards();
+  };
+
+  const handleModalSuccess = () => {
+    handleModalClose();
   };
 
   const handleArchive = async (cardId: string) => {
-    try {
-      const { error } = await supabase
-        .from('credit_cards')
-        .update({ is_archived: true })
-        .eq('id', cardId)
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
-      
-      toast.success('Cartão arquivado com sucesso');
-      fetchCreditCards();
-    } catch (error) {
-      console.error('Erro ao arquivar cartão:', error);
-      toast.error('Erro ao arquivar cartão');
+    const success = await archiveCreditCard(cardId);
+    if (success) {
+      logger.info('Card archived successfully', { cardId });
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -205,11 +178,11 @@ export default function CreditCards() {
         </div>
 
         <CreditCardModal
-          isOpen={showModal}
-          onClose={handleModalClose}
-          creditCard={editingCard}
-          onSuccess={fetchCreditCards}
-        />
+           isOpen={isModalOpen}
+           onClose={handleModalClose}
+           editingCard={editingCard}
+           onSuccess={handleModalSuccess}
+         />
       </div>
     </div>
   );

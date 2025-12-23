@@ -4,25 +4,49 @@ import { getLogger } from '@/utils/logger';
 
 const logger = getLogger('backgroundJobService');
 
-export interface BackgroundJob {
-  id: string;
-  type: 'transaction_import' | 'transaction_categorization';
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  payload: any;
-  progress: number;
-  result?: any;
-  error_message?: string;
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-}
-
+// Background job payload and result types
 export interface ImportJobPayload {
   transactions: TransactionRow[];
   selectedBank: string;
   selectedCreditCardId?: string;
   layoutType: 'bank' | 'credit_card';
   importMode: 'new-only' | 'update-existing' | 'import-all';
+}
+
+export interface ImportJobResult {
+  imported: number;
+  skipped: number;
+  updated?: number;
+  errors: string[];
+  totalProcessed?: number;
+}
+
+export interface CategorizationJobPayload {
+  transactionIds: string[];
+  forceRecategorize?: boolean;
+}
+
+export interface CategorizationJobResult {
+  categorized: number;
+  failed: number;
+  errors: string[];
+}
+
+// Union types for payload and result based on job type
+export type BackgroundJobPayload = ImportJobPayload | CategorizationJobPayload;
+export type BackgroundJobResult = ImportJobResult | CategorizationJobResult;
+
+export interface BackgroundJob {
+  id: string;
+  type: 'transaction_import' | 'transaction_categorization';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  payload: BackgroundJobPayload;
+  progress: number;
+  result?: BackgroundJobResult;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
 }
 
 class BackgroundJobService {
@@ -180,15 +204,15 @@ class BackgroundJobService {
     }
   }
 
-  private async executeImportProcess(payload: ImportJobPayload, jobId: string) {
+  private async executeImportProcess(payload: ImportJobPayload, jobId: string): ImportJobResult {
     // Esta função executaria todo o processo atual de importação
     // mas de forma assíncrona em background
-    
+  
     // 1. Aplicar mapeamentos existentes
     // 2. Categorizar com IA apenas transações não mapeadas
     // 3. Salvar no banco de dados
     // 4. Criar/atualizar mapeamentos
-    
+  
     return {
       imported: payload.transactions.length,
       skipped: 0,

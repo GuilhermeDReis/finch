@@ -10,7 +10,7 @@ interface DashboardTotalCardProps {
   loading?: boolean;
 }
 
-export default function DashboardTotalCard({ title, value, type, loading }: DashboardTotalCardProps) {
+const DashboardTotalCard = React.memo(function DashboardTotalCard({ title, value, type, loading }: DashboardTotalCardProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -73,4 +73,6 @@ export default function DashboardTotalCard({ title, value, type, loading }: Dash
       </CardContent>
     </Card>
   );
-}
+});
+
+export default DashboardTotalCard;

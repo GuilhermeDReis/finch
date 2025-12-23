@@ -50,18 +50,20 @@ export interface CreditCardBill {
 }
 
 // Validation types
-export interface CreditCardValidation {
+export interface FieldValidation {
   isValid: boolean;
-  errors: {
-    bank_id?: string;
-    limit_amount?: string;
-    description?: string;
-    brand?: string;
-    closing_day?: string;
-    due_day?: string;
-    due_after_closing?: string;
-    last_four_digits?: string;
-  };
+  message: string;
+}
+
+export interface CreditCardValidation {
+  bank_id: FieldValidation;
+  limit_amount: FieldValidation;
+  description: FieldValidation;
+  brand: FieldValidation;
+  closing_day: FieldValidation;
+  due_day: FieldValidation;
+  last_four_digits: FieldValidation;
+  background_image_url: FieldValidation;
 }
 
 // Filter types for credit card list

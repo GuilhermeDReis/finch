@@ -8,7 +8,7 @@ interface ImportCreditCardCardProps {
   onClick: () => void;
 }
 
-export default function ImportCreditCardCard({ card, isSelected, onClick }: ImportCreditCardCardProps) {
+const ImportCreditCardCard = React.memo(function ImportCreditCardCard({ card, isSelected, onClick }: ImportCreditCardCardProps) {
   return (
     <CreditCardDisplay
       description={card.description}
@@ -20,4 +20,6 @@ export default function ImportCreditCardCard({ card, isSelected, onClick }: Impo
       isSelected={isSelected}
     />
   );
-}
+});
+
+export default ImportCreditCardCard;

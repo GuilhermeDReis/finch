@@ -41,7 +41,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function LineChart({ data, height = 300 }: LineChartProps) {
+const LineChart = React.memo(function LineChart({ data, height = 300 }: LineChartProps) {
   const { dataPoints, config } = data;
 
   // Add safety zone data (80% of goal)
@@ -183,4 +183,6 @@ export default function LineChart({ data, height = 300 }: LineChartProps) {
       </ComposedChart>
     </ResponsiveContainer>
   );
-}
+});
+
+export default LineChart;

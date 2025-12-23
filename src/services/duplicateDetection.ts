@@ -3,24 +3,25 @@ import { getLogger } from '@/utils/logger';
 
 const logger = getLogger('duplicateDetection');
 
-export interface DuplicateAnalysis {
-  totalNew: number;
-  totalDuplicates: number;
-  duplicates: Array<{
-    existing: any;
-    new: TransactionRow;
-    similarity: number;
-    reasons: string[];
-  }>;
-  newTransactions: TransactionRow[];
-  refundedTransactions: any[];
-  unifiedPixTransactions: any[];
+// Type for existing transactions from Supabase
+export interface ExistingTransaction {
+  id: string;
+  date: string;
+  amount: string | number;
+  description: string;
+  bank_id: string;
+  category_id?: string | null;
+  subcategory_id?: string | null;
+  subcategory?: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown; // Allow additional fields from database
 }
 
 export interface SimplifiedDetectionResult {
   newTransactions: TransactionRow[];
   duplicates: Array<{
-    existing: any;
+    existing: ExistingTransaction;
     new: TransactionRow;
     similarity: number;
     reasons: string[];
@@ -40,7 +41,7 @@ export interface SimplifiedDetectionResult {
 
 export function detectDuplicates(
   newTransactions: TransactionRow[],
-  existingTransactions: any[]
+  existingTransactions: ExistingTransaction[]
 ): SimplifiedDetectionResult {
   logger.debug('Starting simplified duplicate detection', {
     newTransactions: newTransactions.length,
@@ -167,7 +168,10 @@ export function detectDuplicates(
 
   remainingTransactions.forEach(newTx => {
     const potentialDuplicates = existingTransactions.filter(existing => {
-      const amountMatch = Math.abs(parseFloat(existing.amount) - newTx.amount) < 0.01;
+      const existingAmount = typeof existing.amount === 'string' 
+        ? parseFloat(existing.amount) 
+        : existing.amount;
+      const amountMatch = Math.abs(existingAmount - newTx.amount) < 0.01;
       const dateMatch = existing.date === newTx.date;
       const descriptionSimilarity = calculateSimilarity(existing.description, newTx.description);
       

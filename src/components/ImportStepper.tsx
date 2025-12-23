@@ -40,7 +40,7 @@ const steps = [
   }
 ];
 
-export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
+export const ImportStepper = React.memo(function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
   const getCurrentStepIndex = () => {
     if (currentStep === 'processing') return 2; // Show as duplicate-analysis during processing
     if (currentStep === 'manual-selection') return 0; // Show as upload during manual selection
@@ -50,7 +50,7 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
   const currentStepIndex = getCurrentStepIndex();
 
   // Filter steps based on layout type - credit card usually skips duplicate analysis
-  const visibleSteps = steps.filter((step, index) => {
+  const visibleSteps = steps.filter((step) => {
     // Show duplicate-analysis only if we're currently on it or have passed it
     if (step.id === 'duplicate-analysis') {
       return currentStepIndex >= 2 || currentStep === 'duplicate-analysis';
@@ -123,21 +123,21 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
                       {isProcessing ? 'Processando...' : step.description}
                     </div>
                   </div>
-                </div>
 
-                {/* Connector line */}
-                {index < visibleSteps.length - 1 && (
-                  <div
-                    className={cn(
-                      "flex-1 h-0.5 mx-4 transition-colors duration-300 min-w-12",
-                      {
-                        "bg-green-600 dark:bg-green-500": actualIndex < currentStepIndex,
-                        "bg-blue-600 dark:bg-blue-500": actualIndex === currentStepIndex - 1 || isProcessing,
-                        "bg-gray-300 dark:bg-gray-600": actualIndex >= currentStepIndex && !isProcessing,
-                      }
-                    )}
-                  />
-                )}
+                  {/* Connector line */}
+                  {index < visibleSteps.length - 1 && (
+                    <div
+                      className={cn(
+                        "flex-1 h-0.5 mx-4 transition-colors duration-300 min-w-12",
+                        {
+                          "bg-green-600 dark:bg-green-500": actualIndex < currentStepIndex,
+                          "bg-blue-600 dark:bg-blue-500": actualIndex === currentStepIndex - 1 || isProcessing,
+                          "bg-gray-300 dark:bg-gray-600": actualIndex >= currentStepIndex && !isProcessing,
+                        }
+                      )}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}
@@ -154,4 +154,6 @@ export function ImportStepper({ currentStep, layoutType }: ImportStepperProps) {
       </div>
     </div>
   );
-}
+});
+
+export { ImportStepper as default };

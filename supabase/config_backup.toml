@@ -47,5 +47,5 @@ value = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im
 [functions.gemini-categorize-transactions]
 verify_jwt = false
 
-[functions.belvo-token]
+
 verify_jwt = false
